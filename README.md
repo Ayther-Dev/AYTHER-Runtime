@@ -149,6 +149,8 @@ integration; only `AYTHER_STATUS <json>` lines are machine-readable protocol.
 - [Project status](docs/status.md) — maturity, known gaps, and release gates.
 - [Runtime/Engine dependency audit](docs/runtime-engine-dependency-audit.yaml) —
   detailed migration evidence and ownership decisions.
+- [C++ code quality review](docs/code-quality-review.md) — prioritized
+  correctness, ownership, architecture, hardcoding, and performance findings.
 - [Changelog](CHANGELOG.md) — notable changes accumulated before the first
   supported release.
 

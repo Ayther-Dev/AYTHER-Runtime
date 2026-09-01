@@ -1,0 +1,517 @@
+audit:
+  title: "Runtime dependencies on AYTHER Engine"
+  status: "early-development architecture audit"
+  scope:
+    runtime_root: "."
+    engine_public_headers: "engine/include/ (in the parent AYTHER source tree)"
+    build_files:
+      - "CMakeLists.txt"
+      - "tests/CMakeLists.txt"
+      - "engine/CMakeLists.txt"
+      - "cmake/AytherConfig.cmake.in"
+      - "cmake/AytherInTreeConfig.cmake.in"
+  migration_policy:
+    clean_import: true
+    preserve_history: false
+    preserve_source_remotes: false
+    preserve_issue_references: false
+  scan:
+    searched_roots:
+      - "src"
+      - "tests"
+      - "CMakeLists.txt"
+      - "tests/CMakeLists.txt"
+      - "engine/include"
+      - "engine/CMakeLists.txt"
+      - "cmake"
+    direct_engine_headers: 10
+    direct_runtime_to_engine_include_edges: 21
+    engine_source_includes: 0
+    relative_engine_includes: 0
+    private_or_internal_path_includes: 0
+    conclusion: >-
+      Runtime does not include engine/src or private/internal paths. The remaining
+      unwanted coupling enters through Ayther::frontend, which exposes all of
+      engine/include as an unstable first-party surface.
+
+status_definitions:
+  keep_public: "Keep the dependency behind a documented, stable public contract."
+  replace_public: "Replace the broad or private-facing dependency with a narrower public facade."
+  move_to_runtime: "Move ownership to Runtime because the behavior is presentation or process policy."
+  remove: "Remove dead, legacy, or unnecessary use."
+  third_party_direct: "Runtime intentionally consumes the third-party API directly."
+  transitive_only: "Runtime does not use the API directly; Engine must propagate it through its link interface."
+
+dependency_matrix:
+  - runtime_files: ["src/main.cpp"]
+    area: "Configuration and paths"
+    current_headers: ["ayther_config.h"]
+    current_symbols: ["AytherConfig::load", "AytherConfig::config_file", "AytherConfig"]
+    required_contract:
+      - "Resolve user data, configuration, and save directories before core probing and SDL initialization."
+      - "Runtime reads locations but does not need Engine authoring-tool fields."
+    target_state: >-
+      Move RuntimePaths/RuntimeConfig to Runtime and stop loading broad Engine
+      configuration solely to discover local paths.
+    owner: "Runtime"
+    migration_status: "move_to_runtime"
+
+  - runtime_files: ["src/main.cpp"]
+    area: "Session and emulation"
+    current_headers: ["ayther_session.h"]
+    current_symbols:
+      - "AytherSession::Config"
+      - "AytherSession::create"
+      - "AytherSession::step"
+      - "AytherSession::set_input"
+      - "AytherSession::enable_rewind"
+      - "AytherSession::rewind_step"
+      - "AytherSession::serialize"
+      - "AytherSession::unserialize"
+      - "AytherSession::reload_pack"
+      - "AytherSession::set_hd_enabled"
+      - "AytherSession profile, subsystem, and audio-bus accessors"
+      - "FrameView"
+    required_contract:
+      creation: >-
+        Create one RAII session from core_path, rom_path, optional pack_path,
+        derive_core_pack, audio enablement, core options, and optional patch_path.
+        Core options must be applied before the core first reads them.
+      per_frame: >-
+        Apply input, HD state, and audio substitution before step(). step() and
+        rewind may return a borrowed FrameView. All pointers in that view become
+        invalid after the next session mutation.
+      frame_view_fields:
+        - "framebuffer pixels, dimensions, pitch, and format"
+        - "logical frame index and emulation timing"
+        - "tile, sprite, and audio occurrence/substitution views"
+        - "unique-content counters and subsystem timings"
+        - "DRC ratio and shader parameters"
+      packs: >-
+        Query pack metadata and layers, reload on request, and continue without
+        a pack when validation, reload, or file availability fails.
+      persistence: >-
+        Unserialize before the first frame and serialize before session teardown.
+        Failures are Result values, not exceptions.
+      thread_model: "The main emulation thread drives each session."
+    target_state: >-
+      Keep Session and FrameView as stable public contracts under a narrow
+      package target. Replace raw AyArchive exposure with typed pack views and
+      operations whose borrowing and invalidation rules are explicit.
+    owner: "Engine"
+    migration_status: "keep_public"
+
+  - runtime_files: ["src/main.cpp"]
+    area: "Core probing and dynamic loading"
+    current_headers: ["libretro_host/core_loader.h"]
+    current_symbols: ["CoreLoader::load", "CoreLoader::sym", "CoreLoader::~CoreLoader"]
+    required_contract:
+      - "Load a user-selected library, resolve two information symbols, copy the result, and unload it."
+      - "Run before SDL initialization and without loading a ROM."
+      - "Return 2 for load failure, 3 for missing symbols, and 0 for success."
+      - "Emit one complete, immediately flushed AYTHER_STATUS line."
+      - "Use LoadLibrary/GetProcAddress/FreeLibrary on Windows and dlopen/dlsym/dlclose on POSIX."
+    target_state: >-
+      Publish Engine::probe_core(path) -> Result<CoreInfo>. CoreInfo must own its
+      strings so no pointer survives library unload.
+    owner: "Engine"
+    migration_status: "replace_public"
+
+  - runtime_files: ["src/main.cpp", "src/game_input.cpp"]
+    area: "Libretro API exposure"
+    current_headers: ["libretro_host/libretro.h"]
+    current_symbols:
+      - "retro_api_version"
+      - "retro_get_system_info"
+      - "retro_system_info"
+      - "RETRO_DEVICE_ID_JOYPAD_B through RETRO_DEVICE_ID_JOYPAD_R"
+    required_contract:
+      probe: >-
+        Read Libretro API version 1 metadata without loading a ROM. Borrowed core
+        strings must be copied before unload. The current implementation reports,
+        but does not enforce, RETRO_API_VERSION equality.
+      input: >-
+        Build the 16-bit RetroPad state for B, Y, Select, Start, directions, A,
+        X, L, and R. Runtime owns SDL devices; Engine receives normalized input.
+      known_gap: >-
+        Probe JSON currently escapes quotes and backslashes but not every control
+        character.
+    target_state: >-
+      Hide Libretro behind CoreInfo/CoreProbe and a stable EngineInputButton mask.
+      Runtime should not include the complete Libretro header.
+    owner: "Shared: Runtime maps devices; Engine owns Libretro adaptation"
+    migration_status: "replace_public"
+
+  - runtime_files: ["src/main.cpp"]
+    area: "Output profiles"
+    current_headers: ["output_profile.h"]
+    current_symbols:
+      - "OutputProfile"
+      - "OutputScaling"
+      - "OutputShader"
+      - "output_profiles"
+      - "output_profile_resolve"
+      - "output_rect"
+      - "output_shader"
+    required_contract:
+      ids: ["lcd", "crt", "pixel", "smooth", "cinema", "ntsc"]
+      default: "lcd"
+      precedence: "explicit or persisted user choice, then pack recommendation, then lcd"
+      scaling: >-
+        Fit or Integer. Integer falls back to Fit when 1x cannot fit, rather than
+        cropping the source.
+      shader_rule: >-
+        When pack CRT values are nonzero, scale the authored CRT, scanline, and
+        vignette values. Otherwise use profile base values. NTSC is absolute.
+      persistence: "PlayerConfig.output stores the stable profile id."
+    target_state: "Move output policy, geometry, and shader mixing to Runtime."
+    owner: "Runtime"
+    migration_status: "move_to_runtime"
+
+  - runtime_files: ["src/main.cpp"]
+    area: "Vulkan context and renderer interop"
+    current_headers: ["vulkan_backend/vk_context.h", "vulkan_backend/vk_texture.h", "ayther_renderer.h"]
+    required_contract:
+      context: >-
+        Runtime-lifetime context owns instance, surface, selected physical device,
+        logical device, queues, and VMA. Renderer, swapchain, post-process, and
+        overlay borrow it. Destruction order must place context last.
+      renderer: >-
+        Engine owns offscreen images, caches, pipelines, comparison images, and
+        readback. Runtime records rendering into the frame command buffer and
+        rebinds views after resize. GPU idle is required before pack-texture
+        eviction, reload, rebuild, and explicit shutdown.
+      failure: "A Vulkan or post-process initialization failure should retain a degraded path when possible."
+      dead_include: "main.cpp does not use a VkTexture symbol directly."
+    target_state: >-
+      Publish a narrow Vulkan interop structure and RenderImageView with explicit
+      handle ownership, image layout, and lifetime rules. Remove unused
+      vk_texture.h includes and keep Engine backend headers private.
+    owner: "Shared: Runtime owns presentation; Engine owns renderer resources"
+    migration_status: "replace_public"
+
+  - runtime_files: ["src/main.cpp"]
+    area: "Raw Core FFI and packs"
+    current_headers: ["ayther_core_ffi.h"]
+    current_symbols:
+      - "pack validation report functions"
+      - "pack watcher functions"
+      - "AyArchive and pack metadata functions"
+      - "pack tier selection"
+      - "Sonic work-RAM telemetry readers"
+      - "AytherShaderParams"
+    required_contract:
+      validation: >-
+        Validate before session creation. Errors reject the pack but preserve
+        original gameplay; warnings do not block use. Caller-owned reports must
+        be released.
+      watcher: >-
+        Poll the pack file with 100 ms debounce. Destroy the watcher before the
+        session, Rust runtime, or Vulkan resources it may affect.
+      borrowing: >-
+        AyArchive and metadata strings are short-lived borrowed views and become
+        invalid after reload_pack().
+      tiering: "Select a tier by output height before texture loading and repeat after hot reload."
+      telemetry: "Game-specific RAM reads are human diagnostics only."
+    target_state: >-
+      Publish RAII PackValidationResult, PackInfo, PackRenderTier, PackWatcher,
+      and EngineVersion APIs. Keep shader parameters as public POD in FrameView;
+      move game-specific RAM decoding to Runtime or remove it.
+    owner: "Engine, except game-specific telemetry owned by Runtime"
+    migration_status: "replace_public"
+
+  - runtime_files: ["src/lab_interface.h"]
+    area: "Legacy adapter"
+    current_headers: ["ayther_core_ffi.h", "forward-declared AytherConfig"]
+    required_contract: >-
+      The current executable only instantiates NullLabPlugin. Its arrays are
+      borrowed views from the latest FrameView and no real consumer observes them.
+    target_state: >-
+      Remove lab_interface.h and no-op calls. If telemetry remains necessary,
+      define a Runtime-local view built from the public FrameView.
+    owner: "Runtime"
+    migration_status: "remove"
+
+  - runtime_files: ["src/pack_layers.h", "src/pack_layers.cpp"]
+    area: "Renderer layers"
+    current_headers: ["ayther_layers.h", "ayther_session.h"]
+    required_contract:
+      - "Build one Runtime-owned Custom layer for every pack layer while preserving order, visibility, and content."
+      - "Pass null when no pack layers exist so the renderer uses its default stack."
+      - "Session owns source descriptors; Runtime owns the stack; renderer borrows it per frame."
+    target_state: >-
+      Keep LayerStack and PackLayerDescriptor public. Return a stable descriptor
+      view instead of nesting PackAcetato inside Session.
+    owner: "Shared: Engine describes pack layers; Runtime owns presentation order"
+    migration_status: "keep_public"
+
+  - runtime_files: ["src/player_overlay.cpp", "src/player_overlay.h"]
+    area: "In-game configuration and Vulkan overlay"
+    current_headers: ["ayther_session.h", "vulkan_backend/vk_context.h"]
+    required_contract:
+      - "Edit profile, subsystems, audio buses, HD, and shaders at runtime."
+      - "Record an overlay render pass over the acquired image with two frames in flight."
+      - "Wait for device idle during rebuild/shutdown and leave the image ready for final PRESENT_SRC transition."
+      - "Runtime owns the ImGui context, render pass, and overlay framebuffers."
+      - "Persist dirty settings when the panel closes, not after every change."
+    target_state: >-
+      Keep narrow Session setters/getters, replace VkContext with public interop,
+      and retain PlayerOverlay in Runtime.
+    owner: "Runtime, consuming Engine Session"
+    migration_status: "replace_public"
+
+  - runtime_files: ["src/vulkan_backend/vk_swapchain.cpp", "src/vulkan_backend/vk_swapchain.h"]
+    area: "Swapchain"
+    current_headers: ["vulkan_backend/vk_context.h"]
+    required_contract:
+      owned: >-
+        VkSwapchainKHR, one VkImageView per swapchain image, two command pools,
+        two command buffers, two initially-signaled fences, and two image-ready /
+        render-done semaphore pairs.
+      borrowed: "VkDevice and queues from the context; swapchain images are never destroyed directly."
+      synchronization: >-
+        begin_frame waits and resets the slot fence, acquires an image, resets the
+        command pool, and begins recording. end_frame waits on image-ready at
+        COLOR_ATTACHMENT_OUTPUT, signals render-done, submits with the slot fence,
+        and presents. Two frames are in flight.
+      rebuild: "Wait for device idle, replace image views and swapchain, preserve per-frame objects."
+      shutdown: "Wait for device idle and destroy every object before VkDevice; shutdown is idempotent."
+    target_state: "Move VkContext, swapchain, and presentation ownership to Runtime."
+    owner: "Runtime"
+    migration_status: "move_to_runtime"
+
+  - runtime_files: ["src/vulkan_backend/vk_present.cpp", "src/vulkan_backend/vk_present.h"]
+    area: "Presentation and output profiles"
+    current_headers: ["vulkan_backend/vk_context.h", "vulkan_backend/vk_texture.h", "output_profile.h"]
+    required_contract:
+      layouts:
+        renderer_source: "SHADER_READ_ONLY -> TRANSFER_SRC -> SHADER_READ_ONLY"
+        swapchain: "UNDEFINED -> TRANSFER_DST -> PRESENT_SRC"
+      behavior: >-
+        Use command-buffer pipeline barriers, clear to black for bars, derive both
+        split images from one FrameView, and restore renderer images after blit.
+      filtering: "Nearest or linear by profile; Integer uses centered whole-number scaling."
+      ownership: "Own no Vulkan handles; operate on borrowed images and command buffers."
+    target_state: >-
+      Keep present and output geometry in Runtime. Replace VkTexture with public
+      RenderImageView and remove legacy blits when no callers remain.
+    owner: "Runtime"
+    migration_status: "move_to_runtime"
+
+  - runtime_files: ["src/vulkan_backend/vk_postprocess.cpp", "src/vulkan_backend/vk_postprocess.h"]
+    area: "Post-processing"
+    current_headers: ["vulkan_backend/vk_context.h", "vulkan_backend/vk_texture.h"]
+    required_contract:
+      owned: >-
+        Render pass, descriptor-set layout, pipeline layout, pipeline, nearest
+        and linear samplers, descriptor pool, two persistent descriptor sets, and
+        one framebuffer per swapchain image.
+      descriptor_safety: "Use one descriptor per filter so an in-flight descriptor is never rewritten."
+      source: "Borrow an Engine offscreen VkImageView in SHADER_READ_ONLY layout."
+      final_layout: "Render pass ends at TRANSFER_DST; finalize transitions to PRESENT_SRC."
+      rebuild_shutdown: "Wait for device idle and destroy framebuffers before dependent objects."
+      fallback: "Use a simple blit when shaders or post-process initialization fail."
+    target_state: >-
+      Keep post-processing and shaders in Runtime, consume public interop and
+      RenderImageView, and remove the unused vk_texture.h include.
+    owner: "Runtime"
+    migration_status: "move_to_runtime"
+
+  - runtime_files: ["CMakeLists.txt"]
+    area: "Build contract"
+    current_package: "Ayther frontend component"
+    direct_packages: ["SDL3 with Vulkan", "Vulkan", "vk-bootstrap", "Dear ImGui SDL3/Vulkan", "stb"]
+    direct_links: ["Ayther::frontend", "SDL3::SDL3", "Vulkan::Vulkan", "vk-bootstrap::vk-bootstrap", "imgui::imgui", "CMAKE_DL_LIBS"]
+    required_contract:
+      - "Compile as C++20."
+      - "Stage Engine SPIR-V from Ayther_SHADER_DIR and Runtime SPIR-V from its source tree."
+      - "Stage imported runtime DLLs beside ayther_runtime."
+      - "AYTHER_SHADER_DIR compile definition points to the staged shader directory."
+    known_gap: >-
+      Runtime manually stages tomlplusplus although Engine declares header-only
+      usage. Verify the executable import table and remove this staging if stale.
+    target_state: >-
+      Replace Ayther::frontend with narrow targets such as session and
+      renderer-vulkan. Engine must package renderer shaders. Remove CMAKE_DL_LIBS
+      from Runtime after CoreProbe encapsulates dynamic loading.
+    owner: "Shared build contract"
+    migration_status: "replace_public"
+
+  - runtime_files: ["tests/CMakeLists.txt"]
+    area: "Test build contract"
+    current_dependencies: ["Ayther::frontend", "Runtime private source files", "stb header"]
+    required_contract:
+      - "Test pure Runtime logic without a GPU."
+      - "Test core probing through the real executable, exit code, and one-line protocol."
+      - "Never include engine/src."
+    known_gap: >-
+      capture.cpp declares stb_image_write calls, but the implementation currently
+      arrives accidentally through Ayther::frontend.
+    target_state: >-
+      Create an internal runtime_support library for testable sources. Runtime
+      must own STB_IMAGE_WRITE_IMPLEMENTATION or link a dedicated PNG writer.
+      Link pack-layer tests only to the narrow layer/session target they require.
+    owner: "Runtime"
+    migration_status: "move_to_runtime"
+
+configuration_inventory:
+  session_create:
+    owner: "Engine"
+    immutable_options:
+      core_path: "Required Libretro library path."
+      rom_path: "Required game image path."
+      pack_path: "Optional; empty may derive by convention only when derive_core_pack is true."
+      derive_core_pack: "Engine default; Runtime forces false after explicit pack rejection."
+      enable_audio: "Runtime currently sets true."
+      core_options: "Repeatable key=value pairs applied before core initialization."
+      patch_path: "Optional; patch applies in memory and never modifies the source ROM."
+  player:
+    owner: "Runtime"
+    defaults:
+      profile: ""
+      output: ""
+      subsystems: 0
+      have_subsystems: false
+      bus_gain: [1.0, 1.0, 1.0, 1.0]
+      bus_muted: [false, false, false, false]
+      shaders_on: true
+      hd_on: true
+    validation:
+      profile: "Engine validates on application; unknown ids are not activated."
+      subsystems: "Persisted masks intersect available subsystems; CLI currently passes its mask directly."
+      bus_gain: "Parser accepts floats without clamping; Session must define the supported range."
+      bus_muted: "Only the exact token true enables mute."
+      output: "Unknown ids fall back to pack recommendation or default."
+      malformed_file: "Return defaults without throwing; ignore unknown keys."
+    serialization:
+      format: "Simple TOML-like text written by Runtime."
+      keys: ["profile", "output", "subsystems", "shaders", "hd", "bus_gain", "bus_muted"]
+      filename: "Sanitized game id, optionally followed by sanitized pack name, with .toml suffix."
+      filename_charset: "A-Z, a-z, 0-9, period, hyphen, underscore; replace other characters with underscore."
+      write_policy: "Create parent directory and truncate; save after relevant overlay/output changes."
+    precedence: "Engine/pack defaults, then local file, then explicit launch arguments."
+  process_cli:
+    owner: "Runtime"
+    required: ["--core", "--rom"]
+    optional:
+      - "--pack"
+      - "--patch"
+      - "--profile"
+      - "--saves-dir"
+      - "--load-state"
+      - "--rom-crc32"
+      - "--subsystems"
+      - "--mute-buses"
+      - "--output"
+      - "--core-option key=value (repeatable)"
+      - "--shaders / --no-shaders"
+      - "--manifest"
+      - "--frames"
+      - "--capture-at"
+      - "--crash-test"
+      - "--probe-core"
+    validation_gaps:
+      - "Numeric masks, --frames, and --capture-at use atoi without strict error or overflow detection."
+      - "--manifest is correlation metadata and is not parsed by Runtime."
+
+transitive_dependencies:
+  threads:
+    classification: "transitive_only"
+    owner: "Engine and third parties"
+    evidence:
+      - "Renderer owns a sprite-decode worker with mutex and condition variable."
+      - "Rust pack watcher uses a background thread."
+      - "Video decoding queries hardware concurrency."
+    requirement: "Engine must stop/join workers and propagate Threads::Threads where required."
+  logging:
+    classification: "transitive_only"
+    owner: "Shared"
+    requirement: >-
+      Runtime owns process status events. Events remain one line and flush
+      immediately. Launcher ignores every line without the AYTHER_STATUS prefix.
+      Engine should eventually expose a log sink instead of writing uncontrolled
+      protocol-adjacent output.
+  filesystem:
+    classification: "direct_and_transitive"
+    owner: "Shared"
+    runtime_uses: ["pack discovery", "player configuration", "captures", "diagnostics", "atomic save states"]
+    engine_uses: ["ROM/patch/pack/assets", "current global configuration", "recording", "hot reload"]
+    requirement: "Define path encoding, atomicity, error behavior, and lifetimes at the public boundary."
+  dynamic_loading:
+    classification: "direct_currently"
+    owner: "Engine after migration"
+    requirement: "CoreProbe/Session must encapsulate platform loading and propagate required POSIX link dependencies."
+  vulkan:
+    classification: "direct_and_publicly_transitive"
+    owner: "Shared"
+    requirement: "Borrowed handles cross the boundary; neither side destroys the other's resources."
+  sdl3:
+    classification: "direct_and_publicly_transitive"
+    owner: "Shared"
+    requirement: "Remove SDL types from Session headers so Runtime links SDL only for its own window/input/timing use."
+  vk_bootstrap:
+    classification: "direct_and_transitive"
+    owner: "Runtime after VkContext/swapchain migration"
+  imgui:
+    classification: "third_party_direct"
+    owner: "Runtime"
+    requirement: "Use SDL3 and Vulkan backends with MinImageCount matching two frames in flight."
+  stb:
+    classification: "third_party_direct_with_accidental_engine_implementation"
+    owner: "Runtime"
+    requirement: "Runtime must own the stbi_write_png implementation explicitly."
+  engine_static_link_closure:
+    classification: "transitive_only"
+    owner: "Engine package"
+    libraries: ["ayther_core Rust static library and cxx bridge", "zstd", "VulkanMemoryAllocator", "vk-bootstrap", "ymfm", "optional libvpx", "Rust platform system libraries"]
+    requirement: "Ayther imported targets propagate the complete link closure; Runtime does not enumerate internals."
+  standard_library_header_leaks:
+    classification: "direct_but_implicit"
+    owner: "Runtime"
+    evidence:
+      - "main.cpp uses std::chrono without including <chrono>."
+      - "main.cpp uses std::unique_ptr without including <memory>."
+      - "main.cpp uses std::isalnum/std::tolower without including <cctype>."
+    requirement: "Add direct standard-library includes; never rely on transitive SDL or Engine includes."
+
+runtime_files_without_engine_dependency:
+  - files: ["src/capture.h", "src/capture.cpp"]
+    dependencies: ["C++ filesystem/streams", "stb_image_write"]
+  - files: ["src/diagnostics.h", "src/diagnostics.cpp"]
+    dependencies: ["C++ standard library"]
+  - files: ["src/player_config.h", "src/player_config.cpp"]
+    dependencies: ["C++ filesystem/streams"]
+  - files: ["src/game_input.h"]
+    dependencies: ["SDL3 events/gamepad"]
+  - files: ["src/vulkan_backend/aspect_fit.h", "src/vulkan_backend/split_geometry.h"]
+    dependencies: ["C++ standard library"]
+  - files: ["tests/capture_test.cpp", "tests/diagnostics_test.cpp", "tests/player_config_test.cpp", "tests/split_geometry_test.cpp", "tests/probe_core_test.cmake"]
+    dependencies: ["Runtime code", "process contract"]
+
+private_header_decisions:
+  ayther_config.h: "Move Runtime-specific configuration and paths to Runtime."
+  libretro_host/core_loader.h: "Replace with public CoreProbe."
+  libretro_host/libretro.h: "Hide behind CoreProbe and EngineInputButton."
+  output_profile.h: "Move presentation policy to Runtime."
+  vulkan_backend/vk_context.h: "Replace with public interop; move presentation ownership to Runtime."
+  vulkan_backend/vk_texture.h: "Remove unused includes and replace remaining use with RenderImageView."
+  ayther_core_ffi.h: "Hide raw operations behind Session, Pack, and EngineVersion APIs."
+  ayther_renderer.h: "Promote a stable facade without exposing backend header closure."
+  ayther_layers.h: "Keep descriptors and LayerStack as a narrow public contract."
+  ayther_session.h: "Keep Session/FrameView public; remove raw FFI handles from returned values."
+
+acceptance:
+  all_direct_uses_classified: true
+  every_private_header_has_decision: true
+  transitive_vulkan_identified: true
+  transitive_threads_identified: true
+  transitive_logging_identified: true
+  transitive_filesystem_identified: true
+  source_history_copied: false
+  source_remote_references_copied: false
+  issue_references_in_deliverable: false
+  remaining_design_decisions:
+    - "Final names and granularity of Engine public targets."
+    - "Exact Vulkan interop and RenderImageView representation."
+    - "Whether PackWatcher remains in Engine or moves to Runtime-native filesystem code."
+    - "Validated ranges for bus_gain and subsystem masks."

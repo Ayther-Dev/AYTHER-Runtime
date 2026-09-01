@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: #2d2f33;
+      }
+
+      .cls-1, .cls-2 {
+        stroke-width: 0px;
+      }
+
+      .cls-2 {
+        fill: #ffd500;
+      }
+    </style>
+  </defs>
+  <g id="backgound">
+    <rect class="cls-1" width="1024" height="1024"/>
+  </g>
+  <g id="Logos">
+    <polygon class="cls-2" points="788.59 112 628.59 112 671.46 272 628.59 432 479.15 432 522.03 272 585.59 272 628.46 112 468.46 112 425.59 272 362.03 272 190.54 912 350.54 912 436.14 592.53 522.01 913 694.01 913 608 592 678.49 592 721.36 432 788.59 432 831.46 272 788.59 112"/>
+  </g>
+</svg>
