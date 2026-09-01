@@ -1,0 +1,58 @@
+name: Design or feature proposal
+description: Propose a scoped Runtime improvement
+title: "[Proposal]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Runtime is a single-session host. Launcher, library, account, download,
+        and cloud-product features belong to AYTHER Play.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the user or engineering problem without prescribing a solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+      description: Explain behavior, ownership, and why Runtime is the correct component.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Primary area
+      options:
+        - Session lifecycle and process protocol
+        - Input and in-game controls
+        - Vulkan presentation and output profiles
+        - Packs, captures, or diagnostics
+        - Persistence and save states
+        - Build, tests, or packaging
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Boundary and compatibility impact
+      description: Cover Engine/Runtime ownership, protocol, persistence, performance, content, and licensing implications.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I reviewed docs/architecture.md and docs/status.md.
+          required: true
+        - label: The proposal does not require distributing unlicensed cores or game content.
+          required: true

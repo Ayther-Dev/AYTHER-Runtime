@@ -1,0 +1,67 @@
+name: Bug report
+description: Report a reproducible AYTHER Runtime defect
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        AYTHER Runtime is pre-release. Do not include copyrighted game content,
+        secrets, personal data, or vulnerability details. Use SECURITY.md for
+        suspected security issues.
+  - type: input
+    id: revision
+    attributes:
+      label: Runtime revision
+      description: Commit SHA or exact version.
+      placeholder: abc1234
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, compiler, CMake generator, AYTHER package revision, vcpkg baseline, GPU, and driver.
+    validations:
+      required: true
+  - type: input
+    id: core
+    attributes:
+      label: Core identity
+      description: Core name and version only; do not attach the binary.
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Minimal numbered steps and a redacted command line. Prefer synthetic content.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs
+      description: Include relevant AYTHER_STATUS and diagnostic lines. Remove sensitive paths and content.
+      render: shell
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I searched existing issues and reviewed docs/status.md.
+          required: true
+        - label: This report does not disclose a suspected vulnerability publicly.
+          required: true
+        - label: I removed protected content, secrets, and personal data.
+          required: true
