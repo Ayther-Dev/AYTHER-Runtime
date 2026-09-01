@@ -24,6 +24,6 @@ Do not upload ROMs, cores, packs, save states, screenshots containing protected
 content, credentials, or personal data. A minimal synthetic reproduction is
 preferred.
 
-Build failures caused by a missing `Ayther::frontend` package are expected in a
+Build failures caused by a missing `Ayther::engine` package are expected in a
 standalone checkout until an installed AYTHER prefix is supplied. See the
 [development guide](docs/development.md) before filing an issue.

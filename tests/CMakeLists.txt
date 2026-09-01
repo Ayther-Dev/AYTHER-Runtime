@@ -5,7 +5,7 @@
 # `tests/` de la raíz, que es del motor: un oráculo va con lo que prueba. El día
 # del corte este directorio viaja entero con `ayther-runtime`, sin arreglos.
 #
-# Lo que necesitan del motor lo toman del paquete —`Ayther::frontend`, que ya
+# Lo que necesitan del motor lo toman del paquete —`Ayther::engine`, que ya
 # encontró runtime/CMakeLists.txt— (E8.1); nada de acá incluye `engine/src`.
 # ---------------------------------------------------------------------------
 # stb_image_write.h (capture_tests): header-only. Se busca el ARCHIVO y no el
@@ -79,7 +79,7 @@ target_include_directories(capture_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
     ${Stb_INCLUDE_DIR}
 )
-target_link_libraries(capture_tests PRIVATE Ayther::frontend)
+target_link_libraries(capture_tests PRIVATE Ayther::engine)
 set_target_properties(capture_tests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
@@ -103,7 +103,7 @@ add_executable(pack_layers_tests
 target_include_directories(pack_layers_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
 )
-target_link_libraries(pack_layers_tests PRIVATE Ayther::frontend)
+target_link_libraries(pack_layers_tests PRIVATE Ayther::engine)
 set_target_properties(pack_layers_tests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )

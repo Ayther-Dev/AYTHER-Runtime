@@ -31,7 +31,7 @@ audit:
     private_or_internal_path_includes: 0
     conclusion: >-
       Runtime does not include engine/src or private/internal paths. The remaining
-      unwanted coupling enters through Ayther::frontend, which exposes all of
+      unwanted coupling enters through Ayther::engine, which exposes all of
       engine/include as an unstable first-party surface.
 
 status_definitions:
@@ -319,9 +319,9 @@ dependency_matrix:
 
   - runtime_files: ["CMakeLists.txt"]
     area: "Build contract"
-    current_package: "Ayther frontend component"
+    current_package: "Ayther engine component"
     direct_packages: ["SDL3 with Vulkan", "Vulkan", "vk-bootstrap", "Dear ImGui SDL3/Vulkan", "stb"]
-    direct_links: ["Ayther::frontend", "SDL3::SDL3", "Vulkan::Vulkan", "vk-bootstrap::vk-bootstrap", "imgui::imgui", "CMAKE_DL_LIBS"]
+    direct_links: ["Ayther::engine", "SDL3::SDL3", "Vulkan::Vulkan", "vk-bootstrap::vk-bootstrap", "imgui::imgui", "CMAKE_DL_LIBS"]
     required_contract:
       - "Compile as C++20."
       - "Stage Engine SPIR-V from Ayther_SHADER_DIR and Runtime SPIR-V from its source tree."
@@ -331,7 +331,7 @@ dependency_matrix:
       Runtime manually stages tomlplusplus although Engine declares header-only
       usage. Verify the executable import table and remove this staging if stale.
     target_state: >-
-      Replace Ayther::frontend with narrow targets such as session and
+      Replace Ayther::engine with narrow targets such as session and
       renderer-vulkan. Engine must package renderer shaders. Remove CMAKE_DL_LIBS
       from Runtime after CoreProbe encapsulates dynamic loading.
     owner: "Shared build contract"
@@ -339,14 +339,14 @@ dependency_matrix:
 
   - runtime_files: ["tests/CMakeLists.txt"]
     area: "Test build contract"
-    current_dependencies: ["Ayther::frontend", "Runtime private source files", "stb header"]
+    current_dependencies: ["Ayther::engine", "Runtime private source files", "stb header"]
     required_contract:
       - "Test pure Runtime logic without a GPU."
       - "Test core probing through the real executable, exit code, and one-line protocol."
       - "Never include engine/src."
     known_gap: >-
       capture.cpp declares stb_image_write calls, but the implementation currently
-      arrives accidentally through Ayther::frontend.
+      arrives accidentally through Ayther::engine.
     target_state: >-
       Create an internal runtime_support library for testable sources. Runtime
       must own STB_IMAGE_WRITE_IMPLEMENTATION or link a dedicated PNG writer.

@@ -75,10 +75,10 @@ or cloud synchronization. Those responsibilities belong to AYTHER Play.
 
 - CMake 3.21 or newer and a C++20 compiler.
 - A Vulkan-capable GPU, loader, and driver for interactive execution.
-- An installed AYTHER package containing the `frontend` component and its
-  shaders (`Ayther::frontend` and `Ayther_SHADER_DIR`).
+- An installed AYTHER package containing the `engine` component and its
+  shaders (`Ayther::engine` and `Ayther_SHADER_DIR`).
 - The dependencies declared in `vcpkg.json`: SDL3, Vulkan, Vulkan Memory
-  Allocator, vk-bootstrap, zstd, Dear ImGui, and stb.
+  Allocator, vk-bootstrap, toml++, zstd, Dear ImGui, and stb.
 - Ninja is recommended, but not required.
 
 The AYTHER engine package is not included in this repository. A standalone
@@ -104,8 +104,8 @@ For a multi-configuration generator, omit `CMAKE_BUILD_TYPE` and pass
 staged runtime assets are written below `build/bin/`.
 
 The out-of-tree smoke script is intended for the parent AYTHER monorepo. It
-installs the engine's `sdk` and `frontend` components into a clean temporary
-prefix, builds Runtime against that prefix, and runs its tests:
+installs the engine package into a clean temporary prefix, builds Runtime
+against that prefix, and runs its tests:
 
 ```powershell
 pwsh runtime/tools/runtime_oot_smoke.ps1 -BuildDir build

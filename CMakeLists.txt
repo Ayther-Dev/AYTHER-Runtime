@@ -3,11 +3,12 @@
 #
 # TWO MODES, one build definition (ADR-004 E8.1). Whether included from the
 # monorepo or configured as a root project against an installed prefix, Runtime
-# consumes Engine through `find_package(Ayther COMPONENTS frontend)` and
-# `Ayther::frontend`. No source-tree path is part of this contract.
+# consumes Engine through
+# `find_package(Ayther 0.1.0 CONFIG REQUIRED COMPONENTS engine)` and
+# `Ayther::engine`. No source-tree path is part of this contract.
 #
 # Standalone mode, exercised by the E8 SDK smoke test:
-#   cmake -S runtime -B build_rt -DCMAKE_PREFIX_PATH=<prefijo con --component frontend>
+#   cmake -S runtime -B build_rt -DCMAKE_PREFIX_PATH=<prefijo del paquete engine>
 #   cmake --build build_rt
 # ---------------------------------------------------------------------------
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
@@ -21,9 +22,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     enable_testing()
 endif()
 
-# Request the first-party `frontend` surface because Runtime needs the renderer,
+# Request the first-party `engine` surface because Runtime needs the renderer,
 # Vulkan backend, RetroRunner, and configuration API, not only ADR-003's SDK API.
-find_package(Ayther REQUIRED COMPONENTS frontend)
+find_package(Ayther 0.1.0 CONFIG REQUIRED COMPONENTS engine)
 find_package(SDL3         CONFIG REQUIRED)
 find_package(Vulkan              REQUIRED)
 find_package(vk-bootstrap CONFIG REQUIRED)   # vk_swapchain.cpp: vkb::SwapchainBuilder
@@ -38,7 +39,7 @@ add_executable(ayther_runtime
     src/diagnostics.cpp         # #302: audiovisual diagnostics assistant
     src/pack_layers.cpp         # #561: pack overlay-layer stack
     # audio_player + libretro_host + vk_context/vk_texture/vma live in the motor
-    # and arrive via Ayther::frontend. The frontend keeps the window-side render:
+    # and arrive via Ayther::engine. The engine target keeps the window-side render:
     # swapchain + present + the postprocess pass.
     src/vulkan_backend/vk_swapchain.cpp
     src/vulkan_backend/vk_present.cpp
@@ -48,13 +49,13 @@ add_executable(ayther_runtime
 target_include_directories(ayther_runtime PRIVATE
     src
     src/vulkan_backend
-    # libretro_host/*.h, vulkan_backend/*.h, ayther_*.h: Ayther::frontend
+    # libretro_host/*.h, vulkan_backend/*.h, ayther_*.h: Ayther::engine
 )
 
-# `Ayther::frontend` owns the transitive Engine, Rust core, system-library, and
+# `Ayther::engine` owns the transitive Engine, Rust core, system-library, and
 # bridge dependencies. Runtime intentionally depends only on the package target.
 target_link_libraries(ayther_runtime PRIVATE
-    Ayther::frontend
+    Ayther::engine
     SDL3::SDL3
     Vulkan::Vulkan
     vk-bootstrap::vk-bootstrap   # vk_swapchain.cpp uses vkb::SwapchainBuilder

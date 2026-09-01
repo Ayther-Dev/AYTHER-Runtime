@@ -18,8 +18,9 @@ once stable compatibility guarantees are defined.
 
 - Initial standalone Runtime repository structure for the C++20 game-session
   host consumed by AYTHER Play.
-- CMake package consumption through `find_package(Ayther COMPONENTS frontend)`
-  and the `Ayther::frontend` imported target.
+- CMake package consumption through
+  `find_package(Ayther 0.1.0 CONFIG REQUIRED COMPONENTS engine)` and the
+  `Ayther::engine` imported target.
 - SDL3 input and window integration, Vulkan presentation and post-processing,
   Dear ImGui in-game controls, and committed SPIR-V runtime shaders.
 - Libretro core probing and line-delimited `AYTHER_STATUS` process events.

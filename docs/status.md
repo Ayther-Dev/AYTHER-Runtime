@@ -29,7 +29,7 @@ compatibility.
 
 ## Known technical gaps
 
-1. `Ayther::frontend` exposes a broad first-party surface whose stability is not
+1. `Ayther::engine` exposes a broad first-party surface whose stability is not
    guaranteed. Several Runtime responsibilities still depend on engine backend
    types or raw FFI details.
 2. Core probing should move behind a narrow engine API, and normalized input

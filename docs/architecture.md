@@ -182,11 +182,11 @@ to process arguments.
 Both standalone and parent-tree builds consume the engine in the same way:
 
 ```cmake
-find_package(Ayther REQUIRED COMPONENTS frontend)
-target_link_libraries(ayther_runtime PRIVATE Ayther::frontend)
+find_package(Ayther 0.1.0 CONFIG REQUIRED COMPONENTS engine)
+target_link_libraries(ayther_runtime PRIVATE Ayther::engine)
 ```
 
-The current `frontend` surface is intentionally marked for narrowing. Runtime
+The current `engine` surface is intentionally marked for narrowing. Runtime
 still consumes broad engine headers for session, renderer, Vulkan interop,
 Libretro probing, configuration, and pack operations. The detailed evidence and
 target ownership decisions live in

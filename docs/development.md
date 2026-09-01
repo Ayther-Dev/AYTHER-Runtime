@@ -2,9 +2,9 @@
 
 ## Supported development shape
 
-AYTHER Runtime is a C++20 CMake consumer of the installed AYTHER `frontend`
+AYTHER Runtime is a C++20 CMake consumer of the installed AYTHER `engine`
 package. It can be added by the parent monorepo or configured as a standalone
-root project, but both modes must resolve the same `Ayther::frontend` target.
+root project, but both modes must resolve the same `Ayther::engine` target.
 Direct includes from an engine source tree are not an accepted substitute.
 
 The current repository is an early engineering snapshot. The documented build
@@ -17,7 +17,7 @@ Required:
 - CMake 3.21 or newer;
 - a C++20 compiler;
 - Vulkan headers, loader, and a working driver for interactive runs;
-- an installed AYTHER package with `sdk` and `frontend` components; and
+- an installed AYTHER package with the `engine` component; and
 - the vcpkg dependencies pinned by `vcpkg.json`.
 
 Ninja and PowerShell 7 are recommended for the reference workflow. On Windows,
@@ -36,7 +36,7 @@ cmake --build build
 
 `CMAKE_PREFIX_PATH` must expose both the AYTHER package and any dependency
 prefixes not supplied by the vcpkg toolchain. Configuration is expected to fail
-when `Ayther::frontend`, SDL3, Vulkan, vk-bootstrap, ImGui, or stb cannot be
+when `Ayther::engine`, SDL3, Vulkan, vk-bootstrap, ImGui, or stb cannot be
 resolved; do not work around that failure by adding private engine source paths.
 
 ## Tests
@@ -67,8 +67,8 @@ From the AYTHER monorepo root, after building the engine package:
 pwsh runtime/tools/runtime_oot_smoke.ps1 -BuildDir build
 ```
 
-The script installs clean `sdk` and `frontend` components, builds Runtime in a
-temporary directory with no engine source include path, verifies packaged
+The script installs the configured engine package, builds Runtime in a temporary
+directory with no engine source include path, verifies packaged
 shaders, and runs CTest. Use `-Keep` to preserve its temporary directories for
 inspection.
 

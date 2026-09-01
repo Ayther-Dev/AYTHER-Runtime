@@ -184,7 +184,7 @@ distinction intended by ES.45.
   post-process state and publish it only after every stage succeeds.
 - **Command model plus validator:** parse CLI text into `RuntimeOptions`, then
   validate cross-field requirements before creating SDL or Vulkan state.
-- **Adapter/facade boundary:** isolate `Ayther::frontend`, C FFI, Libretro, and
+- **Adapter/facade boundary:** isolate `Ayther::engine`, C FFI, Libretro, and
   status-protocol details from Runtime policy.
 - **State machine:** encode session states (`Starting`, `Ready`, `Running`,
   `Stopping`, `Failed`) so protocol events and legal transitions are testable.
@@ -239,7 +239,7 @@ candidates, not benchmark conclusions:
 ## Verification limits
 
 This review does not assert that the Runtime currently builds or runs in
-isolation. The repository requires an installed `Ayther::frontend` package and
+isolation. The repository requires an installed `Ayther::engine` package and
 GPU-dependent paths require compatible SDL/Vulkan drivers. Before release, run
 the configured unit tests, the out-of-tree package smoke test, Vulkan validation
 on lifecycle scenarios, and the performance matrix described above.
