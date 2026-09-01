@@ -1,6 +1,6 @@
 # AYTHER Runtime
 
-![AYTHER Runtime](docs/assets/branding/ayther-runtime-logo.svg)
+<img alt="AYTHER Runtime" height="128" src="docs/assets/branding/ayther-runtime-logo.svg" width="128"/>
 
 AYTHER Runtime is the C++20 game-session host launched by AYTHER Play. It loads
 a user-supplied Libretro core and game image, drives the AYTHER engine, renders
