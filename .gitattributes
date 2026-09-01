@@ -1,0 +1,50 @@
+# Normalize text files in the repository. Developers may use any local platform,
+# but committed text remains LF to keep diffs and generated archives stable.
+* text=auto
+
+*.c text eol=lf
+*.cc text eol=lf
+*.cpp text eol=lf
+*.cxx text eol=lf
+*.h text eol=lf
+*.hh text eol=lf
+*.hpp text eol=lf
+*.inl text eol=lf
+
+CMakeLists.txt text eol=lf
+.editorconfig text eol=lf
+.gitattributes text eol=lf
+.gitignore text eol=lf
+LICENSE text eol=lf
+*.cmake text eol=lf
+*.cmake.in text eol=lf
+*.json text eol=lf
+*.gitkeep text eol=lf
+*.md text eol=lf
+*.ps1 text eol=lf
+*.txt text eol=lf
+*.toml text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.frag text eol=lf
+*.vert text eol=lf
+*.glsl text eol=lf
+*.svg text eol=lf
+
+# Compiled shaders, images, and native artifacts must never be line-normalized.
+*.spv binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.dll binary
+*.dylib binary
+*.so binary
+*.a binary
+*.lib binary
+*.exe binary
+*.pdb binary
+
+# Improve GitHub language statistics for committed shader artifacts.
+*.spv linguist-detectable=false

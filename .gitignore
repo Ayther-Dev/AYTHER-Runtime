@@ -1,0 +1,84 @@
+# CMake build trees and generated files
+/build/
+/build-*/
+/out/
+/cmake-build-*/
+/_build/
+/_deps/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+Makefile
+build.ninja
+rules.ninja
+compile_commands.json
+install_manifest.txt
+CMakeUserPresets.json
+
+# vcpkg local state
+/vcpkg_installed/
+/.vcpkg-root
+
+# Compiled artifacts
+*.obj
+*.o
+*.lo
+*.a
+*.lib
+*.dll
+*.dylib
+*.so
+*.so.*
+*.exe
+*.pdb
+*.ilk
+*.exp
+
+# Test, profiling, and coverage output
+*.log
+*.profraw
+*.profdata
+*.gcda
+*.gcno
+*.gcov
+coverage/
+
+# IDE and editor state
+/.idea/
+/.vs/
+/.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.VC.db
+*.VC.VC.opendb
+*.code-workspace
+*~
+*.swp
+*.swo
+
+# Tool caches
+/.cache/
+/.clangd/
+/.clang-tidy-cache/
+/.cache-clangd/
+/.ninja_deps
+/.ninja_log
+/graphify-out/
+
+# Environment and local overrides
+.env
+.env.*
+!.env.example
+*.local
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Runtime-generated development artifacts
+/tile_catalog.toml
