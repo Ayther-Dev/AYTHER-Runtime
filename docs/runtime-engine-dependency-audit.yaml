@@ -235,10 +235,10 @@ dependency_matrix:
     area: "Legacy adapter"
     current_headers: []
     required_contract: >-
-      The current executable only instantiates NullLabPlugin. Its arrays are
-      borrowed views from the latest FrameView and no real consumer observes them.
+      The former adapter was a no-op. No real consumer observed its borrowed
+      FrameView arrays.
     target_state: >-
-      Complete: lab_interface.h and its no-op calls were removed. Remaining
+      Complete: the obsolete adapter and its no-op calls were removed. Remaining
       telemetry uses a Runtime-local value decoded from bounded session memory.
     owner: "Runtime"
     migration_status: "complete"

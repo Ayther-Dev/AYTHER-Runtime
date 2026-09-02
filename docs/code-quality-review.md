@@ -118,12 +118,11 @@ types whose destructors cannot enforce cleanup.
     acquired frame as a short-lived object, or return checked views/spans and
     assert invariants in debug builds (I.6, Bounds.4).
 
-10. **Resolved: remove the obsolete Lab null-plugin seam.**
-    The unused `src/lab_interface.h`, `NullLabPlugin`, and per-frame no-op calls
-    were removed. Game-specific diagnostics now use the narrow, bounds-checked
-    Runtime-owned `SonicTelemetry` value instead of FFI event structures. Any
-    future plugin boundary must be defined from current requirements (I.2,
-    I.23).
+10. **Resolved: remove the obsolete no-op plugin seam.**
+    The unused adapter and its per-frame no-op calls were removed.
+    Game-specific diagnostics now use the narrow, bounds-checked Runtime-owned
+    `SonicTelemetry` value instead of FFI event structures. Any future plugin
+    boundary must be defined from current requirements (I.2, I.23).
 
 ### Low — maintainability and consistency
 
