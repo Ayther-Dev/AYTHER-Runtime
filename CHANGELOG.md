@@ -16,6 +16,8 @@ once stable compatibility guarantees are defined.
 
 ### Fixed
 
+- Engine public headers now use their package-root `ayther/` paths, so Runtime
+  builds with only the include directory exported by `Ayther::engine`.
 - Runtime UI and startup logs now derive the Runtime version from CMake and the
   linked Engine version from `ayther::engine::version()` instead of embedding a
   stale hard-coded label.

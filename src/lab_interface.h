@@ -27,7 +27,7 @@
 
 #include <cstdint>
 #include <SDL3/SDL_events.h>
-#include "ayther_core_ffi.h"   // AytherTileOccurrence, AytherTileSub, AytherSpriteOccurrence, AytherAudioOccurrence
+#include <ayther/ayther_core_ffi.h>  // AytherTileOccurrence, AytherTileSub, AytherSpriteOccurrence, AytherAudioOccurrence
 
 // Forward declaration — full definition in ayther_config.h
 struct AytherConfig;

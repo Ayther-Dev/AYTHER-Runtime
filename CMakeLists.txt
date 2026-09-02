@@ -60,7 +60,7 @@ target_include_directories(ayther_runtime PRIVATE
     src
     src/vulkan_backend
     "${AYTHER_RUNTIME_GENERATED_DIR}"
-    # libretro_host/*.h, vulkan_backend/*.h, ayther_*.h: Ayther::engine
+    # libretro_host/*.h, vulkan_backend/*.h, ayther/ayther_*.h: Ayther::engine
 )
 
 # `Ayther::engine` owns the transitive Engine, Rust core, system-library, and

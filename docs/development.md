@@ -6,6 +6,9 @@ AYTHER Runtime is a C++20 CMake consumer of the installed AYTHER `engine`
 package. It can be added by the parent monorepo or configured as a standalone
 root project, but both modes must resolve the same `Ayther::engine` target.
 Direct includes from an engine source tree are not an accepted substitute.
+Public Engine headers must be included from the package include root (for
+example, `<ayther/ayther_session.h>`), never by adding `include/ayther` to a
+consumer include path.
 
 The current repository is an early engineering snapshot. The documented build
 is a maintainer workflow, not a supported end-user installation procedure.

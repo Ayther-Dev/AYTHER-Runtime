@@ -12,7 +12,7 @@
 #include <ctime>
 #include "ayther_config.h"
 #include "lab_interface.h"
-#include "ayther_session.h"          // the motor facade (R2.3) — replaces direct host/audio
+#include <ayther/ayther_session.h>    // the motor facade (R2.3) — replaces direct host/audio
 #include "game_input.h"              // SDL keyboard/gamepad → RetroPad bitfield (M3)
 #include "vulkan_backend/aspect_fit.h"  // 4:3 canvas fit (pillarbox, no stretch)
 #include "player_overlay.h"         // in-game pause menu + HD↔Original toggle (M4)
@@ -27,7 +27,7 @@
 #include "vulkan_backend/vk_texture.h"
 #include "vulkan_backend/vk_present.h"
 #include "vulkan_backend/vk_postprocess.h"   // CRT presentation pass (samples the offscreen)
-#include "ayther_core_ffi.h"          // pack watcher, sonic RAM reads, core version
+#include <ayther/ayther_core_ffi.h>    // pack watcher, sonic RAM reads, core version
 #include "ayther_renderer.h"          // the motor's HD render layer (R3.1)
 #include "pack_layers.h"           // #561: el stack de Acetatos del pack
 #include "version_info.h"          // Runtime build version + linked Engine version

@@ -18,7 +18,7 @@
 #include <cstdio>
 #include <string>
 
-#include "ayther_session.h"   // #299: el panel opera sobre la sesión
+#include <ayther/ayther_session.h>  // #299: el panel opera sobre la sesión
 
 namespace ayther {
 

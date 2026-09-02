@@ -17,8 +17,8 @@
 #include <cstddef>
 #include <vector>
 
-#include "ayther_layers.h"
-#include "ayther_session.h"
+#include <ayther/ayther_layers.h>
+#include <ayther/ayther_session.h>
 
 namespace ayther_runtime {
 

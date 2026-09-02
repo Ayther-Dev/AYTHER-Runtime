@@ -58,7 +58,7 @@ dependency_matrix:
 
   - runtime_files: ["src/main.cpp"]
     area: "Session and emulation"
-    current_headers: ["ayther_session.h"]
+    current_headers: ["ayther/ayther_session.h"]
     current_symbols:
       - "AytherSession::Config"
       - "AytherSession::create"
@@ -192,7 +192,7 @@ dependency_matrix:
 
   - runtime_files: ["src/main.cpp"]
     area: "Raw Core FFI and packs"
-    current_headers: ["ayther_core_ffi.h"]
+    current_headers: ["ayther/ayther_core_ffi.h"]
     current_symbols:
       - "pack validation report functions"
       - "pack watcher functions"
@@ -222,7 +222,7 @@ dependency_matrix:
 
   - runtime_files: ["src/lab_interface.h"]
     area: "Legacy adapter"
-    current_headers: ["ayther_core_ffi.h", "forward-declared AytherConfig"]
+    current_headers: ["ayther/ayther_core_ffi.h", "forward-declared AytherConfig"]
     required_contract: >-
       The current executable only instantiates NullLabPlugin. Its arrays are
       borrowed views from the latest FrameView and no real consumer observes them.
@@ -234,7 +234,7 @@ dependency_matrix:
 
   - runtime_files: ["src/pack_layers.h", "src/pack_layers.cpp"]
     area: "Renderer layers"
-    current_headers: ["ayther_layers.h", "ayther_session.h"]
+    current_headers: ["ayther/ayther_layers.h", "ayther/ayther_session.h"]
     required_contract:
       - "Build one Runtime-owned Custom layer for every pack layer while preserving order, visibility, and content."
       - "Pass null when no pack layers exist so the renderer uses its default stack."
@@ -247,7 +247,7 @@ dependency_matrix:
 
   - runtime_files: ["src/player_overlay.cpp", "src/player_overlay.h"]
     area: "In-game configuration and Vulkan overlay"
-    current_headers: ["ayther_session.h", "vulkan_backend/vk_context.h"]
+    current_headers: ["ayther/ayther_session.h", "vulkan_backend/vk_context.h"]
     required_contract:
       - "Edit profile, subsystems, audio buses, HD, and shaders at runtime."
       - "Record an overlay render pass over the acquired image with two frames in flight."
@@ -499,10 +499,10 @@ private_header_decisions:
   output_profile.h: "Move presentation policy to Runtime."
   vulkan_backend/vk_context.h: "Replace with public interop; move presentation ownership to Runtime."
   vulkan_backend/vk_texture.h: "Remove unused includes and replace remaining use with RenderImageView."
-  ayther_core_ffi.h: "Hide raw operations behind Session, Pack, and EngineVersion APIs."
+  ayther/ayther_core_ffi.h: "Hide raw operations behind Session, Pack, and EngineVersion APIs."
   ayther_renderer.h: "Promote a stable facade without exposing backend header closure."
-  ayther_layers.h: "Keep descriptors and LayerStack as a narrow public contract."
-  ayther_session.h: "Keep Session/FrameView public; remove raw FFI handles from returned values."
+  ayther/ayther_layers.h: "Keep descriptors and LayerStack as a narrow public contract."
+  ayther/ayther_session.h: "Keep Session/FrameView public; remove raw FFI handles from returned values."
 
 acceptance:
   all_direct_uses_classified: true
