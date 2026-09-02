@@ -46,12 +46,9 @@ compatibility.
    header. Core probing already uses the narrow public Engine `CoreProbe` API.
 4. Numeric CLI parsing does not consistently detect malformed values or
    overflow.
-5. Capture currently relies on an stb implementation that arrives indirectly
-   through the broad engine target. Runtime should own that implementation or
-   link a dedicated image writer explicitly.
-6. Manual staging of `tomlplusplus` should be verified against the actual link
+5. Manual staging of `tomlplusplus` should be verified against the actual link
    closure and removed if the executable no longer imports it.
-7. GPU-dependent integration coverage, compatibility matrices, packaging, and
+6. GPU-dependent integration coverage, compatibility matrices, packaging, and
    reproducible release automation are not yet established.
 
 The evidence and proposed ownership for these items are recorded in

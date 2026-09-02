@@ -8,8 +8,11 @@
 #include <fstream>
 #include <sstream>
 
-// STB_IMAGE_WRITE_IMPLEMENTATION is owned by the engine's tile_tex_cache.cpp.
-// Defining it here would duplicate its symbols at link time.
+// Runtime owns its PNG writer. Keep stb's definitions local to this translation
+// unit so they cannot collide with, or be satisfied by, implementation details
+// from a statically linked Engine package.
+#define STB_IMAGE_WRITE_STATIC
+#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
 namespace ayther {

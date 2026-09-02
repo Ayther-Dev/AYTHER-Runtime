@@ -334,7 +334,7 @@ dependency_matrix:
     direct_packages: ["SDL3 with Vulkan", "Vulkan", "VulkanMemoryAllocator", "vk-bootstrap", "Dear ImGui SDL3/Vulkan", "stb"]
     engine_vcpkg_closure: ["SDL3 with Vulkan", "Vulkan", "VulkanMemoryAllocator", "tomlplusplus", "zstd"]
     runtime_owned_vcpkg_packages: ["VulkanMemoryAllocator", "vk-bootstrap", "Dear ImGui SDL3/Vulkan", "stb"]
-    direct_links: ["Ayther::engine", "SDL3::SDL3", "Vulkan::Vulkan", "GPUOpen::VulkanMemoryAllocator", "vk-bootstrap::vk-bootstrap", "imgui::imgui", "CMAKE_DL_LIBS"]
+    direct_links: ["Ayther::engine", "ayther_runtime_stb", "SDL3::SDL3", "Vulkan::Vulkan", "GPUOpen::VulkanMemoryAllocator", "vk-bootstrap::vk-bootstrap", "imgui::imgui", "CMAKE_DL_LIBS"]
     required_contract:
       - "Compile as C++20."
       - "Require AytherConfig.cmake to export a valid Ayther_SHADER_DIR."
@@ -355,20 +355,18 @@ dependency_matrix:
 
   - runtime_files: ["tests/CMakeLists.txt"]
     area: "Test build contract"
-    current_dependencies: ["Ayther::engine", "Runtime private source files", "stb header"]
+    current_dependencies: ["Runtime private source files", "ayther_runtime_stb"]
     required_contract:
       - "Test pure Runtime logic without a GPU."
       - "Test core probing through the real executable, exit code, and one-line protocol."
       - "Never include engine/src."
-    known_gap: >-
-      capture.cpp declares stb_image_write calls, but the implementation currently
-      arrives accidentally through Ayther::engine.
     target_state: >-
-      Create an internal runtime_support library for testable sources. Runtime
-      must own STB_IMAGE_WRITE_IMPLEMENTATION or link a dedicated PNG writer.
-      Link pack-layer tests only to the narrow layer/session target they require.
+      capture.cpp owns a translation-unit-local STB_IMAGE_WRITE_IMPLEMENTATION,
+      and capture_tests links only Runtime's header-only stb interface. Create an
+      internal runtime_support library for other testable sources and link
+      pack-layer tests only to the narrow layer/session target they require.
     owner: "Runtime"
-    migration_status: "move_to_runtime"
+    migration_status: "complete"
 
 configuration_inventory:
   session_create:
@@ -484,9 +482,12 @@ transitive_dependencies:
     owner: "Runtime"
     requirement: "Use SDL3 and Vulkan backends with MinImageCount matching two frames in flight."
   stb:
-    classification: "third_party_direct_with_accidental_engine_implementation"
+    classification: "third_party_direct"
     owner: "Runtime"
-    requirement: "Runtime must own the stbi_write_png implementation explicitly."
+    requirement: >-
+      Complete: vcpkg installs stb directly, CMake exposes the private
+      ayther_runtime_stb interface, and capture.cpp owns a static
+      STB_IMAGE_WRITE_IMPLEMENTATION that cannot resolve through Engine.
   engine_static_link_closure:
     classification: "transitive_only"
     owner: "Engine package"
@@ -506,7 +507,7 @@ runtime_files_without_engine_dependency:
   - files: ["src/runtime_config.h", "src/runtime_config.cpp", "tests/runtime_config_test.cpp"]
     dependencies: ["C++ standard library"]
   - files: ["src/capture.h", "src/capture.cpp"]
-    dependencies: ["C++ filesystem/streams", "stb_image_write"]
+    dependencies: ["C++ filesystem/streams", "ayther_runtime_stb"]
   - files: ["src/diagnostics.h", "src/diagnostics.cpp"]
     dependencies: ["C++ standard library"]
   - files: ["src/player_config.h", "src/player_config.cpp"]
@@ -542,6 +543,7 @@ acceptance:
   source_history_copied: false
   mig_025_runtime_vulkan_ownership: true
   mig_027_typed_pack_boundary: true
+  mig_030_runtime_owns_stbi_write_png: true
   runtime_raw_core_ffi_includes: 0
   source_remote_references_copied: false
   issue_references_in_deliverable: false

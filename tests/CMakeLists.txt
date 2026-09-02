@@ -70,14 +70,6 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
-# stb_image_write.h (capture_tests): header-only. Se busca el ARCHIVO y no el
-# paquete `Stb`: ese Find module lo inyecta el toolchain de vcpkg, y fuera del
-# monorepo el runtime se configura contra un prefijo, sin toolchain.
-find_path(Stb_INCLUDE_DIR NAMES stb_image_write.h)
-if(NOT Stb_INCLUDE_DIR)
-    message(FATAL_ERROR "no se encontró stb_image_write.h (stb): agregá su prefijo a CMAKE_PREFIX_PATH")
-endif()
-
 # ------------------------------------------------------------------
 # player_config_tests — #299: la config del jugador, por juego+pack.
 #
@@ -131,7 +123,8 @@ add_test(
 # Acá se fija lo que se equivoca: que pixel viene de cual, y que la
 # metadata NO lleve material protegido.
 #
-# stb_image_write viene del engine, que ya define su implementacion.
+# Este ejecutable es también el oráculo de enlace de MIG-030: no enlaza
+# Ayther::engine, por lo que `capture.cpp` debe aportar stbi_write_png.
 # ------------------------------------------------------------------
 add_executable(capture_tests
     capture_test.cpp
@@ -139,9 +132,8 @@ add_executable(capture_tests
 )
 target_include_directories(capture_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
-    ${Stb_INCLUDE_DIR}
 )
-target_link_libraries(capture_tests PRIVATE Ayther::engine)
+target_link_libraries(capture_tests PRIVATE ayther_runtime_stb)
 set_target_properties(capture_tests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )

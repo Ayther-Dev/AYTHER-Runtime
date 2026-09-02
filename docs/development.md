@@ -40,7 +40,9 @@ Dependency ownership is explicit in the manifest:
 All entries remain top-level because `AytherConfig.cmake` must resolve its
 native packages while configuring a clean consumer. ImGui and stb are not part
 of Engine's exported contract and must not be removed or made accidental
-transitive dependencies.
+transitive dependencies. Runtime resolves stb with `find_package(Stb)`, exposes
+it internally through `ayther_runtime_stb`, and compiles the PNG writer with
+translation-unit-local linkage in `capture.cpp`.
 
 Packages containing the `engine` component must export the absolute,
 relocatable `Ayther_SHADER_DIR` from `AytherConfig.cmake`. Runtime validates
@@ -123,7 +125,7 @@ Current CTest coverage includes:
 | `output_profile` | Runtime-owned presets, selection precedence, scaling geometry, filtering, and shader mixing |
 | `player_config` | key generation, defaults, persistence distinctions, and tolerant parsing |
 | `split_geometry` | comparison geometry and zero-width edge cases without a GPU |
-| `capture` | image-source selection and metadata that excludes protected content |
+| `capture` | image-source selection, metadata that excludes protected content, and standalone stb linkage without Engine |
 | `pack_layers` | default/custom layer composition and deterministic ordering |
 | `diagnostics` | pure recommendation rules without SDL or Vulkan |
 | `core_probe_api` | installed `CoreProbe` ownership, JSON, and loader-error contract |

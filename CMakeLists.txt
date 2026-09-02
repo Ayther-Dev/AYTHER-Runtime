@@ -52,6 +52,15 @@ find_package(VulkanMemoryAllocator CONFIG REQUIRED)
 find_package(vk-bootstrap CONFIG REQUIRED)   # Runtime context + swapchain creation
 find_package(imgui        CONFIG REQUIRED)   # overlay in-game (M4)
 
+# stb is header-only, so express the direct Runtime dependency with an interface
+# target. vcpkg installs the header from Runtime's own manifest; Engine is not
+# part of the lookup or link contract.
+find_package(Stb REQUIRED)
+add_library(ayther_runtime_stb INTERFACE)
+target_include_directories(ayther_runtime_stb SYSTEM INTERFACE
+    "${Stb_INCLUDE_DIR}"
+)
+
 add_executable(ayther_runtime
     src/main.cpp
     src/runtime_config.cpp      # MIG-020: Runtime-owned data/save/capture paths
@@ -81,6 +90,7 @@ target_include_directories(ayther_runtime PRIVATE
 # bridge dependencies. Runtime intentionally depends only on the package target.
 target_link_libraries(ayther_runtime PRIVATE
     Ayther::engine
+    ayther_runtime_stb
     SDL3::SDL3
     Vulkan::Vulkan
     GPUOpen::VulkanMemoryAllocator

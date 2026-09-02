@@ -122,6 +122,10 @@ closure and Runtime's direct ImGui/stb dependencies from the pinned baseline.
 `AytherConfig.cmake` remains responsible for resolving the imported Engine
 targets; Runtime does not duplicate their `find_package` calls.
 
+Runtime resolves stb directly through `find_package(Stb)` and links its local
+header-only interface target. `capture.cpp` owns the PNG-writer implementation;
+capture never obtains `stbi_write_png` from `Ayther::engine`.
+
 For a multi-configuration generator, omit `CMAKE_BUILD_TYPE` and pass
 `--config RelWithDebInfo` to the build and test commands. The executable and
 staged runtime assets are written below `build/bin/`.

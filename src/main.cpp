@@ -37,7 +37,7 @@
 #include "sonic_telemetry.h"       // Runtime-owned game-specific diagnostics
 #include "version_info.h"          // Runtime build version + linked Engine version
 // (vk_postprocess + the HD-tile cache + emu texture moved into the renderer;
-//  the STB_IMAGE_IMPLEMENTATION now lives in engine/tile_tex_cache.cpp.)
+//  capture.cpp owns Runtime's private stb PNG-writer implementation.)
 
 // ---------------------------------------------------------------------------
 // TileTexCache + the emu-frame texture + the HD render pipeline now live in the
