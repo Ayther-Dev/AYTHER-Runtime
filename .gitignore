@@ -21,6 +21,7 @@ CMakeUserPresets.json
 # vcpkg local state
 /vcpkg_installed/
 /.vcpkg-root
+/.deps/
 
 # Compiled artifacts
 *.obj

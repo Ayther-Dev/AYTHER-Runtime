@@ -24,6 +24,40 @@ Ninja and PowerShell 7 are recommended for the reference workflow. On Windows,
 the post-build step stages imported runtime DLLs next to the executable. System
 Vulkan DLLs are expected to resolve from the operating system.
 
+## Pinned AYTHER Engine artifact
+
+[`dependencies/ayther-engine.lock.json`](../dependencies/ayther-engine.lock.json)
+pins AYTHER Engine `v0.1.0-rc.4` for Linux and Windows x86_64, with and without
+VPX. URLs and SHA-256 values come from the immutable GitHub release assets.
+
+Validate the complete lock without network access:
+
+```powershell
+pwsh tools/fetch_ayther_engine.ps1 -ValidateOnly
+```
+
+Download the default Engine artifact for the current platform, or select the
+VPX variant explicitly:
+
+```powershell
+pwsh tools/fetch_ayther_engine.ps1 -DestinationDirectory .deps
+pwsh tools/fetch_ayther_engine.ps1 `
+  -Variant engine-vpx `
+  -DestinationDirectory .deps
+```
+
+An existing archive can be checked without downloading it:
+
+```powershell
+pwsh tools/fetch_ayther_engine.ps1 `
+  -Platform windows `
+  -ArchivePath .deps/ayther-engine-v0.1.0-rc.4-windows-x86_64.zip
+```
+
+The command fails if the filename or SHA-256 differs from the lock. Extraction
+and wiring the resulting prefix into `CMAKE_PREFIX_PATH` remain explicit build
+steps.
+
 ## Standalone build
 
 ```powershell

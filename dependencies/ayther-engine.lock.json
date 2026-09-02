@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "dependency": "AYTHER Engine",
+  "repository": "https://github.com/Ayther-Dev/AYTHER-Engine",
+  "release": {
+    "tag": "v0.1.0-rc.4",
+    "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/tag/v0.1.0-rc.4"
+  },
+  "artifacts": [
+    {
+      "platform": "linux",
+      "architecture": "x86_64",
+      "variant": "engine",
+      "vpx": false,
+      "fileName": "ayther-engine-v0.1.0-rc.4-linux-x86_64.zip",
+      "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/v0.1.0-rc.4/ayther-engine-v0.1.0-rc.4-linux-x86_64.zip",
+      "sha256": "b85e107fbaca2f893225b71f4816aa5f65452e7c66a93d2ccdfc0404dac7cc6f"
+    },
+    {
+      "platform": "windows",
+      "architecture": "x86_64",
+      "variant": "engine",
+      "vpx": false,
+      "fileName": "ayther-engine-v0.1.0-rc.4-windows-x86_64.zip",
+      "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/v0.1.0-rc.4/ayther-engine-v0.1.0-rc.4-windows-x86_64.zip",
+      "sha256": "454bb87497ac43bb9e3c4c507ec0e9f3818cfba0b556b7d76c32b007c8edf7be"
+    },
+    {
+      "platform": "linux",
+      "architecture": "x86_64",
+      "variant": "engine-vpx",
+      "vpx": true,
+      "fileName": "ayther-engine-vpx-v0.1.0-rc.4-linux-x86_64.zip",
+      "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/v0.1.0-rc.4/ayther-engine-vpx-v0.1.0-rc.4-linux-x86_64.zip",
+      "sha256": "c6e78a2b9e418ad7d1c133d40e38e23476860ad991a7c8a95b5502a6a4200b55"
+    },
+    {
+      "platform": "windows",
+      "architecture": "x86_64",
+      "variant": "engine-vpx",
+      "vpx": true,
+      "fileName": "ayther-engine-vpx-v0.1.0-rc.4-windows-x86_64.zip",
+      "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/v0.1.0-rc.4/ayther-engine-vpx-v0.1.0-rc.4-windows-x86_64.zip",
+      "sha256": "a4a20e08b7377e9315c3b3667acffee78a56c04e8a7e162df7a232ab8d8ff4d8"
+    }
+  ]
+}

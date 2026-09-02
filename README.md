@@ -58,9 +58,11 @@ or cloud synchronization. Those responsibilities belong to AYTHER Play.
 ```text
 .
 |-- CMakeLists.txt                 build and runtime-asset staging
+|-- dependencies/                  reproducible first-party dependency locks
 |-- src/                           session host and presentation code
 |   `-- vulkan_backend/            swapchain, present, and post-process path
 |-- tests/                         CTest targets and process-contract tests
+|-- tools/fetch_ayther_engine.ps1  locked Engine download and verification
 |-- tools/runtime_oot_smoke.ps1    installed-package integration smoke test
 |-- docs/                          architecture, protocol, status, and audits
 |-- CHANGELOG.md                   notable project changes
@@ -84,6 +86,18 @@ or cloud synchronization. Those responsibilities belong to AYTHER Play.
 The AYTHER engine package is not included in this repository. A standalone
 checkout therefore cannot configure until that package is available through
 `CMAKE_PREFIX_PATH`.
+
+The exact supported Engine release and its platform artifacts are recorded in
+`dependencies/ayther-engine.lock.json`. Validate the lock, or download and
+verify the default non-VPX artifact for the current platform, with:
+
+```powershell
+pwsh tools/fetch_ayther_engine.ps1 -ValidateOnly
+pwsh tools/fetch_ayther_engine.ps1 -DestinationDirectory .deps
+```
+
+Pass `-Variant engine-vpx` only when VP9 decoding is required. The downloader
+never overwrites an existing archive and rejects any SHA-256 mismatch.
 
 ### Configure, build, and test
 
