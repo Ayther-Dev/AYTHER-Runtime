@@ -24,46 +24,50 @@ Ninja and PowerShell 7 are recommended for the reference workflow. On Windows,
 the post-build step stages imported runtime DLLs next to the executable. System
 Vulkan DLLs are expected to resolve from the operating system.
 
+The bootstrap also requires GitHub CLI (`gh`) authenticated for access to the
+public artifact-attestation API. It does not require an Engine source checkout.
+
 ## Pinned AYTHER Engine artifact
 
 [`dependencies/ayther-engine.lock.json`](../dependencies/ayther-engine.lock.json)
 pins AYTHER Engine `v0.1.0-rc.4` for Linux and Windows x86_64, with and without
-VPX. URLs and SHA-256 values come from the immutable GitHub release assets.
+VPX. URLs and SHA-256 values are pinned from the official GitHub release assets.
 
 Validate the complete lock without network access:
 
 ```powershell
-pwsh tools/fetch_ayther_engine.ps1 -ValidateOnly
+& ./tools/bootstrap_ayther_engine.ps1 -ValidateOnly
 ```
 
-Download the default Engine artifact for the current platform, or select the
-VPX variant explicitly:
+Bootstrap the default Engine artifact for the current platform, or select the
+VPX variant explicitly. The command returns the extracted CMake prefix:
 
 ```powershell
-pwsh tools/fetch_ayther_engine.ps1 -DestinationDirectory .deps
-pwsh tools/fetch_ayther_engine.ps1 `
+$enginePrefix = & ./tools/bootstrap_ayther_engine.ps1
+$vpxPrefix = & ./tools/bootstrap_ayther_engine.ps1 `
   -Variant engine-vpx `
-  -DestinationDirectory .deps
+  -DestinationDirectory .deps/ayther-engine
 ```
 
 An existing archive can be checked without downloading it:
 
 ```powershell
-pwsh tools/fetch_ayther_engine.ps1 `
+$enginePrefix = & ./tools/bootstrap_ayther_engine.ps1 `
   -Platform windows `
-  -ArchivePath .deps/ayther-engine-v0.1.0-rc.4-windows-x86_64.zip
+  -ArchivePath C:/downloads/ayther-engine-v0.1.0-rc.4-windows-x86_64.zip
 ```
 
-The command fails if the filename or SHA-256 differs from the lock. Extraction
-and wiring the resulting prefix into `CMAKE_PREFIX_PATH` remain explicit build
-steps.
+The bootstrap fails if the filename, locked SHA-256, published release checksum,
+SLSA predicate, signer workflow, or source tag differs from the lock. It then
+extracts transactionally below `.deps/ayther-engine/prefixes/`. Existing cache
+entries are verified and reused, never overwritten.
 
 ## Standalone build
 
 ```powershell
 cmake -S . -B build -G Ninja `
   -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
-  -DCMAKE_PREFIX_PATH="C:/path/to/installed/ayther" `
+  "-DCMAKE_PREFIX_PATH=$enginePrefix" `
   -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build
 ```
@@ -83,6 +87,7 @@ Current CTest coverage includes:
 
 | Test | Contract covered |
 | --- | --- |
+| `ayther_engine_lock` | offline validation of release identity, checksum manifest, attestation policy, and supported artifact matrix |
 | `player_config` | key generation, defaults, persistence distinctions, and tolerant parsing |
 | `split_geometry` | comparison geometry and zero-width edge cases without a GPU |
 | `capture` | image-source selection and metadata that excludes protected content |
@@ -93,23 +98,24 @@ Current CTest coverage includes:
 The test suite does not establish full GPU-driver compatibility, frame-perfect
 timing, broad Libretro-core compatibility, or release readiness.
 
-## Parent-tree package smoke test
+## Published-package smoke test
 
-From the AYTHER monorepo root, after building the engine package:
+From the Runtime repository root:
 
 ```powershell
-pwsh runtime/tools/runtime_oot_smoke.ps1 -BuildDir build
+& ./tools/runtime_oot_smoke.ps1 `
+  -ToolchainFile "$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 ```
 
-The script installs the configured engine package, builds Runtime in a temporary
-directory with no engine source include path, verifies packaged
-shaders, and runs CTest. Use `-Keep` to preserve its temporary directories for
-inspection.
+The script bootstraps the pinned published package, passes its prefix to CMake,
+builds Runtime in a temporary directory, verifies packaged shaders, and runs
+CTest. It never resolves or reads an Engine/monorepo source tree. Use `-Keep` to
+preserve its temporary build directory for inspection, or `-ConfigureOnly` to
+exercise only dependency bootstrap and CMake package discovery.
 
 > [!CAUTION]
-> The smoke script deletes and recreates its own fixed directories beneath the
-> operating-system temporary directory. Do not repurpose those paths for data
-> that must be retained.
+> The smoke script removes only the unique temporary build directory it creates.
+> Its verified download and extraction cache remains below `.deps/`.
 
 ## Shader workflow
 

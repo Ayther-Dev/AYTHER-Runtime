@@ -1,88 +1,122 @@
-# ---------------------------------------------------------------------------
-# runtime_oot_smoke.ps1 — el runtime FUERA DEL ÁRBOL, contra el paquete `Ayther`
-# instalado (ADR-004 E8.1 / E6.1).
-#
-# El runtime es el consumidor de REFERENCIA del motor: usa la superficie de
-# primera parte (componente `engine`), no sólo el contrato de ADR-003. Adentro
-# del monorepo su CMakeLists consume el paquete del árbol; acá se prueba que no
-# hace trampa: se instala el paquete en un prefijo limpio y se configura y
-# compila `runtime/` como proyecto RAÍZ contra ese prefijo, sin el monorepo en
-# el include path. Si esto pasa, el día del corte cambia el prefijo y nada más —
-# que es exactamente lo que E8.1 promete. Lo que este smoke no prueba, no se
-# cumple.
-#
-# Vive en runtime/tools y no en el smoke del SDK: el SDK no tiene por qué saber
-# que el runtime existe (frontera motor/sdk → consumidores, E8.3). Lo que sí
-# recibe es de dónde instalar el paquete: un build dir del motor.
-#
-# Uso:  pwsh runtime/tools/runtime_oot_smoke.ps1 [-BuildDir build] [-Keep]
-# ---------------------------------------------------------------------------
+<#
+.SYNOPSIS
+Build and test Runtime against the verified published Engine package.
+
+.DESCRIPTION
+Bootstraps the Engine release pinned by Runtime, passes the returned package
+prefix to CMake, builds Runtime as a root project, and runs CTest. No AYTHER
+Engine or monorepo checkout is read by this smoke test.
+#>
+[CmdletBinding()]
 param(
-    [string]$BuildDir = "build",
+    [string]$DependencyDirectory = (Join-Path $PSScriptRoot "../.deps/ayther-engine"),
+
+    [string]$BuildDirectory,
+
+    [ValidateSet("engine", "engine-vpx")]
+    [string]$Variant = "engine",
+
+    [string]$ToolchainFile,
+
+    [switch]$ConfigureOnly,
+
     [switch]$Keep
 )
+
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-$repo = (Resolve-Path "$PSScriptRoot/../..").Path
 
-$prefix = Join-Path ([System.IO.Path]::GetTempPath()) "ayther-runtime-oot-prefix"
-$bld    = Join-Path ([System.IO.Path]::GetTempPath()) "ayther-runtime-oot-build"
-foreach ($d in @($prefix, $bld)) {
-    if (Test-Path $d) { Remove-Item -Recurse -Force $d }
+function Invoke-CheckedCommand {
+    param(
+        [Parameter(Mandatory)][string]$Command,
+        [Parameter(Mandatory)][string[]]$Arguments,
+        [Parameter(Mandatory)][string]$FailureMessage
+    )
+
+    & $Command @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw $FailureMessage
+    }
 }
 
-function Paso($n) { Write-Host "`n== $n ==" -ForegroundColor Cyan }
-
-# -- 1. Instalar el paquete con la superficie de primera parte ---------------
-Paso "instalar el paquete Ayther engine en un prefijo limpio"
-cmake --install $BuildDir --prefix $prefix | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "cmake --install del paquete engine falló" }
-foreach ($p in @("lib/cmake/Ayther/AytherConfig.cmake",
-                 "include/ayther/ayther_session.h",
-                 "include/ayther/ayther_renderer.h",
-                 "include/ayther/vulkan_backend/vk_context.h",
-                 "share/ayther/shaders/sprite.frag.spv")) {
-    if (-not (Test-Path (Join-Path $prefix $p))) { throw "falta en el paquete: $p" }
+$runtimeRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$createdBuildDirectory = -not $BuildDirectory
+if (-not $BuildDirectory) {
+    $BuildDirectory = Join-Path ([IO.Path]::GetTempPath()) `
+        "ayther-runtime-oot-$([guid]::NewGuid().ToString('N'))"
 }
-Write-Host "  [ OK ] paquete instalado con el componente engine"
+$BuildDirectory = [IO.Path]::GetFullPath($BuildDirectory)
 
-# -- 2. Configurar y compilar el runtime como proyecto raíz ------------------
-#
-# Las dependencias (SDL3, Vulkan, imgui…) salen del vcpkg del build, igual que
-# en el smoke del SDK: lo que se prueba es el paquete, no el gestor de paquetes.
-# `runtime/vcpkg.json` es lo que un clon del repo separado declararía.
-Paso "configurar y compilar runtime/ fuera del árbol"
-$deps = Join-Path $repo "$BuildDir/vcpkg_installed/x64-windows"
-$cxx  = "C:/Program Files/LLVM/bin/clang-cl.exe"
-$args = @("-S", (Join-Path $repo "runtime"), "-B", $bld, "-G", "Ninja",
-          "-DCMAKE_PREFIX_PATH=$prefix;$deps", "-DCMAKE_BUILD_TYPE=Release")
-if (Test-Path $cxx) { $args += "-DCMAKE_CXX_COMPILER=$cxx" }
-cmake @args | Out-Null
-if ($LASTEXITCODE -ne 0) {
-    throw "el runtime no configuró fuera del árbol (find_package(Ayther 0.1.0 CONFIG COMPONENTS engine) falló)"
+if (-not $ToolchainFile -and $env:VCPKG_ROOT) {
+    $candidate = Join-Path $env:VCPKG_ROOT "scripts/buildsystems/vcpkg.cmake"
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+        $ToolchainFile = $candidate
+    }
 }
-cmake --build $bld | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "el runtime no compiló o no enlazó contra Ayther::engine" }
 
-$exe = Join-Path $bld "bin/ayther_runtime.exe"
-if (-not (Test-Path $exe)) { $exe = Join-Path $bld "bin/ayther_runtime" }
-# Que ninja diga «Linking» no garantiza el ejecutable: se comprueba el archivo.
-if (-not (Test-Path $exe)) { throw "el runtime no dejó ejecutable" }
+try {
+    Write-Host "`n== Bootstrap verified AYTHER Engine package ==" -ForegroundColor Cyan
+    $enginePrefix = & (Join-Path $PSScriptRoot "bootstrap_ayther_engine.ps1") `
+        -DestinationDirectory $DependencyDirectory `
+        -Variant $Variant
+    if (-not $enginePrefix -or @($enginePrefix).Count -ne 1) {
+        throw "Engine bootstrap did not return exactly one CMake prefix."
+    }
+    $enginePrefix = [string]$enginePrefix
 
-# Los shaders del motor tienen que haber llegado desde el PAQUETE
-# (Ayther_SHADER_DIR), no desde el repo: un runtime que compila y no dibuja es
-# el peor de los dos fallos.
-if (-not (Test-Path (Join-Path $bld "bin/shaders/sprite.frag.spv"))) {
-    throw "el runtime no escenificó los shaders del motor desde Ayther_SHADER_DIR"
+    Write-Host "`n== Configure Runtime against published Engine ==" -ForegroundColor Cyan
+    $cmakePrefixPath = $enginePrefix
+    if ($env:CMAKE_PREFIX_PATH) {
+        $cmakePrefixPath = "$enginePrefix;$($env:CMAKE_PREFIX_PATH)"
+    }
+    $configure = @(
+        "-S", $runtimeRoot,
+        "-B", $BuildDirectory,
+        "-G", "Ninja",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_PREFIX_PATH=$cmakePrefixPath"
+    )
+    if ($ToolchainFile) {
+        $configure += "-DCMAKE_TOOLCHAIN_FILE=$([IO.Path]::GetFullPath($ToolchainFile))"
+    }
+    Invoke-CheckedCommand `
+        -Command "cmake" `
+        -Arguments $configure `
+        -FailureMessage "Runtime could not configure with the published Ayther::engine package."
+
+    if ($ConfigureOnly) {
+        Write-Host "`nRuntime standalone configure: OK" -ForegroundColor Green
+        return
+    }
+
+    Write-Host "`n== Build Runtime ==" -ForegroundColor Cyan
+    Invoke-CheckedCommand `
+        -Command "cmake" `
+        -Arguments @("--build", $BuildDirectory) `
+        -FailureMessage "Runtime did not build against Ayther::engine."
+
+    $executable = Join-Path $BuildDirectory "bin/ayther_runtime"
+    if ([Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+            [Runtime.InteropServices.OSPlatform]::Windows)) {
+        $executable += ".exe"
+    }
+    if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+        throw "Runtime build did not produce '$executable'."
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $BuildDirectory "bin/shaders/sprite.frag.spv"))) {
+        throw "Runtime did not stage shaders from the published Engine package."
+    }
+
+    Write-Host "`n== Run Runtime tests ==" -ForegroundColor Cyan
+    Invoke-CheckedCommand `
+        -Command "ctest" `
+        -Arguments @("--test-dir", $BuildDirectory, "--output-on-failure") `
+        -FailureMessage "Runtime tests failed against the published Engine package."
+
+    Write-Host "`nRuntime standalone package smoke: OK" -ForegroundColor Green
+} finally {
+    if (-not $Keep -and $createdBuildDirectory -and
+        (Test-Path -LiteralPath $BuildDirectory)) {
+        Remove-Item -LiteralPath $BuildDirectory -Recurse -Force
+    }
 }
-Write-Host "  [ OK ] ayther_runtime compila y enlaza contra el paquete instalado"
-
-# -- 3. Sus oráculos, contra el paquete ---------------------------------------
-Paso "ctest de runtime/tests fuera del árbol"
-ctest --test-dir $bld --output-on-failure | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "los tests del runtime fallaron fuera del árbol" }
-Write-Host "  [ OK ] runtime/tests en verde contra el paquete"
-
-if (-not $Keep) {
-    Remove-Item -Recurse -Force $bld, $prefix
-}
-Write-Host "`nRuntime out-of-tree: OK" -ForegroundColor Green

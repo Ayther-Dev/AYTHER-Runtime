@@ -7,8 +7,8 @@
 # `find_package(Ayther 0.1.0 CONFIG REQUIRED COMPONENTS engine)` and
 # `Ayther::engine`. No source-tree path is part of this contract.
 #
-# Standalone mode, exercised by the E8 SDK smoke test:
-#   cmake -S runtime -B build_rt -DCMAKE_PREFIX_PATH=<prefijo del paquete engine>
+# Standalone mode, exercised by tools/runtime_oot_smoke.ps1:
+#   cmake -S . -B build_rt -DCMAKE_PREFIX_PATH=<Engine bootstrap prefix>
 #   cmake --build build_rt
 # ---------------------------------------------------------------------------
 set(AYTHER_RUNTIME_VERSION "0.1.0")

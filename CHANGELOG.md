@@ -23,8 +23,11 @@ once stable compatibility guarantees are defined.
 ### Added
 
 - Reproducible AYTHER Engine `v0.1.0-rc.4` artifact lock for Linux and Windows
-  x86_64, including standard and VPX variants, plus checksum-enforcing download
-  and verification tooling.
+  x86_64, including standard and VPX variants, plus a bootstrap that verifies
+  locked/published checksums and SLSA provenance, extracts the package, and
+  returns its CMake prefix without requiring an Engine or monorepo checkout.
+- Offline CTest coverage for the Engine lock schema and supported artifact
+  matrix.
 - Initial standalone Runtime repository structure for the C++20 game-session
   host consumed by AYTHER Play.
 - CMake package consumption through

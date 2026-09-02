@@ -1,10 +1,21 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "dependency": "AYTHER Engine",
   "repository": "https://github.com/Ayther-Dev/AYTHER-Engine",
   "release": {
     "tag": "v0.1.0-rc.4",
-    "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/tag/v0.1.0-rc.4"
+    "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/tag/v0.1.0-rc.4",
+    "checksums": {
+      "fileName": "CHECKSUMS.sha256",
+      "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/v0.1.0-rc.4/CHECKSUMS.sha256",
+      "sha256": "f95e780747f750e801c10c9057f95e97e6fdfa10ac0284ae6165e8d6ed9e01d2"
+    }
+  },
+  "attestation": {
+    "repository": "Ayther-Dev/AYTHER-Engine",
+    "signerWorkflow": "Ayther-Dev/AYTHER-Engine/.github/workflows/release.yml",
+    "sourceRef": "refs/tags/v0.1.0-rc.4",
+    "predicateType": "https://slsa.dev/provenance/v1"
   },
   "artifacts": [
     {

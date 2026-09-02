@@ -20,9 +20,9 @@ There are currently:
 
 The source tree contains focused tests for player configuration, split geometry,
 capture metadata, pack-layer assembly, diagnostic decisions, and the real
-core-probe process contract. The parent-tree smoke workflow is designed to prove
-that Runtime can consume an installed AYTHER package without reaching into
-engine source directories.
+core-probe process contract. The standalone smoke bootstraps the pinned,
+attested Engine release and proves that Runtime can consume its CMake package
+without an Engine or monorepo checkout.
 
 These checks do not prove broad GPU, driver, operating-system, core, or game
 compatibility.

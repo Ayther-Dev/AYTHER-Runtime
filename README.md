@@ -62,8 +62,9 @@ or cloud synchronization. Those responsibilities belong to AYTHER Play.
 |-- src/                           session host and presentation code
 |   `-- vulkan_backend/            swapchain, present, and post-process path
 |-- tests/                         CTest targets and process-contract tests
-|-- tools/fetch_ayther_engine.ps1  locked Engine download and verification
-|-- tools/runtime_oot_smoke.ps1    installed-package integration smoke test
+|-- tools/bootstrap_ayther_engine.ps1  verified Engine bootstrap and CMake prefix
+|-- tools/fetch_ayther_engine.ps1      locked download/verification implementation
+|-- tools/runtime_oot_smoke.ps1    published-package integration smoke test
 |-- docs/                          architecture, protocol, status, and audits
 |-- CHANGELOG.md                   notable project changes
 |-- CONTRIBUTING.md                contribution and review requirements
@@ -76,28 +77,29 @@ or cloud synchronization. Those responsibilities belong to AYTHER Play.
 ### Prerequisites
 
 - CMake 3.21 or newer and a C++20 compiler.
+- PowerShell 7 and an authenticated GitHub CLI (`gh`) for Engine provenance
+  verification.
 - A Vulkan-capable GPU, loader, and driver for interactive execution.
-- An installed AYTHER package containing the `engine` component and its
-  shaders (`Ayther::engine` and `Ayther_SHADER_DIR`).
+- The AYTHER package bootstrapped below, containing the `engine` component and
+  its shaders (`Ayther::engine` and `Ayther_SHADER_DIR`).
 - The dependencies declared in `vcpkg.json`: SDL3, Vulkan, Vulkan Memory
   Allocator, vk-bootstrap, toml++, zstd, Dear ImGui, and stb.
 - Ninja is recommended, but not required.
 
-The AYTHER engine package is not included in this repository. A standalone
-checkout therefore cannot configure until that package is available through
-`CMAKE_PREFIX_PATH`.
-
 The exact supported Engine release and its platform artifacts are recorded in
-`dependencies/ayther-engine.lock.json`. Validate the lock, or download and
-verify the default non-VPX artifact for the current platform, with:
+`dependencies/ayther-engine.lock.json`. Validate the lock, or bootstrap the
+default non-VPX artifact for the current platform, with:
 
 ```powershell
-pwsh tools/fetch_ayther_engine.ps1 -ValidateOnly
-pwsh tools/fetch_ayther_engine.ps1 -DestinationDirectory .deps
+& ./tools/bootstrap_ayther_engine.ps1 -ValidateOnly
+$enginePrefix = & ./tools/bootstrap_ayther_engine.ps1
 ```
 
 Pass `-Variant engine-vpx` only when VP9 decoding is required. The downloader
-never overwrites an existing archive and rejects any SHA-256 mismatch.
+never overwrites an existing archive or prefix. It validates the locked and
+published checksums, verifies SLSA provenance against Engine's release workflow
+and exact `rc.4` tag, extracts the package below `.deps/`, and returns its
+absolute CMake prefix.
 
 ### Configure, build, and test
 
@@ -106,7 +108,7 @@ The following example uses vcpkg manifest mode:
 ```powershell
 cmake -S . -B build -G Ninja `
   -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
-  -DCMAKE_PREFIX_PATH="C:/path/to/installed/ayther" `
+  "-DCMAKE_PREFIX_PATH=$enginePrefix" `
   -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
 cmake --build build
@@ -117,12 +119,13 @@ For a multi-configuration generator, omit `CMAKE_BUILD_TYPE` and pass
 `--config RelWithDebInfo` to the build and test commands. The executable and
 staged runtime assets are written below `build/bin/`.
 
-The out-of-tree smoke script is intended for the parent AYTHER monorepo. It
-installs the engine package into a clean temporary prefix, builds Runtime
-against that prefix, and runs its tests:
+The out-of-tree smoke bootstraps the published Engine package, passes its prefix
+to CMake, builds Runtime, and runs its tests without an Engine or monorepo
+checkout:
 
 ```powershell
-pwsh runtime/tools/runtime_oot_smoke.ps1 -BuildDir build
+& ./tools/runtime_oot_smoke.ps1 `
+  -ToolchainFile "$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 ```
 
 See [Development guide](docs/development.md) for build modes, test scope, shader

@@ -8,6 +8,19 @@
 # Lo que necesitan del motor lo toman del paquete —`Ayther::engine`, que ya
 # encontró runtime/CMakeLists.txt— (E8.1); nada de acá incluye `engine/src`.
 # ---------------------------------------------------------------------------
+find_program(AYTHER_PWSH_EXECUTABLE NAMES pwsh)
+if(AYTHER_PWSH_EXECUTABLE)
+    add_test(
+        NAME ayther_engine_lock
+        COMMAND ${AYTHER_PWSH_EXECUTABLE}
+                -NoProfile
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/../tools/bootstrap_ayther_engine.ps1
+                -ValidateOnly
+    )
+else()
+    message(STATUS "pwsh not found; AYTHER Engine lock test disabled")
+endif()
+
 # stb_image_write.h (capture_tests): header-only. Se busca el ARCHIVO y no el
 # paquete `Stb`: ese Find module lo inyecta el toolchain de vcpkg, y fuera del
 # monorepo el runtime se configura contra un prefijo, sin toolchain.
