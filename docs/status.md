@@ -35,20 +35,18 @@ compatibility.
 
 ## Known technical gaps
 
-1. `Ayther::engine` remains provisional, although Runtime pack operations now
-   use typed `PackInfo`, `PackValidationResult`, `PackView`, and `PackWatcher`
-   contracts and no longer include the raw core FFI.
-2. The installed Engine package still omits `ayther_renderer.h` and the
-   Libretro constants/pack-layer declarations used by the full executable.
-   The isolated typed consumers pass, but the package-only Runtime executable
-   build remains blocked at those older publication boundaries.
-3. Normalized input should not require Runtime to include the full Libretro
-   header. Core probing already uses the narrow public Engine `CoreProbe` API.
-4. Numeric CLI parsing does not consistently detect malformed values or
+1. `Ayther::engine` remains provisional, although Runtime now consumes its
+   typed pack, input, renderer, core-probe, and Vulkan-interoperability
+   contracts exclusively through installed public headers.
+2. The pinned `v0.1.0-rc.4` Engine artifact predates the public input and
+   renderer headers now consumed by Runtime. The dependency lock must advance
+   when a matching Engine release is published; the current Engine package
+   contract is already build-tested locally.
+3. Numeric CLI parsing does not consistently detect malformed values or
    overflow.
-5. Manual staging of `tomlplusplus` should be verified against the actual link
+4. Manual staging of `tomlplusplus` should be verified against the actual link
    closure and removed if the executable no longer imports it.
-6. GPU-dependent integration coverage, compatibility matrices, packaging, and
+5. GPU-dependent integration coverage, compatibility matrices, packaging, and
    reproducible release automation are not yet established.
 
 The evidence and proposed ownership for these items are recorded in

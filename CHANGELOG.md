@@ -26,6 +26,11 @@ once stable compatibility guarantees are defined.
 - Core probing now uses the installed Engine `CoreProbe` RAII facade and its
   JSON serialization; Runtime no longer includes Engine's unpublished dynamic
   loader or Libretro metadata types.
+- SDL input mapping now produces the public Engine `InputState`/`JoypadButton`
+  contract instead of including Engine's Libretro implementation header.
+- Pack overlays and the renderer now compile through the installed Engine
+  `PackOverlay`/`pack_overlays()` API and public `ayther/ayther_renderer.h`
+  package path.
 - Output-profile presets, filter selection, integer/fit scaling, and shader
   mixing now live entirely in Runtime under `ayther::runtime`; Runtime no
   longer consumes Engine's unpublished `output_profile.h`.

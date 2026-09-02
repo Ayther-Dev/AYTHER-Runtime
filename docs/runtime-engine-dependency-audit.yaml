@@ -126,21 +126,21 @@ dependency_matrix:
     owner: "Engine"
     migration_status: "complete"
 
-  - runtime_files: ["src/game_input.cpp"]
+  - runtime_files: ["src/game_input.h", "src/game_input.cpp", "tests/input_api_contract_test.cpp"]
     area: "Libretro API exposure"
-    current_headers: ["libretro_host/libretro.h"]
+    current_headers: ["ayther/engine/input.hpp"]
     current_symbols:
-      - "RETRO_DEVICE_ID_JOYPAD_B through RETRO_DEVICE_ID_JOYPAD_R"
+      - "ayther::engine::InputState"
+      - "ayther::engine::JoypadButton"
     required_contract:
       input: >-
         Build the 16-bit RetroPad state for B, Y, Select, Start, directions, A,
         X, L, and R. Runtime owns SDL devices; Engine receives normalized input.
     target_state: >-
-      Core metadata is already hidden behind CoreInfo/CoreProbe. Publish a
-      stable EngineInputButton mask so Runtime can also remove the remaining
-      complete Libretro header from input normalization.
+      Runtime maps SDL state into the stable Engine InputState/JoypadButton
+      contract; Engine alone adapts that value to Libretro.
     owner: "Shared: Runtime maps devices; Engine owns Libretro adaptation"
-    migration_status: "replace_public"
+    migration_status: "complete"
 
   - runtime_files: ["src/main.cpp", "src/output_profile.h", "tests/output_profile_test.cpp"]
     area: "Output profiles"
@@ -173,7 +173,7 @@ dependency_matrix:
 
   - runtime_files: ["src/main.cpp"]
     area: "Vulkan context and renderer interop"
-    current_headers: ["vulkan_backend/vk_context.h", "ayther_renderer.h", "ayther/engine/vulkan_interop.hpp"]
+    current_headers: ["vulkan_backend/vk_context.h", "ayther/ayther_renderer.h", "ayther/engine/vulkan_interop.hpp"]
     required_contract:
       context: >-
         Runtime-lifetime context owns instance, surface, selected physical device,
@@ -243,18 +243,18 @@ dependency_matrix:
     owner: "Runtime"
     migration_status: "complete"
 
-  - runtime_files: ["src/pack_layers.h", "src/pack_layers.cpp"]
+  - runtime_files: ["src/pack_layers.h", "src/pack_layers.cpp", "tests/pack_layers_test.cpp", "tests/pack_api_contract_test.cpp"]
     area: "Renderer layers"
     current_headers: ["ayther/ayther_layers.h", "ayther/ayther_session.h"]
     required_contract:
-      - "Build one Runtime-owned Custom layer for every pack layer while preserving order, visibility, and content."
-      - "Pass null when no pack layers exist so the renderer uses its default stack."
+      - "Build one Runtime-owned Custom layer for every pack overlay while preserving order, visibility, and content."
+      - "Pass null when no pack overlays exist so the renderer uses its default stack."
       - "Session owns source descriptors; Runtime owns the stack; renderer borrows it per frame."
     target_state: >-
-      Keep LayerStack and PackLayerDescriptor public. Return a stable descriptor
-      view instead of nesting PackAcetato inside Session.
+      Keep LayerStack and PackOverlay public. Session exposes pack_overlays()
+      while Runtime owns and assembles the presentation stack.
     owner: "Shared: Engine describes pack layers; Runtime owns presentation order"
-    migration_status: "keep_public"
+    migration_status: "complete"
 
   - runtime_files: ["src/player_overlay.cpp", "src/player_overlay.h"]
     area: "In-game configuration and Vulkan overlay"
@@ -499,7 +499,7 @@ transitive_dependencies:
     evidence:
       - "main.cpp directly includes chrono, memory, and cctype for the symbols it uses."
       - "Runtime implementation files directly include fixed-width integers, filesystem, error, stream, container, and utility facilities they use."
-      - "All Runtime headers except pack_layers.h compile as the first include of an empty translation unit; pack_layers.h reaches the separately recorded PackAcetato package-API mismatch, not a missing standard declaration."
+      - "Runtime headers compile as the first include of an empty translation unit against the public Engine package."
       - "Runtime tests directly include the standard types used by their assertions and fixtures."
     requirement: "Keep translation units self-contained; never rely on transitive SDL or Engine includes."
 
@@ -526,12 +526,12 @@ runtime_files_without_engine_dependency:
 private_header_decisions:
   ayther_config.h: "Removed; RuntimeConfig and RuntimePaths own Runtime persistence locations."
   libretro_host/core_loader.h: "Removed; Runtime uses the public Engine CoreProbe."
-  libretro_host/libretro.h: "Core probing is hidden; replace the remaining input constants with EngineInputButton."
+  libretro_host/libretro.h: "Removed; Runtime maps SDL input through the public Engine InputState/JoypadButton contract."
   output_profile.h: "Removed as an Engine dependency; Runtime owns its local presentation policy."
   vulkan_backend/vk_context.h: "Runtime owns its local implementation; Engine's private header and implementation were removed."
   vulkan_backend/vk_texture.h: "Removed from Runtime; presentation consumes public RenderImageView."
   ayther/ayther_core_ffi.h: "Removed from Runtime; the C ABI remains explicit in Engine while Runtime uses Session, Pack, and capability APIs."
-  ayther_renderer.h: "Promote a stable facade without exposing backend header closure."
+  ayther_renderer.h: "Consumed through the installed ayther/ayther_renderer.h facade; backend headers remain private."
   ayther/ayther_layers.h: "Keep descriptors and LayerStack as a narrow public contract."
   ayther/ayther_session.h: "Keep Session/FrameView public; remove raw FFI handles from returned values."
 
