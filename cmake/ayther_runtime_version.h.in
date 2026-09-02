@@ -1,0 +1,9 @@
+#pragma once
+
+#include <string_view>
+
+namespace ayther::runtime {
+
+inline constexpr std::string_view runtime_version{"@AYTHER_RUNTIME_VERSION@"};
+
+}  // namespace ayther::runtime

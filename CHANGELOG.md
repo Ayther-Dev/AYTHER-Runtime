@@ -14,6 +14,12 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+### Fixed
+
+- Runtime UI and startup logs now derive the Runtime version from CMake and the
+  linked Engine version from `ayther::engine::version()` instead of embedding a
+  stale hard-coded label.
+
 ### Added
 
 - Initial standalone Runtime repository structure for the C++20 game-session

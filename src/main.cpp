@@ -30,6 +30,7 @@
 #include "ayther_core_ffi.h"          // pack watcher, sonic RAM reads, core version
 #include "ayther_renderer.h"          // the motor's HD render layer (R3.1)
 #include "pack_layers.h"           // #561: el stack de Acetatos del pack
+#include "version_info.h"          // Runtime build version + linked Engine version
 // (vk_postprocess + the HD-tile cache + emu texture moved into the renderer;
 //  the STB_IMAGE_IMPLEMENTATION now lives in engine/tile_tex_cache.cpp.)
 
@@ -43,6 +44,9 @@
 int main(int argc, char* argv[]) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     std::setvbuf(stderr, nullptr, _IONBF, 0);
+
+    const std::string version_report = ayther::runtime::version_report();
+    std::fprintf(stdout, "[main] %s\n", version_report.c_str());
 
     // #627 — el cronometro del arranque. Entre apretar «Jugar» y ver el juego
     // pasaban MINUTOS y no habia forma de saber en cual de los diez tramos: la
@@ -288,8 +292,10 @@ int main(int argc, char* argv[]) {
     //
     // Sigue siendo RESIZABLE: al salir de pantalla completa (Alt+Enter del
     // gestor de ventanas) la ventana tiene que poder acomodarse.
+    const std::string vulkan_window_title =
+        ayther::runtime::window_title("Vulkan Passthrough");
     SDL_Window* window = SDL_CreateWindow(
-        "Ayther Engine v0.3.0 — Vulkan Passthrough",
+        vulkan_window_title.c_str(),
         1280, 720,
         SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_FULLSCREEN
     );
@@ -300,8 +306,10 @@ int main(int argc, char* argv[]) {
         std::fprintf(stdout,
             "[main] SDL_WINDOW_VULKAN unavailable (%s) — falling back to headless\n",
             SDL_GetError());
+        const std::string headless_window_title =
+            ayther::runtime::window_title("Headless fallback");
         window = SDL_CreateWindow(
-            "Ayther Engine v0.3.0 — Headless fallback",
+            headless_window_title.c_str(),
             1280, 720,
             SDL_WINDOW_RESIZABLE | SDL_WINDOW_FULLSCREEN
         );
@@ -319,7 +327,7 @@ int main(int argc, char* argv[]) {
                  ayther_core_version());
 
     // -----------------------------------------------------------------------
-    // Vulkan context (v0.3.0)
+    // Vulkan context
     // -----------------------------------------------------------------------
     VkContext vulkan;
     const bool has_vulkan = vulkan_window && vulkan.init(window);
@@ -330,7 +338,7 @@ int main(int argc, char* argv[]) {
     }
 
     // -----------------------------------------------------------------------
-    // Swapchain + texture (v0.3.0)
+    // Swapchain + texture
     // -----------------------------------------------------------------------
     VkSwapchain swapchain;
     // Genesis framebuffer max size: 320×240 (Mode 5) — used by the sprite overlay.

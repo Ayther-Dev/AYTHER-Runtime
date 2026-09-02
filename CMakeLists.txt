@@ -11,9 +11,11 @@
 #   cmake -S runtime -B build_rt -DCMAKE_PREFIX_PATH=<prefijo del paquete engine>
 #   cmake --build build_rt
 # ---------------------------------------------------------------------------
+set(AYTHER_RUNTIME_VERSION "0.1.0")
+
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     cmake_minimum_required(VERSION 3.21)
-    project(AytherRuntime VERSION 0.1.0 LANGUAGES CXX)
+    project(AytherRuntime VERSION ${AYTHER_RUNTIME_VERSION} LANGUAGES CXX)
     set(CMAKE_CXX_STANDARD 20)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
     if(NOT CMAKE_BUILD_TYPE)
@@ -21,6 +23,14 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endif()
     enable_testing()
 endif()
+
+set(AYTHER_RUNTIME_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+file(MAKE_DIRECTORY "${AYTHER_RUNTIME_GENERATED_DIR}")
+configure_file(
+    cmake/ayther_runtime_version.h.in
+    "${AYTHER_RUNTIME_GENERATED_DIR}/ayther_runtime_version.h"
+    @ONLY
+)
 
 # Request the first-party `engine` surface because Runtime needs the renderer,
 # Vulkan backend, RetroRunner, and configuration API, not only ADR-003's SDK API.
@@ -49,6 +59,7 @@ add_executable(ayther_runtime
 target_include_directories(ayther_runtime PRIVATE
     src
     src/vulkan_backend
+    "${AYTHER_RUNTIME_GENERATED_DIR}"
     # libretro_host/*.h, vulkan_backend/*.h, ayther_*.h: Ayther::engine
 )
 

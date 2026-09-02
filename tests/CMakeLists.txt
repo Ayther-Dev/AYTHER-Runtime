@@ -137,6 +137,28 @@ add_test(
 )
 
 # ------------------------------------------------------------------
+# version_info_tests — MIG-001: versiones de Runtime y Engine.
+#
+# Runtime sale de la versión de proyecto configurada por CMake; Engine se
+# consulta al artefacto enlazado. Este oráculo evita que UI o logs vuelvan a
+# fijar a mano una versión histórica.
+# ------------------------------------------------------------------
+add_executable(version_info_tests version_info_test.cpp)
+target_include_directories(version_info_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    ${AYTHER_RUNTIME_GENERATED_DIR}
+)
+target_link_libraries(version_info_tests PRIVATE Ayther::engine)
+set_target_properties(version_info_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    version_info
+    COMMAND version_info_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+# ------------------------------------------------------------------
 # probe_core — #589: el sondeo de cores que consume Play.
 #
 # Corre el binario del runtime en vez de compilar fuentes: lo que se

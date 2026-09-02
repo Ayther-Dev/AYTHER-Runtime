@@ -5,6 +5,7 @@
 /cmake-build-*/
 /_build/
 /_deps/
+/generated/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake

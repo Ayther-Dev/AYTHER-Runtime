@@ -2,7 +2,7 @@
 // ---------------------------------------------------------------------------
 // VkPresent — blit the emulator (and HD tile) textures into the swapchain.
 //
-// v0.3.0: vkCmdBlitImage with NEAREST filter for the main emulator frame.
+// Uses vkCmdBlitImage with NEAREST filtering for the main emulator frame.
 // v0.6.0: per-tile HD blits with LINEAR filter.
 //
 // ## Call order each frame (with tile substitution):
