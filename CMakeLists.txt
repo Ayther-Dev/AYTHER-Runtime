@@ -162,15 +162,35 @@ endif()
 set(SHADER_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/vulkan_backend/shaders)
 set(SHADER_BIN_DIR ${CMAKE_BINARY_DIR}/bin/shaders)
 
-add_custom_target(ayther_stage_shaders ALL
+file(GLOB_RECURSE AYTHER_ENGINE_SHADER_FILES
+    LIST_DIRECTORIES false
+    "${Ayther_SHADER_DIR}/*"
+)
+set(AYTHER_RUNTIME_SHADER_FILES
+    "${SHADER_SRC_DIR}/postprocess.vert.spv"
+    "${SHADER_SRC_DIR}/postprocess.frag.spv"
+)
+set(AYTHER_SHADER_STAGE_STAMP
+    "${CMAKE_CURRENT_BINARY_DIR}/ayther_stage_shaders.stamp"
+)
+
+add_custom_command(
+    OUTPUT "${AYTHER_SHADER_STAGE_STAMP}"
     COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADER_BIN_DIR}
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
         "${Ayther_SHADER_DIR}" "${SHADER_BIN_DIR}"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${SHADER_SRC_DIR}/postprocess.vert.spv"
-        "${SHADER_SRC_DIR}/postprocess.frag.spv"
+        ${AYTHER_RUNTIME_SHADER_FILES}
         "${SHADER_BIN_DIR}/"
+    COMMAND ${CMAKE_COMMAND} -E touch "${AYTHER_SHADER_STAGE_STAMP}"
+    DEPENDS
+        ${AYTHER_ENGINE_SHADER_FILES}
+        ${AYTHER_RUNTIME_SHADER_FILES}
     COMMENT "Staging SPIR-V shaders (motor + runtime) to bin/shaders/"
+    VERBATIM
+)
+add_custom_target(ayther_stage_shaders ALL
+    DEPENDS "${AYTHER_SHADER_STAGE_STAMP}"
 )
 add_dependencies(ayther_runtime ayther_stage_shaders)
 
