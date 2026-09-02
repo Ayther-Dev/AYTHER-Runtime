@@ -16,6 +16,10 @@ once stable compatibility guarantees are defined.
 
 ### Fixed
 
+- The standalone package smoke test now accepts either `-AytherPrefix` or
+  `-EngineArchive` and derives the Runtime root from its own script directory,
+  allowing it to run from an independent Runtime clone and any working
+  directory.
 - Runtime sources and tests now include the standard-library headers for every
   directly used type or facility instead of inheriting them from Engine, SDL,
   Vulkan, or another project header.

@@ -25,6 +25,13 @@ if(AYTHER_PWSH_EXECUTABLE)
                 -Manifest ${CMAKE_CURRENT_SOURCE_DIR}/../vcpkg.json
                 -AytherConfig ${Ayther_DIR}/AytherConfig.cmake
     )
+    add_test(
+        NAME runtime_oot_smoke_contract
+        COMMAND ${AYTHER_PWSH_EXECUTABLE}
+                -NoProfile
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/runtime_oot_smoke_contract_test.ps1
+                -SmokeScript ${CMAKE_CURRENT_SOURCE_DIR}/../tools/runtime_oot_smoke.ps1
+    )
 else()
     message(STATUS "pwsh not found; dependency manifest tests disabled")
 endif()

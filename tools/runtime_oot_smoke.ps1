@@ -3,12 +3,24 @@
 Build and test Runtime against the verified published Engine package.
 
 .DESCRIPTION
-Bootstraps the Engine release pinned by Runtime, passes the returned package
-prefix to CMake, builds Runtime as a root project, and runs CTest. No AYTHER
-Engine or monorepo checkout is read by this smoke test.
+Consumes an existing Engine package prefix, or verifies and extracts a supplied
+Engine archive through Runtime's pinned bootstrap. With neither input, it
+downloads the pinned artifact. The selected prefix is passed to CMake before
+building Runtime as a root project and running CTest. No AYTHER Engine or
+monorepo checkout is read by this smoke test.
+
+.EXAMPLE
+& ./tools/runtime_oot_smoke.ps1 -AytherPrefix C:/deps/ayther-engine
+
+.EXAMPLE
+& ./tools/runtime_oot_smoke.ps1 -EngineArchive C:/downloads/ayther-engine.zip
 #>
 [CmdletBinding()]
 param(
+    [string]$AytherPrefix,
+
+    [string]$EngineArchive,
+
     [string]$DependencyDirectory = (Join-Path $PSScriptRoot "../.deps/ayther-engine"),
 
     [string]$BuildDirectory,
@@ -39,7 +51,25 @@ function Invoke-CheckedCommand {
     }
 }
 
-$runtimeRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+function Resolve-AytherPackagePrefix {
+    param([Parameter(Mandatory)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
+        throw "AYTHER package prefix does not exist: '$Path'."
+    }
+    $resolved = (Resolve-Path -LiteralPath $Path).Path
+    $config = Join-Path $resolved "lib/cmake/Ayther/AytherConfig.cmake"
+    if (-not (Test-Path -LiteralPath $config -PathType Leaf)) {
+        throw "AYTHER package prefix does not contain '$config'."
+    }
+    return $resolved
+}
+
+if ($AytherPrefix -and $EngineArchive) {
+    throw "-AytherPrefix and -EngineArchive cannot be used together."
+}
+
+$runtimeRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 $createdBuildDirectory = -not $BuildDirectory
 if (-not $BuildDirectory) {
     $BuildDirectory = Join-Path ([IO.Path]::GetTempPath()) `
@@ -55,14 +85,30 @@ if (-not $ToolchainFile -and $env:VCPKG_ROOT) {
 }
 
 try {
-    Write-Host "`n== Bootstrap verified AYTHER Engine package ==" -ForegroundColor Cyan
-    $enginePrefix = & (Join-Path $PSScriptRoot "bootstrap_ayther_engine.ps1") `
-        -DestinationDirectory $DependencyDirectory `
-        -Variant $Variant
-    if (-not $enginePrefix -or @($enginePrefix).Count -ne 1) {
-        throw "Engine bootstrap did not return exactly one CMake prefix."
+    if ($AytherPrefix) {
+        Write-Host "`n== Use supplied AYTHER package prefix ==" -ForegroundColor Cyan
+        $enginePrefix = Resolve-AytherPackagePrefix -Path $AytherPrefix
+    } else {
+        Write-Host "`n== Bootstrap verified AYTHER Engine package ==" -ForegroundColor Cyan
+        if ($EngineArchive) {
+            if (-not (Test-Path -LiteralPath $EngineArchive -PathType Leaf)) {
+                throw "Engine archive does not exist: '$EngineArchive'."
+            }
+            $EngineArchive = (Resolve-Path -LiteralPath $EngineArchive).Path
+            $enginePrefix = & (Join-Path $PSScriptRoot "bootstrap_ayther_engine.ps1") `
+                -DestinationDirectory $DependencyDirectory `
+                -Variant $Variant `
+                -ArchivePath $EngineArchive
+        } else {
+            $enginePrefix = & (Join-Path $PSScriptRoot "bootstrap_ayther_engine.ps1") `
+                -DestinationDirectory $DependencyDirectory `
+                -Variant $Variant
+        }
+        if (-not $enginePrefix -or @($enginePrefix).Count -ne 1) {
+            throw "Engine bootstrap did not return exactly one CMake prefix."
+        }
+        $enginePrefix = Resolve-AytherPackagePrefix -Path ([string]$enginePrefix)
     }
-    $enginePrefix = [string]$enginePrefix
 
     Write-Host "`n== Configure Runtime against published Engine ==" -ForegroundColor Cyan
     $cmakePrefixPath = $enginePrefix

@@ -130,24 +130,38 @@ Current CTest coverage includes:
 | `diagnostics` | pure recommendation rules without SDL or Vulkan |
 | `core_probe_api` | installed `CoreProbe` ownership, JSON, and loader-error contract |
 | `probe_core` | real process exit codes and one-line `AYTHER_STATUS` core-probe output |
+| `runtime_oot_smoke_contract` | standalone source-root discovery, explicit Engine package inputs, and mutual exclusion |
 
 The test suite does not establish full GPU-driver compatibility, frame-perfect
 timing, broad Libretro-core compatibility, or release readiness.
 
 ## Published-package smoke test
 
-From the Runtime repository root:
+Use an installed Engine package prefix:
 
 ```powershell
 & ./tools/runtime_oot_smoke.ps1 `
+  -AytherPrefix C:/deps/ayther-engine `
   -ToolchainFile "$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 ```
 
-The script bootstraps the pinned published package, passes its prefix to CMake,
-builds Runtime in a temporary directory, verifies packaged shaders, and runs
-CTest. It never resolves or reads an Engine/monorepo source tree. Use `-Keep` to
-preserve its temporary build directory for inspection, or `-ConfigureOnly` to
-exercise only dependency bootstrap and CMake package discovery.
+Or provide a downloaded Engine release archive for checksum and attestation
+verification followed by extraction:
+
+```powershell
+& ./tools/runtime_oot_smoke.ps1 `
+  -EngineArchive C:/downloads/ayther-engine-v0.1.0-rc.4-windows-x86_64.zip `
+  -ToolchainFile "$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+```
+
+The two inputs are mutually exclusive. With neither input, the script downloads
+the artifact pinned by Runtime. It derives the Runtime source root from
+`$PSScriptRoot/..`, so the command may be launched from any working directory
+inside or outside an independent Runtime clone. The selected package prefix is
+passed to CMake before Runtime is built in a temporary directory, packaged
+shaders are verified, and CTest runs. No Engine/monorepo source tree is resolved
+or read. Use `-Keep` to preserve the temporary build directory for inspection,
+or `-ConfigureOnly` to exercise only bootstrap and CMake package discovery.
 
 > [!CAUTION]
 > The smoke script removes only the unique temporary build directory it creates.

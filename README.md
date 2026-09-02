@@ -130,14 +130,23 @@ For a multi-configuration generator, omit `CMAKE_BUILD_TYPE` and pass
 `--config RelWithDebInfo` to the build and test commands. The executable and
 staged runtime assets are written below `build/bin/`.
 
-The out-of-tree smoke bootstraps the published Engine package, passes its prefix
-to CMake, builds Runtime, and runs its tests without an Engine or monorepo
-checkout:
+The out-of-tree smoke accepts either an installed Engine package prefix or a
+release archive that Runtime verifies and extracts before configuring. It
+derives the Runtime source root from its own location, so it can be invoked from
+any working directory in an independent Runtime clone:
 
 ```powershell
 & ./tools/runtime_oot_smoke.ps1 `
+  -AytherPrefix C:/deps/ayther-engine `
+  -ToolchainFile "$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+
+& ./tools/runtime_oot_smoke.ps1 `
+  -EngineArchive C:/downloads/ayther-engine-v0.1.0-rc.4-windows-x86_64.zip `
   -ToolchainFile "$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 ```
+
+`-AytherPrefix` and `-EngineArchive` are mutually exclusive. If neither is
+provided, the script downloads the artifact pinned by Runtime.
 
 See [Development guide](docs/development.md) for build modes, test scope, shader
 updates, and troubleshooting.
