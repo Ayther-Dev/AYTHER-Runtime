@@ -1,66 +1,28 @@
 #pragma once
 // ---------------------------------------------------------------------------
-// VkPresent — blit the emulator (and HD tile) textures into the swapchain.
+// VkPresent — blit Engine-borrowed render images into the swapchain.
 //
-// Uses vkCmdBlitImage with NEAREST filtering for the main emulator frame.
-// v0.6.0: per-tile HD blits with LINEAR filter.
-//
-// ## Call order each frame (with tile substitution):
+// ## Call order each frame:
 //
 //   swapchain.begin_frame(ctx)
-//   emu_tex.upload(ctx, cmd, ...)
-//   VkPresent::blit(ctx, swap, emu_tex)         // full-frame blit; leaves
-//                                                //  swap in TRANSFER_DST
-//   for each tile sub:
-//       VkPresent::blit_tile(ctx, swap, hd_tex, dst_x, dst_y, dst_w, dst_h)
-//   VkPresent::finalize(ctx, swap)              // swap → PRESENT_SRC_KHR
-//   swapchain.end_frame(ctx)
-//
-// ## Without tile substitution (legacy path):
-//
-//   swapchain.begin_frame(ctx)
-//   emu_tex.upload(ctx, cmd, ...)
-//   VkPresent::blit(ctx, swap, emu_tex)
+//   renderer.render(ctx, cmd, ...)
+//   VkPresent::blit_to_swapchain(ctx, swap, renderer.render_image())
 //   VkPresent::finalize(ctx, swap)
 //   swapchain.end_frame(ctx)
 // ---------------------------------------------------------------------------
 #include <vulkan/vulkan.h>
 #include <cstdint>
 
+#include <ayther/engine/vulkan_interop.hpp>
+
 class VkContext;
 class VkSwapchain;
-class VkTexture;
 
 class VkPresent {
 public:
     // -----------------------------------------------------------------------
-    // Main emulator-frame blit
-    //   src_tex: SHADER_READ_ONLY → TRANSFER_SRC → SHADER_READ_ONLY
-    //   swap:    UNDEFINED        → TRANSFER_DST  (stays TRANSFER_DST!)
-    // -----------------------------------------------------------------------
-    static void blit(VkContext& ctx, VkSwapchain& swap, VkTexture& src_tex);
-
-    // -----------------------------------------------------------------------
-    // HD tile blit — overlay multiple regions using the SAME HD texture.
-    //
-    //   hd_tex: SHADER_READ_ONLY → TRANSFER_SRC → SHADER_READ_ONLY  (once)
-    //   swap:   must already be in TRANSFER_DST (stays TRANSFER_DST)
-    //
-    // All `count` rects are blitted inside a single pair of pipeline barriers,
-    // reducing barrier overhead from O(count) to O(1) when the same tile hash
-    // appears at multiple screen positions.
-    // Uses LINEAR filter for smooth HD upscaling.
-    // -----------------------------------------------------------------------
-
-    /// One destination rectangle in window pixels.
-    struct TileBlitRect { uint32_t x, y, w, h; };
-
-    static void blit_tiles(VkContext& ctx, VkSwapchain& swap, VkTexture& hd_tex,
-                           const TileBlitRect* rects, uint32_t count);
-
-    // -----------------------------------------------------------------------
     // Blit the engine's offscreen HD frame into the swapchain (R3.1).
-    //   src:  an AytherRenderer offscreen image, already in TRANSFER_SRC_OPTIMAL
+    //   src:  an Engine-borrowed image in the layout declared by the view
     //   swap: UNDEFINED → TRANSFER_DST  (stays TRANSFER_DST; caller finalizes)
     // LINEAR filter (a 1:1 copy when the canvas == swapchain extent).
     // -----------------------------------------------------------------------
@@ -70,10 +32,11 @@ public:
     /// largest aspect-preserving fit, avoiding uneven pixel thickness in the
     /// pixel-perfect profile. `smooth` selects linear filtering when true and
     /// nearest-neighbor filtering otherwise.
-    /// @pre `src` is in `VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL` and its extent is
-    ///      non-empty. The swapchain must have a currently acquired image.
+    /// @pre `src` is valid and its owning queue family matches the recording
+    ///      command buffer. The swapchain must have a currently acquired image.
+    /// @post `src` is restored to its declared handoff layout.
     static void blit_to_swapchain(VkContext& ctx, VkSwapchain& swap,
-                                  VkImage src, VkExtent2D src_extent,
+                                  const ayther::engine::RenderImageView& src,
                                   bool integer = false, bool smooth = true);
 
     // -----------------------------------------------------------------------
@@ -87,8 +50,8 @@ public:
     // separates left and right images. Each image is cropped rather than scaled
     // into half of the window, preserving the unsplit image geometry.
     static void blit_split_to_swapchain(VkContext& ctx, VkSwapchain& swap,
-                                        VkImage left,  VkExtent2D left_extent,
-                                        VkImage right, VkExtent2D right_extent,
+                                        const ayther::engine::RenderImageView& left,
+                                        const ayther::engine::RenderImageView& right,
                                         float split, bool vertical);
 
     // -----------------------------------------------------------------------

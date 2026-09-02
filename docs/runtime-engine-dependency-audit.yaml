@@ -173,7 +173,7 @@ dependency_matrix:
 
   - runtime_files: ["src/main.cpp"]
     area: "Vulkan context and renderer interop"
-    current_headers: ["vulkan_backend/vk_context.h", "vulkan_backend/vk_texture.h", "ayther_renderer.h"]
+    current_headers: ["vulkan_backend/vk_context.h", "ayther_renderer.h", "ayther/engine/vulkan_interop.hpp"]
     required_contract:
       context: >-
         Runtime-lifetime context owns instance, surface, selected physical device,
@@ -185,13 +185,16 @@ dependency_matrix:
         rebinds views after resize. GPU idle is required before pack-texture
         eviction, reload, rebuild, and explicit shutdown.
       failure: "A Vulkan or post-process initialization failure should retain a degraded path when possible."
-      dead_include: "main.cpp does not use a VkTexture symbol directly."
+      render_image: >-
+        RenderImageView borrows image, view, and sampler handles; declares
+        format, extent, layout, readiness scopes, and exclusive graphics queue
+        family; and transfers neither ownership nor synchronization objects.
     target_state: >-
       Publish a narrow Vulkan interop structure and RenderImageView with explicit
       handle ownership, image layout, and lifetime rules. Remove unused
       vk_texture.h includes and keep Engine backend headers private.
     owner: "Shared: Runtime owns presentation; Engine owns renderer resources"
-    migration_status: "replace_public"
+    migration_status: "render_image_contract_complete; context facade pending"
 
   - runtime_files: ["src/main.cpp"]
     area: "Raw Core FFI and packs"
@@ -285,7 +288,7 @@ dependency_matrix:
 
   - runtime_files: ["src/vulkan_backend/vk_present.cpp", "src/vulkan_backend/vk_present.h"]
     area: "Presentation and output profiles"
-    current_headers: ["vulkan_backend/vk_context.h", "vulkan_backend/vk_texture.h", "src/output_profile.h"]
+    current_headers: ["vulkan_backend/vk_context.h", "ayther/engine/vulkan_interop.hpp", "src/output_profile.h"]
     required_contract:
       layouts:
         renderer_source: "SHADER_READ_ONLY -> TRANSFER_SRC -> SHADER_READ_ONLY"
@@ -299,11 +302,11 @@ dependency_matrix:
       Keep present and output geometry in Runtime. Replace VkTexture with public
       RenderImageView and remove legacy blits when no callers remain.
     owner: "Runtime"
-    migration_status: "move_to_runtime"
+    migration_status: "render_image_contract_complete; context facade pending"
 
   - runtime_files: ["src/vulkan_backend/vk_postprocess.cpp", "src/vulkan_backend/vk_postprocess.h"]
     area: "Post-processing"
-    current_headers: ["vulkan_backend/vk_context.h", "vulkan_backend/vk_texture.h"]
+    current_headers: ["vulkan_backend/vk_context.h", "ayther/engine/vulkan_interop.hpp"]
     required_contract:
       owned: >-
         Render pass, descriptor-set layout, pipeline layout, pipeline, nearest
@@ -318,7 +321,7 @@ dependency_matrix:
       Keep post-processing and shaders in Runtime, consume public interop and
       RenderImageView, and remove the unused vk_texture.h include.
     owner: "Runtime"
-    migration_status: "move_to_runtime"
+    migration_status: "render_image_contract_complete; context facade pending"
 
   - runtime_files: ["CMakeLists.txt"]
     area: "Build contract"
@@ -516,7 +519,7 @@ private_header_decisions:
   libretro_host/libretro.h: "Core probing is hidden; replace the remaining input constants with EngineInputButton."
   output_profile.h: "Removed as an Engine dependency; Runtime owns its local presentation policy."
   vulkan_backend/vk_context.h: "Replace with public interop; move presentation ownership to Runtime."
-  vulkan_backend/vk_texture.h: "Remove unused includes and replace remaining use with RenderImageView."
+  vulkan_backend/vk_texture.h: "Removed from Runtime; presentation consumes public RenderImageView."
   ayther/ayther_core_ffi.h: "Hide raw operations behind Session, Pack, and EngineVersion APIs."
   ayther_renderer.h: "Promote a stable facade without exposing backend header closure."
   ayther/ayther_layers.h: "Keep descriptors and LayerStack as a narrow public contract."
@@ -534,6 +537,5 @@ acceptance:
   issue_references_in_deliverable: false
   remaining_design_decisions:
     - "Final names and granularity of Engine public targets."
-    - "Exact Vulkan interop and RenderImageView representation."
     - "Whether PackWatcher remains in Engine or moves to Runtime-native filesystem code."
     - "Validated ranges for bus_gain and subsystem masks."

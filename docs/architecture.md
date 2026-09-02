@@ -129,7 +129,8 @@ session.set_hd_enabled(hd_enabled);
 FrameView frame = session.step();
 
 renderer.render(vulkan, command_buffer, frame, pack, layer_stack);
-postprocess_or_blit(renderer.framebuffer_image(), swapchain.image());
+ayther::engine::RenderImageView image = renderer.render_image();
+postprocess_or_blit(image, swapchain.image());
 overlay.render(command_buffer, swapchain.image());
 swapchain.end_frame();
 ```
@@ -144,7 +145,10 @@ Presentation rules:
   knows no Runtime window profile or filter type.
 - Output is pillarboxed or letterboxed without stretching.
 - Integer scaling falls back to fit when a 1x image cannot fit; it does not crop.
-- Renderer images return to `SHADER_READ_ONLY_OPTIMAL` after transfer use.
+- `RenderImageView` borrows Engine-owned image/view/sampler handles and declares
+  their format, extent, handoff layout, access scope, and owning queue family.
+- Renderer images return to the layout declared by `RenderImageView` after
+  transfer use. Runtime never destroys their handles.
 - Swapchain images transition through transfer/render usage to `PRESENT_SRC_KHR`.
 - Two frames are in flight. Per-filter descriptors prevent updates to resources
   still in use by an earlier frame.

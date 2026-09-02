@@ -240,6 +240,23 @@ add_test(
 )
 
 # ------------------------------------------------------------------
+# render_image_view_api_tests — MIG-024: public Vulkan image handoff.
+#
+# It compiles only against the installed Ayther::engine target so Vulkan's
+# public include/link requirements and the value contract are both exercised.
+# ------------------------------------------------------------------
+add_executable(render_image_view_api_tests render_image_view_api_test.cpp)
+target_link_libraries(render_image_view_api_tests PRIVATE Ayther::engine)
+set_target_properties(render_image_view_api_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    render_image_view_api
+    COMMAND render_image_view_api_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+# ------------------------------------------------------------------
 # probe_core — #589: el sondeo de cores que consume Play.
 #
 # Corre el binario del runtime en vez de compilar fuentes: lo que se

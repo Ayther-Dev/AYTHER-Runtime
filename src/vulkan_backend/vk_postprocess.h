@@ -3,11 +3,10 @@
 // vk_postprocess.h — CRT-style post-processing over the emulator framebuffer.
 //                    Ayther v0.9.4
 //
-// Replaces VkPresent::blit() (NEAREST filter) when a post-process shader is
-// available.  If init() fails (no SPIR-V found), the caller falls back to
-// VkPresent::blit() transparently — no code change needed elsewhere.
+// Replaces VkPresent::blit_to_swapchain() when a post-process shader is
+// available. If init() fails, the caller uses that plain-blit fallback.
 //
-// ## Layout transition chain  (same exit state as VkPresent::blit)
+// ## Layout transition chain  (same swap exit state as the plain blit)
 //
 //   Swapchain (just acquired, UNDEFINED)
 //     │  [render pass, initialLayout=UNDEFINED, loadOp=DONT_CARE]
@@ -15,13 +14,13 @@
 //   COLOR_ATTACHMENT_OPTIMAL  (during the pass)
 //     │  [render pass finalLayout auto-transition]
 //     ▼
-//   TRANSFER_DST_OPTIMAL      ← identical to VkPresent::blit() exit state
-//     │  (tile blits + VkSprite::draw() + VkPresent::finalize() unchanged)
+//   TRANSFER_DST_OPTIMAL      ← identical to the plain-blit exit state
+//     │  (Runtime overlay + VkPresent::finalize() unchanged)
 //     ▼
 //   PRESENT_SRC_KHR
 //
 // ## Descriptor layout
-//   set 0, binding 0 = combined image sampler  →  emu_tex (persistent)
+//   set 0, binding 0 = combined image sampler → Engine render image
 //
 // ## Push constants (fragment stage only, 8 × float = 32 bytes)
 //   scr_w, scr_h    — swapchain dimensions
@@ -33,13 +32,16 @@
 //   ntsc            — NTSC chroma bleed               [0, 1]  (#230 EM-7.2)
 //
 // ## Lifecycle
-//   postprocess.init(ctx, swap, vert_spv, frag_spv, emu_tex)
+//   postprocess.init(ctx, swap, vert_spv, frag_spv)
+//   postprocess.set_source(ctx, renderer.render_image())
 //   postprocess.rebuild(ctx, swap)   // on SDL_EVENT_WINDOW_RESIZED
 //   postprocess.shutdown(ctx)        // before vkDeviceWaitIdle / shutdown
 // ---------------------------------------------------------------------------
 #include <vulkan/vulkan.h>
 #include <vector>
 #include <cstdint>
+
+#include <ayther/engine/vulkan_interop.hpp>
 
 class VkContext;
 class VkSwapchain;
@@ -64,10 +66,12 @@ public:
     bool init(VkContext& ctx, VkSwapchain& swap,
               const char* vert_spv_path, const char* frag_spv_path);
 
-    /// Bind (or re-bind) the sampled source image — the renderer's offscreen HD
-    /// frame, in SHADER_READ_ONLY_OPTIMAL. Call after init() and after every
-    /// resize (the offscreen view changes when the target is recreated).
-    void set_source(VkContext& ctx, VkImageView src_view);
+    /// Bind (or re-bind) the Engine-borrowed sampled source. Call after init()
+    /// and after every resize (the offscreen view changes with the target).
+    /// The descriptor uses the layout declared by RenderImageView; ownership
+    /// and lifetime remain with Engine.
+    void set_source(VkContext& ctx,
+                    const ayther::engine::RenderImageView& source);
 
     /// Recreate framebuffers after a swapchain resize.
     void rebuild(VkContext& ctx, VkSwapchain& swap);
@@ -77,9 +81,9 @@ public:
 
     // ---- Per-frame apply -----------------------------------------------------
 
-    /// Replace VkPresent::blit() — renders emu_tex through the post-process shader.
+    /// Replace the plain blit by sampling RenderImageView through the shader.
     ///
-    /// Entry state: emu_tex in SHADER_READ_ONLY, swapchain just acquired (UNDEFINED).
+    /// Entry state: source in its declared layout; swapchain acquired (UNDEFINED).
     /// Exit  state: swapchain in TRANSFER_DST_OPTIMAL  (tile blits unchanged).
     ///
     ///  scr_w / scr_h   — current swapchain extent in pixels.

@@ -27,7 +27,6 @@
 #include "diagnostics.h"            // #302: asistente de diagnostico
 #include "vulkan_backend/vk_context.h"
 #include "vulkan_backend/vk_swapchain.h"
-#include "vulkan_backend/vk_texture.h"
 #include "vulkan_backend/vk_present.h"
 #include "vulkan_backend/vk_postprocess.h"   // CRT presentation pass (samples the offscreen)
 #include <ayther/ayther_core_ffi.h>    // pack watcher, sonic RAM reads, core version
@@ -613,7 +612,7 @@ int main(int argc, char* argv[]) {
                                           AYTHER_SHADER_DIR "postprocess.vert.spv",
                                           AYTHER_SHADER_DIR "postprocess.frag.spv");
         if (postprocess_ok)
-            postprocess.set_source(vulkan, renderer.framebuffer_view());
+            postprocess.set_source(vulkan, renderer.render_image());
         else
             std::fprintf(stdout, "[main] VkPostProcess disabled — plain blit fallback.\n");
     }
@@ -875,7 +874,7 @@ int main(int argc, char* argv[]) {
                                                 static_cast<uint32_t>(cf.h));
                         if (postprocess_ok) {   // re-bind to the new offscreen view
                             postprocess.rebuild(vulkan, swapchain);
-                            postprocess.set_source(vulkan, renderer.framebuffer_view());
+                            postprocess.set_source(vulkan, renderer.render_image());
                         }
                         overlay.rebuild(vulkan, swapchain);   // M4: rebuild overlay FBs
                     }
@@ -914,7 +913,7 @@ int main(int argc, char* argv[]) {
                     if (sess->pack() && renderer_ok)
                         ayther_pack_set_tier_for_height(
                             sess->pack(),
-                            static_cast<int>(renderer.framebuffer_extent().height));
+                            static_cast<int>(renderer.render_image().extent.height));
                     try { pack_bytes = std::filesystem::file_size(pack_path); } catch (...) {}
                     std::fprintf(stdout, "[main] Pack reloaded  game=%s\n", sess->game_id());
                 } else {
@@ -1066,8 +1065,7 @@ int main(int argc, char* argv[]) {
                     // encima compararía el shader, no la remasterización.
                     VkPresent::blit_split_to_swapchain(
                         vulkan, swapchain,
-                        renderer.compare_image(),     renderer.compare_extent(),
-                        renderer.framebuffer_image(), renderer.framebuffer_extent(),
+                        renderer.compare_render_image(), renderer.render_image(),
                         split_pos_, split_vertical_);
                 } else if (postprocess_ok) {
                     const AytherShaderParams& sp = fv.shader_params;
@@ -1128,7 +1126,7 @@ int main(int argc, char* argv[]) {
                 } else {
                     VkPresent::blit_to_swapchain(
                         vulkan, swapchain,
-                        renderer.framebuffer_image(), renderer.framebuffer_extent(),
+                        renderer.render_image(),
                         out_profile_->scaling
                             == ayther::runtime::OutputScaling::Integer,
                         out_profile_->smoothing);
@@ -1213,7 +1211,7 @@ int main(int argc, char* argv[]) {
                 if (capture_req_) {
                     capture_req_ = false;
                     if (renderer.readback_init(vulkan)) {
-                        const VkExtent2D ex = renderer.framebuffer_extent();
+                        const VkExtent2D ex = renderer.render_image().extent;
                         std::vector<uint8_t> orig;
                         if (const uint8_t* p0 =
                                 renderer.export_frame(vulkan, fv, pack, /*hd=*/false,
@@ -1280,7 +1278,7 @@ int main(int argc, char* argv[]) {
                                                 static_cast<uint32_t>(cf.h));
                         if (postprocess_ok) {
                             postprocess.rebuild(vulkan, swapchain);
-                            postprocess.set_source(vulkan, renderer.framebuffer_view());
+                            postprocess.set_source(vulkan, renderer.render_image());
                         }
                     }
                 }

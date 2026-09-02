@@ -9,14 +9,14 @@
 //   COLOR_ATTACHMENT_OPTIMAL  (during subpass)
 //     │  [render pass finalLayout auto-transition]
 //     ▼
-//   TRANSFER_DST_OPTIMAL      ← same exit state as VkPresent::blit()
+//   TRANSFER_DST_OPTIMAL      ← same exit state as the plain blit
 //
 // No explicit pre-pass barrier is needed; the render pass's initialLayout=UNDEFINED
 // lets the driver skip any content preservation.  The subpass dependency (dep[0])
-// ensures the emu_tex TRANSFER_WRITE (from upload) is visible to the frag shader.
+// pairs with the source handoff barrier recorded by Engine.
 //
 // ## Descriptor layout
-//   set 0, binding 0 = combined image sampler  (emu_tex, written once at init)
+//   set 0, binding 0 = combined image sampler (Engine view, rebound on resize)
 //
 // ## Push constants (frag stage, 8 × float = 32 bytes)
 //   scr_w, scr_h, emu_h, time, crt_strength, scan_strength, vignette, ntsc
@@ -25,7 +25,6 @@
 #include "vk_postprocess.h"
 #include "vulkan_backend/vk_context.h"
 #include "vk_swapchain.h"
-#include "vulkan_backend/vk_texture.h"
 #include "aspect_fit.h"
 
 #include <cstdio>
@@ -341,16 +340,22 @@ bool VkPostProcess::create_desc(VkContext& ctx) {
     return true;
 }
 
-void VkPostProcess::set_source(VkContext& ctx, VkImageView src_view) {
-    // Bind the combined image sampler to the source (the renderer's offscreen HD
-    // frame, in SHADER_READ_ONLY). Safe on resize: callers wait idle first.
+void VkPostProcess::set_source(
+    VkContext& ctx, const ayther::engine::RenderImageView& source) {
+    if (!source.is_valid() ||
+        source.queue_family_index != ctx.graphics_family() ||
+        (source.layout != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL &&
+         source.layout != VK_IMAGE_LAYOUT_GENERAL)) return;
+
+    // Bind the combined image sampler to the Engine-borrowed source. Safe on
+    // resize because callers wait idle before the old view is destroyed.
     // Los DOS sets apuntan a la misma imagen y se diferencian sólo en el
     // sampler: escribir uno y olvidarse del otro dejaría el filtro que no se
     // actualizó apuntando a una vista destruida en el próximo resize.
     VkDescriptorImageInfo img_info[2]{};
     img_info[0].sampler     = sampler_smooth_;
-    img_info[0].imageView   = src_view;
-    img_info[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    img_info[0].imageView   = source.image_view;
+    img_info[0].imageLayout = source.layout;
     img_info[1]             = img_info[0];
     img_info[1].sampler     = sampler_sharp_;
 
@@ -530,6 +535,6 @@ void VkPostProcess::apply(VkContext& ctx, VkSwapchain& swap,
 
     // ---- End render pass ---------------------------------------------------
     // finalLayout auto-transition: COLOR_ATTACHMENT_OPTIMAL → TRANSFER_DST_OPTIMAL.
-    // VkPresent::blit_tiles() and VkSprite::draw() expect TRANSFER_DST_OPTIMAL.
+    // The Runtime overlay and VkPresent::finalize() expect TRANSFER_DST_OPTIMAL.
     vkCmdEndRenderPass(cmd);
 }
