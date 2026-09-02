@@ -1,5 +1,4 @@
 #include "game_input.h"
-#include "libretro_host/libretro.h"   // RETRO_DEVICE_ID_JOYPAD_* (via ayther_engine)
 
 #include <cstdint>
 #include <cstdio>
@@ -8,8 +7,11 @@
 namespace ayther {
 
 namespace {
-inline void set_bit(uint16_t& b, int id, bool on) {
-    if (on) b |= static_cast<uint16_t>(1u << id);
+void set_button(engine::InputState& input, engine::JoypadButton button,
+                bool is_pressed) {
+    if (is_pressed) {
+        input = input | engine::InputState{button};
+    }
 }
 }  // namespace
 
@@ -20,89 +22,132 @@ GameInput::GameInput() {
         std::fprintf(stdout, "[input] no gamecontrollerdb.txt (using SDL built-in mappings)\n");
     }
     // Adopt a gamepad already connected at startup.
-    int count = 0;
-    if (SDL_JoystickID* ids = SDL_GetGamepads(&count)) {
-        if (count > 0) { pad_ = SDL_OpenGamepad(ids[0]); pad_id_ = ids[0]; }
-        SDL_free(ids);
+    int gamepad_count = 0;
+    if (SDL_JoystickID* gamepad_ids = SDL_GetGamepads(&gamepad_count)) {
+        if (gamepad_count > 0) {
+            gamepad_ = SDL_OpenGamepad(gamepad_ids[0]);
+            gamepad_id_ = gamepad_ids[0];
+        }
+        SDL_free(gamepad_ids);
     }
     std::fprintf(stdout, "[input] keyboard ready%s%s\n",
-                 pad_ ? " + gamepad: " : " (no gamepad)",
-                 pad_ ? gamepad_name() : "");
+                 gamepad_ ? " + gamepad: " : " (no gamepad)",
+                 gamepad_ ? gamepad_name() : "");
 }
 
 GameInput::~GameInput() {
-    if (pad_) SDL_CloseGamepad(pad_);
+    if (gamepad_) {
+        SDL_CloseGamepad(gamepad_);
+    }
 }
 
-const char* GameInput::gamepad_name() const {
-    const char* n = pad_ ? SDL_GetGamepadName(pad_) : nullptr;
-    return n ? n : "(unknown)";
+const char* GameInput::gamepad_name() const noexcept {
+    const char* name = gamepad_ ? SDL_GetGamepadName(gamepad_) : nullptr;
+    return name ? name : "(unknown)";
 }
 
-void GameInput::handle_event(const SDL_Event& e) {
-    if (e.type == SDL_EVENT_GAMEPAD_ADDED) {
-        if (!pad_) {                          // adopt the first as player 1
-            pad_    = SDL_OpenGamepad(e.gdevice.which);
-            pad_id_ = e.gdevice.which;
-            if (pad_) std::fprintf(stdout, "[input] gamepad connected: %s\n", gamepad_name());
+void GameInput::handle_event(const SDL_Event& event) {
+    if (event.type == SDL_EVENT_GAMEPAD_ADDED) {
+        if (!gamepad_) {  // adopt the first as player 1
+            gamepad_ = SDL_OpenGamepad(event.gdevice.which);
+            gamepad_id_ = event.gdevice.which;
+            if (gamepad_) {
+                std::fprintf(stdout, "[input] gamepad connected: %s\n",
+                             gamepad_name());
+            }
         }
-    } else if (e.type == SDL_EVENT_GAMEPAD_REMOVED) {
-        if (pad_ && e.gdevice.which == pad_id_) {
+    } else if (event.type == SDL_EVENT_GAMEPAD_REMOVED) {
+        if (gamepad_ && event.gdevice.which == gamepad_id_) {
             std::fprintf(stdout, "[input] gamepad disconnected\n");
-            SDL_CloseGamepad(pad_);
-            pad_ = nullptr;
-            pad_id_ = 0;
+            SDL_CloseGamepad(gamepad_);
+            gamepad_ = nullptr;
+            gamepad_id_ = 0;
         }
     }
 }
 
-uint16_t GameInput::poll() const {
-    uint16_t b = 0;
+engine::InputState GameInput::poll() const {
+    using engine::JoypadButton;
+
+    engine::InputState input;
 
     // --- Keyboard (always live) ----------------------------------------------
     // Z = jump (Genesis A/B/C all jump in Sonic); arrows = D-pad; Enter = Start.
-    if (const bool* k = SDL_GetKeyboardState(nullptr)) {
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_UP,     k[SDL_SCANCODE_UP]);
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_DOWN,   k[SDL_SCANCODE_DOWN]);
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_LEFT,   k[SDL_SCANCODE_LEFT]);
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_RIGHT,  k[SDL_SCANCODE_RIGHT]);
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_B,      k[SDL_SCANCODE_Z]);
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_A,      k[SDL_SCANCODE_X]);
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_Y,      k[SDL_SCANCODE_A]);
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_X,      k[SDL_SCANCODE_S]);
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_L,      k[SDL_SCANCODE_Q]);
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_R,      k[SDL_SCANCODE_W]);
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_START,  k[SDL_SCANCODE_RETURN]);
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_SELECT, k[SDL_SCANCODE_RSHIFT] || k[SDL_SCANCODE_BACKSPACE]);
+    if (const bool* keyboard_state = SDL_GetKeyboardState(nullptr)) {
+        set_button(input, JoypadButton::up, keyboard_state[SDL_SCANCODE_UP]);
+        set_button(input, JoypadButton::down,
+                   keyboard_state[SDL_SCANCODE_DOWN]);
+        set_button(input, JoypadButton::left,
+                   keyboard_state[SDL_SCANCODE_LEFT]);
+        set_button(input, JoypadButton::right,
+                   keyboard_state[SDL_SCANCODE_RIGHT]);
+        set_button(input, JoypadButton::b, keyboard_state[SDL_SCANCODE_Z]);
+        set_button(input, JoypadButton::a, keyboard_state[SDL_SCANCODE_X]);
+        set_button(input, JoypadButton::y, keyboard_state[SDL_SCANCODE_A]);
+        set_button(input, JoypadButton::x, keyboard_state[SDL_SCANCODE_S]);
+        set_button(input, JoypadButton::l, keyboard_state[SDL_SCANCODE_Q]);
+        set_button(input, JoypadButton::r, keyboard_state[SDL_SCANCODE_W]);
+        set_button(input, JoypadButton::start,
+                   keyboard_state[SDL_SCANCODE_RETURN]);
+        set_button(input, JoypadButton::select,
+                   keyboard_state[SDL_SCANCODE_RSHIFT] ||
+                       keyboard_state[SDL_SCANCODE_BACKSPACE]);
     }
 
     // --- Gamepad (OR-ed in) --------------------------------------------------
-    if (pad_) {
-        auto pb = [&](SDL_GamepadButton sb) { return SDL_GetGamepadButton(pad_, sb); };
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_UP,     pb(SDL_GAMEPAD_BUTTON_DPAD_UP));
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_DOWN,   pb(SDL_GAMEPAD_BUTTON_DPAD_DOWN));
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_LEFT,   pb(SDL_GAMEPAD_BUTTON_DPAD_LEFT));
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_RIGHT,  pb(SDL_GAMEPAD_BUTTON_DPAD_RIGHT));
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_B,      pb(SDL_GAMEPAD_BUTTON_SOUTH));   // jump
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_A,      pb(SDL_GAMEPAD_BUTTON_EAST));
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_Y,      pb(SDL_GAMEPAD_BUTTON_WEST));
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_X,      pb(SDL_GAMEPAD_BUTTON_NORTH));
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_L,      pb(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER));
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_R,      pb(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER));
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_START,  pb(SDL_GAMEPAD_BUTTON_START));
-        set_bit(b, RETRO_DEVICE_ID_JOYPAD_SELECT, pb(SDL_GAMEPAD_BUTTON_BACK));
+    if (gamepad_) {
+        const auto is_gamepad_button_pressed =
+            [this](SDL_GamepadButton button) {
+                return SDL_GetGamepadButton(gamepad_, button);
+            };
+        set_button(input, JoypadButton::up,
+                   is_gamepad_button_pressed(SDL_GAMEPAD_BUTTON_DPAD_UP));
+        set_button(input, JoypadButton::down,
+                   is_gamepad_button_pressed(SDL_GAMEPAD_BUTTON_DPAD_DOWN));
+        set_button(input, JoypadButton::left,
+                   is_gamepad_button_pressed(SDL_GAMEPAD_BUTTON_DPAD_LEFT));
+        set_button(input, JoypadButton::right,
+                   is_gamepad_button_pressed(SDL_GAMEPAD_BUTTON_DPAD_RIGHT));
+        set_button(input, JoypadButton::b,
+                   is_gamepad_button_pressed(SDL_GAMEPAD_BUTTON_SOUTH));
+        set_button(input, JoypadButton::a,
+                   is_gamepad_button_pressed(SDL_GAMEPAD_BUTTON_EAST));
+        set_button(input, JoypadButton::y,
+                   is_gamepad_button_pressed(SDL_GAMEPAD_BUTTON_WEST));
+        set_button(input, JoypadButton::x,
+                   is_gamepad_button_pressed(SDL_GAMEPAD_BUTTON_NORTH));
+        set_button(input, JoypadButton::l,
+                   is_gamepad_button_pressed(
+                       SDL_GAMEPAD_BUTTON_LEFT_SHOULDER));
+        set_button(input, JoypadButton::r,
+                   is_gamepad_button_pressed(
+                       SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER));
+        set_button(input, JoypadButton::start,
+                   is_gamepad_button_pressed(SDL_GAMEPAD_BUTTON_START));
+        set_button(input, JoypadButton::select,
+                   is_gamepad_button_pressed(SDL_GAMEPAD_BUTTON_BACK));
 
         // Left analog stick → D-pad (≈ 50% deadzone).
-        constexpr int16_t dz = 16000;
-        const int16_t ax = SDL_GetGamepadAxis(pad_, SDL_GAMEPAD_AXIS_LEFTX);
-        const int16_t ay = SDL_GetGamepadAxis(pad_, SDL_GAMEPAD_AXIS_LEFTY);
-        if (ax < -dz) set_bit(b, RETRO_DEVICE_ID_JOYPAD_LEFT,  true);
-        if (ax >  dz) set_bit(b, RETRO_DEVICE_ID_JOYPAD_RIGHT, true);
-        if (ay < -dz) set_bit(b, RETRO_DEVICE_ID_JOYPAD_UP,    true);
-        if (ay >  dz) set_bit(b, RETRO_DEVICE_ID_JOYPAD_DOWN,  true);
+        constexpr std::int16_t axis_deadzone = 16000;
+        const std::int16_t axis_x =
+            SDL_GetGamepadAxis(gamepad_, SDL_GAMEPAD_AXIS_LEFTX);
+        const std::int16_t axis_y =
+            SDL_GetGamepadAxis(gamepad_, SDL_GAMEPAD_AXIS_LEFTY);
+        if (axis_x < -axis_deadzone) {
+            set_button(input, JoypadButton::left, true);
+        }
+        if (axis_x > axis_deadzone) {
+            set_button(input, JoypadButton::right, true);
+        }
+        if (axis_y < -axis_deadzone) {
+            set_button(input, JoypadButton::up, true);
+        }
+        if (axis_y > axis_deadzone) {
+            set_button(input, JoypadButton::down, true);
+        }
     }
 
-    return b;
+    return input;
 }
 
 }  // namespace ayther

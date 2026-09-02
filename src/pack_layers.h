@@ -12,7 +12,7 @@
 // ORDERING CONTRACT: baking renumbers project indices to 0..N-1 from back to
 // front, and the session reader preserves that sequence. Appending each layer
 // retains relative order and places overlays in front of HD lanes, matching
-// Componer (`insert_custom("Acetato", stack.layers().size())`).
+// the authoring frontend's `insert_custom` behavior.
 // ---------------------------------------------------------------------------
 #include <cstddef>
 #include <vector>
@@ -24,11 +24,11 @@ namespace ayther_runtime {
 
 /// Append one custom layer for each pack overlay, preserving input order.
 ///
-/// Existing layers are never modified. An empty input leaves `stack`
+/// Existing layers are never modified. An empty input leaves `layer_stack`
 /// unchanged, preserving the renderer's no-overlay behavior.
 /// @return The number of layers appended.
-size_t build_pack_acetato_stack(
-    const std::vector<ayther::AytherSession::PackAcetato>& acetatos,
-    AytherLayerStack&                              stack);
+std::size_t build_pack_overlay_stack(
+    const std::vector<ayther::AytherSession::PackOverlay>& overlays,
+    AytherLayerStack& layer_stack);
 
 }  // namespace ayther_runtime

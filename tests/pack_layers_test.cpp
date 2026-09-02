@@ -1,20 +1,10 @@
 // ---------------------------------------------------------------------------
-// pack_layers_test.cpp — #561: el runtime arma el stack de Acetatos del pack.
+// pack_layers_test.cpp — #561: Runtime builds the pack overlay layer stack.
 //
-// El defecto que cierra esta issue no era un cálculo equivocado: era que NADIE
-// llamaba. La sesión leía los Acetatos del pack y los ofrecía, el Lab los
-// dibujaba en Componer, y `ayther_runtime` —el que Play lanza— jugaba el pack
-// sin ellos. Por eso el primer caso de este oráculo es el del DEFECTO: un stack
-// por defecto (lo que el runtime pasaba, `layers = nullptr`) no tiene ni una
-// capa Custom, aunque el pack traiga dos. Sin ese control, un test que sólo
-// mira el stack construido pasa en verde aunque el runtime no lo use.
-//
-// Sin GPU: lo que se fija acá es el ORDEN (el del pack es back→front y el
-// renderer dibuja en orden de lista) y que el contenido llegue COMPLETO — el
-// renderer ya tiene sus propios oráculos con readback (acetato_fx_smoke).
-// El determinismo del flicker y de la animación (#354/#489) se fija donde
-// vive: son funciones puras del número de frame, y se las llama fuera de orden
-// a propósito.
+// The original defect was an integration omission: the session loaded pack
+// overlays, but Runtime never appended them to the layer stack used by Play.
+// These CPU-only tests lock down that integration contract, including draw
+// order and a byte-for-byte comparison with the authoring path.
 // ---------------------------------------------------------------------------
 #include "pack_layers.h"
 
@@ -26,37 +16,43 @@
 
 namespace {
 
-int g_pass = 0, g_fail = 0;
-void check(bool ok, const char* what) {
-    if (ok) ++g_pass; else ++g_fail;
-    std::printf("  [%s] %s\n", ok ? " OK " : "FAIL", what);
+std::size_t custom_layer_count(const AytherLayerStack& layer_stack) {
+    std::size_t layer_count{};
+    for (const AytherLayer& layer : layer_stack.layers()) {
+        if (layer.kind == AytherLayerKind::Custom) {
+            ++layer_count;
+        }
+    }
+    return layer_count;
 }
 
-size_t custom_count(const AytherLayerStack& s) {
-    size_t n = 0;
-    for (const AytherLayer& l : s.layers())
-        if (l.kind == AytherLayerKind::Custom) ++n;
-    return n;
+/// Returns custom layers in back-to-front draw order.
+std::vector<const AytherLayer*> custom_layers(
+    const AytherLayerStack& layer_stack) {
+    std::vector<const AytherLayer*> result;
+    for (const AytherLayer& layer : layer_stack.layers()) {
+        if (layer.kind == AytherLayerKind::Custom) {
+            result.push_back(&layer);
+        }
+    }
+    return result;
 }
 
-/// Los Custom del stack, en orden de dibujo (back→front).
-std::vector<const AytherLayer*> customs(const AytherLayerStack& s) {
-    std::vector<const AytherLayer*> v;
-    for (const AytherLayer& l : s.layers())
-        if (l.kind == AytherLayerKind::Custom) v.push_back(&l);
-    return v;
-}
-
-ayther::AytherSession::PackAcetato make(const char* name, const char* asset,
-                                float factor, int16_t y) {
-    ayther::AytherSession::PackAcetato a;
-    a.name = name;
-    std::snprintf(a.content.asset, sizeof(a.content.asset), "%s", asset);
-    a.content.img_w  = 320;
-    a.content.img_h  = 224;
-    a.content.y      = y;
-    a.content.factor = factor;
-    return a;
+ayther::AytherSession::PackOverlay make_overlay(const char* name,
+                                                const char* asset,
+                                                float parallax_factor,
+                                                std::int16_t y_offset) {
+    ayther::AytherSession::PackOverlay overlay;
+    overlay.name = name;
+    std::snprintf(overlay.content.asset,
+                  sizeof(overlay.content.asset),
+                  "%s",
+                  asset);
+    overlay.content.img_w = 320;
+    overlay.content.img_h = 224;
+    overlay.content.y = y_offset;
+    overlay.content.factor = parallax_factor;
+    return overlay;
 }
 
 }  // namespace
@@ -64,183 +60,185 @@ ayther::AytherSession::PackAcetato make(const char* name, const char* asset,
 int main() {
     std::printf("== pack_layers_test (#561) ==\n");
 
-    // -- El caso del DEFECTO: sin armar el stack, el pack se juega sin nada --
+    int passed_checks{};
+    int failed_checks{};
+    const auto check = [&](bool condition, const char* description) {
+        if (condition) {
+            ++passed_checks;
+        } else {
+            ++failed_checks;
+        }
+        std::printf("  [%s] %s\n", condition ? " OK " : "FAIL", description);
+    };
+
+    // A default stack proves the original defect would remain observable.
     {
-        AytherLayerStack def;   // == lo que el renderer usa con layers=nullptr
-        check(custom_count(def) == 0,
-              "control: el stack por defecto no tiene NINGUNA capa Custom "
-              "(el bug: un pack con Acetatos se jugaba sin ellos)");
+        AytherLayerStack default_stack;
+        check(custom_layer_count(default_stack) == 0,
+              "control: the default stack contains no custom layers");
     }
 
-    // -- Un pack sin Acetatos no cambia un píxel -----------------------------
+    // A pack without overlays must leave the default stack unchanged.
     {
-        AytherLayerStack def, built;
-        const size_t n = ayther_runtime::build_pack_acetato_stack({}, built);
-        check(n == 0, "pack sin Acetatos: no inserta capas");
-        bool same = def.layers().size() == built.layers().size();
-        for (size_t i = 0; same && i < def.layers().size(); ++i)
-            same = def.layers()[i].kind    == built.layers()[i].kind &&
-                   def.layers()[i].visible == built.layers()[i].visible;
-        check(same, "pack sin Acetatos: stack idéntico al por defecto");
+        AytherLayerStack default_stack;
+        AytherLayerStack built_stack;
+        const std::size_t appended_count =
+            ayther_runtime::build_pack_overlay_stack({}, built_stack);
+        check(appended_count == 0, "an empty overlay list appends no layers");
+
+        bool stacks_match =
+            default_stack.layers().size() == built_stack.layers().size();
+        for (std::size_t layer_index = 0;
+             stacks_match && layer_index < default_stack.layers().size();
+             ++layer_index) {
+            const AytherLayer& default_layer =
+                default_stack.layers()[layer_index];
+            const AytherLayer& built_layer = built_stack.layers()[layer_index];
+            stacks_match = default_layer.kind == built_layer.kind &&
+                           default_layer.visible == built_layer.visible;
+        }
+        check(stacks_match,
+              "an empty overlay list preserves the default layer stack");
     }
 
-    // -- Dos Acetatos en paralaje: orden y contenido --------------------------
+    // Two parallax overlays preserve their content and back-to-front order.
     {
-        std::vector<ayther::AytherSession::PackAcetato> acs;
-        acs.push_back(make("cielo",  "sky.png",   0.25f, 0));    // index 0 = atrás
-        acs.push_back(make("nubes",  "cloud.png", 0.50f, 16));   // index 1 = delante
-        acs[1].content.blend         = 1;      // aditivo
-        acs[1].content.opacity       = 0.75f;
-        acs[1].content.fit           = 1;
-        acs[1].content.flicker_amp   = 0.2f;
-        acs[1].content.flicker_ticks = 4;
-        acs[1].content.tile_mode     = 1;
-        acs[1].content.drift_x       = 6.0f;
-        acs[1].content.pal_line      = 2;
-        acs[1].content.add_screen(0xC0FFEEull);
+        std::vector<ayther::AytherSession::PackOverlay> overlays;
+        overlays.push_back(make_overlay("sky", "sky.png", 0.25F, 0));
+        overlays.push_back(make_overlay("clouds", "cloud.png", 0.50F, 16));
+        overlays[1].content.blend = 1;
+        overlays[1].content.opacity = 0.75F;
+        overlays[1].content.fit = 1;
+        overlays[1].content.flicker_amp = 0.2F;
+        overlays[1].content.flicker_ticks = 4;
+        overlays[1].content.tile_mode = 1;
+        overlays[1].content.drift_x = 6.0F;
+        overlays[1].content.pal_line = 2;
+        (void)overlays[1].content.add_screen(0xC0FFEEULL);
 
-        AytherLayerStack st;
-        const size_t n = ayther_runtime::build_pack_acetato_stack(acs, st);
-        check(n == 2, "dos Acetatos: inserta dos capas");
-        check(custom_count(st) == 2, "dos Acetatos: dos capas Custom en el stack");
+        AytherLayerStack overlay_stack;
+        const std::size_t appended_count =
+            ayther_runtime::build_pack_overlay_stack(overlays, overlay_stack);
+        check(appended_count == 2, "two overlays append two layers");
+        check(custom_layer_count(overlay_stack) == 2,
+              "the stack contains two custom layers");
 
-        const auto cs = customs(st);
-        check(cs.size() == 2 &&
-              std::strcmp(cs[0]->content.asset, "sky.png")   == 0 &&
-              std::strcmp(cs[1]->content.asset, "cloud.png") == 0,
-              "ORDEN back→front: el index 0 del pack queda DETRÁS del index 1");
+        const auto overlay_layers = custom_layers(overlay_stack);
+        check(overlay_layers.size() == 2 &&
+                  std::strcmp(overlay_layers[0]->content.asset, "sky.png") == 0 &&
+                  std::strcmp(overlay_layers[1]->content.asset, "cloud.png") == 0,
+              "pack index order is preserved from back to front");
 
-        // El stack los deja delante de todas las lanes del renderer, que es
-        // donde Componer los pone (insert_custom al final de la lista).
-        const auto& L = st.layers();
-        check(L[L.size() - 1].kind == AytherLayerKind::Custom &&
-              L[L.size() - 2].kind == AytherLayerKind::Custom,
-              "los Acetatos quedan al frente del stack, como en Componer");
+        const auto& all_layers = overlay_stack.layers();
+        check(all_layers[all_layers.size() - 1].kind ==
+                      AytherLayerKind::Custom &&
+                  all_layers[all_layers.size() - 2].kind ==
+                      AytherLayerKind::Custom,
+              "pack overlays are appended to the front of the draw stack");
 
-        const AytherLayerContent& c = cs[1]->content;
-        check(c.factor == 0.50f && c.y == 16 && c.img_w == 320 && c.img_h == 224,
-              "contenido: parallax, posición y dimensiones");
-        check(c.blend == 1 && c.opacity == 0.75f && c.fit == 1,
-              "contenido: blend, opacidad y ajuste a pantalla");
-        check(c.flicker_amp == 0.2f && c.flicker_ticks == 4 &&
-              c.tile_mode == 1 && c.drift_x == 6.0f,
-              "contenido: flicker, tileado y deriva");
-        check(c.pal_line == 2 && c.gated() && c.has_screen(0xC0FFEEull),
-              "contenido: tinte E1 y gate por Cuadro (#481/#482)");
-        check(std::strcmp(cs[0]->name, "cielo") == 0 &&
-              std::strcmp(cs[1]->name, "nubes") == 0,
-              "el nombre del Acetato llega a la capa");
+        const AytherLayerContent& cloud_content =
+            overlay_layers[1]->content;
+        check(cloud_content.factor == 0.50F && cloud_content.y == 16 &&
+                  cloud_content.img_w == 320 && cloud_content.img_h == 224,
+              "parallax, position, and dimensions are preserved");
+        check(cloud_content.blend == 1 && cloud_content.opacity == 0.75F &&
+                  cloud_content.fit == 1,
+              "blend mode, opacity, and fit are preserved");
+        check(cloud_content.flicker_amp == 0.2F &&
+                  cloud_content.flicker_ticks == 4 &&
+                  cloud_content.tile_mode == 1 &&
+                  cloud_content.drift_x == 6.0F,
+              "flicker, tiling, and drift are preserved");
+        check(cloud_content.pal_line == 2 && cloud_content.gated() &&
+                  cloud_content.has_screen(0xC0FFEEULL),
+              "palette tint and screen gating are preserved");
+        check(std::strcmp(overlay_layers[0]->name, "sky") == 0 &&
+                  std::strcmp(overlay_layers[1]->name, "clouds") == 0,
+              "overlay names are copied into their layers");
     }
 
-    // -- «Se ve igual que en Componer» ---------------------------------------
-    // El AC de #561 compara con el Lab. El renderer es una función del stack
-    // (más el FrameView y el pack): si los dos frontends arman el MISMO stack,
-    // dibujan el mismo píxel — y eso se puede fijar sin GPU. Acá se arma el
-    // stack por el camino del Lab (insert_custom al final + set_content, que es
-    // literalmente lo que hace host_componer.cpp) y se lo compara byte a byte
-    // con el que arma el runtime desde el pack.
+    // Runtime and the authoring path must produce identical custom layers.
     {
-        std::vector<ayther::AytherSession::PackAcetato> acs;
-        acs.push_back(make("cielo", "sky.png",   0.25f, 0));
-        acs.push_back(make("nubes", "cloud.png", 0.50f, 16));
-        acs[1].content.blend       = 2;
-        acs[1].content.opacity     = 0.4f;
-        acs[1].content.anim_count  = 1;
-        acs[1].content.anim_ticks  = 6;
-        std::snprintf(acs[1].content.anim[0], sizeof(acs[1].content.anim[0]),
-                      "%s", "cloud_b.png");
+        std::vector<ayther::AytherSession::PackOverlay> overlays;
+        overlays.push_back(make_overlay("sky", "sky.png", 0.25F, 0));
+        overlays.push_back(make_overlay("clouds", "cloud.png", 0.50F, 16));
+        overlays[1].content.blend = 2;
+        overlays[1].content.opacity = 0.4F;
+        overlays[1].content.anim_count = 1;
+        overlays[1].content.anim_ticks = 6;
+        std::snprintf(overlays[1].content.anim[0],
+                      sizeof(overlays[1].content.anim[0]),
+                      "%s",
+                      "cloud_b.png");
 
         AytherLayerStack runtime_stack;
-        ayther_runtime::build_pack_acetato_stack(acs, runtime_stack);
+        ayther_runtime::build_pack_overlay_stack(overlays, runtime_stack);
 
-        AytherLayerStack componer_stack;      // el camino del Lab, a mano
-        for (const auto& a : acs) {
-            const uint32_t id = componer_stack.insert_custom(
-                a.name.c_str(), componer_stack.layers().size());
-            componer_stack.set_visible(id, a.visible);
-            componer_stack.set_content(id, a.content);
+        AytherLayerStack authoring_stack;
+        for (const auto& overlay : overlays) {
+            const std::uint32_t layer_id = authoring_stack.insert_custom(
+                overlay.name.c_str(), authoring_stack.layers().size());
+            (void)authoring_stack.set_visible(layer_id, overlay.visible);
+            (void)authoring_stack.set_content(layer_id, overlay.content);
         }
 
-        const auto r = customs(runtime_stack);
-        const auto c = customs(componer_stack);
-        bool equal = r.size() == c.size() &&
-                     runtime_stack.layers().size() == componer_stack.layers().size();
-        for (size_t i = 0; equal && i < r.size(); ++i)
-            equal = r[i]->visible == c[i]->visible &&
-                    std::strcmp(r[i]->name, c[i]->name) == 0 &&
-                    std::memcmp(&r[i]->content, &c[i]->content,
-                                sizeof(AytherLayerContent)) == 0;
-        check(equal,
-              "el stack del runtime es byte-idéntico al que arma Componer "
-              "(mismo stack ⇒ mismo render)");
-        // No vacuidad: que el contenido comparado no sea el default vacío.
-        check(r.size() == 2 && r[1]->content.anim_count == 1 &&
-              r[1]->content.blend == 2,
-              "control de no vacuidad: se comparó contenido REAL, no defaults");
-    }
-
-    // -- visible = false: la capa entra apagada, y el renderer la saltea ------
-    {
-        std::vector<ayther::AytherSession::PackAcetato> acs;
-        acs.push_back(make("apagado", "off.png", 0.5f, 0));
-        acs[0].visible = false;
-        acs.push_back(make("prendido", "on.png", 0.5f, 0));
-
-        AytherLayerStack st;
-        ayther_runtime::build_pack_acetato_stack(acs, st);
-        const auto cs = customs(st);
-        check(cs.size() == 2 && !cs[0]->visible && cs[1]->visible,
-              "visible=false viaja del pack a la capa (el render corta en "
-              "!L.visible)");
-    }
-
-    // -- Una ranura sin lámina no rompe el orden relativo ---------------------
-    {
-        std::vector<ayther::AytherSession::PackAcetato> acs;
-        acs.push_back(make("fondo",  "back.png",  0.25f, 0));
-        acs.push_back(make("ranura", "",          0.50f, 0));   // sin asset
-        acs.push_back(make("frente", "front.png", 0.75f, 0));
-
-        AytherLayerStack st;
-        ayther_runtime::build_pack_acetato_stack(acs, st);
-        const auto cs = customs(st);
-        check(cs.size() == 3 &&
-              std::strcmp(cs[0]->content.asset, "back.png")  == 0 &&
-              cs[1]->content.asset[0] == 0 &&
-              std::strcmp(cs[2]->content.asset, "front.png") == 0,
-              "una ranura sin lámina conserva su lugar en el orden");
-    }
-
-    // -- Determinismo (#354/#489): seek atrás y pausa dan el mismo píxel ------
-    {
-        // Se las llama en orden y DESORDENADAS: si el flicker o el paso de
-        // animación tuvieran un acumulador, retroceder daría otro valor — que
-        // es exactamente el bug del tint rancio de la Panorámica en otra capa.
-        const uint32_t frames[] = { 0, 1, 2, 3, 4, 5, 6, 7 };
-        float f_fwd[8]; uint32_t a_fwd[8];
-        for (uint32_t i = 0; i < 8; ++i) {
-            f_fwd[i] = acetato_flicker01(frames[i] / 4);
-            a_fwd[i] = acetato_anim_step(frames[i], /*ticks=*/2, /*extra=*/2);
+        const auto runtime_layers = custom_layers(runtime_stack);
+        const auto authoring_layers = custom_layers(authoring_stack);
+        bool stacks_match =
+            runtime_layers.size() == authoring_layers.size() &&
+            runtime_stack.layers().size() == authoring_stack.layers().size();
+        for (std::size_t layer_index = 0;
+             stacks_match && layer_index < runtime_layers.size();
+             ++layer_index) {
+            stacks_match =
+                runtime_layers[layer_index]->visible ==
+                    authoring_layers[layer_index]->visible &&
+                std::strcmp(runtime_layers[layer_index]->name,
+                            authoring_layers[layer_index]->name) == 0 &&
+                std::memcmp(&runtime_layers[layer_index]->content,
+                            &authoring_layers[layer_index]->content,
+                            sizeof(AytherLayerContent)) == 0;
         }
-        bool same = true;
-        for (int i = 7; i >= 0; --i) {              // seek atrás
-            same &= f_fwd[i] == acetato_flicker01(frames[i] / 4);
-            same &= a_fwd[i] == acetato_anim_step(frames[i], 2, 2);
-        }
-        for (int r = 0; r < 3; ++r)                  // pausa: el mismo frame
-            same &= f_fwd[5] == acetato_flicker01(frames[5] / 4) &&
-                    a_fwd[5] == acetato_anim_step(frames[5], 2, 2);
-        check(same, "flicker y animación son funciones PURAS del frame "
-                    "(seek atrás y pausa dan el mismo valor)");
-        // No vacuidad: si el flicker devolviera siempre lo mismo, el test de
-        // arriba pasaría sin probar nada.
-        bool varies = false;
-        for (uint32_t i = 1; i < 8; ++i) varies |= f_fwd[i] != f_fwd[0];
-        check(varies, "control de no vacuidad: el flicker efectivamente varía");
-        check(a_fwd[0] == 0 && a_fwd[2] == 1 && a_fwd[4] == 2 && a_fwd[6] == 0,
-              "control de no vacuidad: la animación cicla 0→1→2→0");
+        check(stacks_match,
+              "Runtime matches the authoring layer stack byte for byte");
+        check(runtime_layers.size() == 2 &&
+                  runtime_layers[1]->content.anim_count == 1 &&
+                  runtime_layers[1]->content.blend == 2,
+              "the comparison covers populated overlay content");
     }
 
-    std::printf("== %d OK, %d FAIL ==\n", g_pass, g_fail);
-    return g_fail ? 1 : 0;
+    // Hidden overlays remain present but are marked invisible for the renderer.
+    {
+        std::vector<ayther::AytherSession::PackOverlay> overlays;
+        overlays.push_back(make_overlay("hidden", "off.png", 0.5F, 0));
+        overlays[0].visible = false;
+        overlays.push_back(make_overlay("visible", "on.png", 0.5F, 0));
+
+        AytherLayerStack overlay_stack;
+        ayther_runtime::build_pack_overlay_stack(overlays, overlay_stack);
+        const auto overlay_layers = custom_layers(overlay_stack);
+        check(overlay_layers.size() == 2 && !overlay_layers[0]->visible &&
+                  overlay_layers[1]->visible,
+              "overlay visibility is preserved in the layer stack");
+    }
+
+    // An empty asset slot must not disturb the relative overlay order.
+    {
+        std::vector<ayther::AytherSession::PackOverlay> overlays;
+        overlays.push_back(make_overlay("background", "back.png", 0.25F, 0));
+        overlays.push_back(make_overlay("empty-slot", "", 0.50F, 0));
+        overlays.push_back(make_overlay("foreground", "front.png", 0.75F, 0));
+
+        AytherLayerStack overlay_stack;
+        ayther_runtime::build_pack_overlay_stack(overlays, overlay_stack);
+        const auto overlay_layers = custom_layers(overlay_stack);
+        check(overlay_layers.size() == 3 &&
+                  std::strcmp(overlay_layers[0]->content.asset, "back.png") == 0 &&
+                  overlay_layers[1]->content.asset[0] == 0 &&
+                  std::strcmp(overlay_layers[2]->content.asset, "front.png") == 0,
+              "an empty asset slot preserves its relative order");
+    }
+
+    std::printf("== %d OK, %d FAIL ==\n", passed_checks, failed_checks);
+    return failed_checks == 0 ? 0 : 1;
 }

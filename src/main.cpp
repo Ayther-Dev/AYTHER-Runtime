@@ -36,7 +36,7 @@
 #include "vulkan_backend/vk_swapchain.h"
 #include "vulkan_backend/vk_present.h"
 #include "vulkan_backend/vk_postprocess.h"   // CRT presentation pass (samples the offscreen)
-#include "ayther_renderer.h"          // the motor's HD render layer (R3.1)
+#include <ayther/ayther_renderer.h>    // the motor's HD render layer (R3.1)
 #include "pack_layers.h"           // #561: el stack de Acetatos del pack
 #include "sonic_telemetry.h"       // Runtime-owned game-specific diagnostics
 #include "version_info.h"          // Runtime build version + linked Engine version
@@ -62,12 +62,16 @@ int main(int argc, char* argv[]) {
     // sesion imprime lo que hizo, no cuanto tardo. Con esto, el log de una
     // sesion lenta dice donde se fue el tiempo — que es la unica manera de
     // arreglarlo en la maquina de otro.
-    const auto t0 = std::chrono::steady_clock::now();
-    auto hito = [t0](const char* que) {
-        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - t0).count();
-        std::fprintf(stdout, "[tiempo] %6lld ms  %s\n", (long long)ms, que);
-    };
+    const auto startup_begin_time = std::chrono::steady_clock::now();
+    const auto log_startup_milestone =
+        [startup_begin_time](const char* milestone) {
+            const auto elapsed_ms =
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - startup_begin_time)
+                    .count();
+            std::fprintf(stdout, "[tiempo] %6lld ms  %s\n",
+                         static_cast<long long>(elapsed_ms), milestone);
+        };
 
     // Resolve Runtime-owned storage before core probing or SDL initialization.
     // Engine authoring configuration is intentionally outside this process.
@@ -264,22 +268,22 @@ int main(int argc, char* argv[]) {
     // SDL3 init — video, gamepad y audio de la sesion. Recien aca: los caminos
     // que salen antes (`--probe-core`, el uso) no tocan SDL.
     // -----------------------------------------------------------------------
-    hito("argumentos leidos");
+    log_startup_milestone("argumentos leidos");
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::fprintf(stderr, "SDL_Init(video) failed: %s\n", SDL_GetError());
         return 1;
     }
-    hito("SDL video");
+    log_startup_milestone("SDL video");
     if (!SDL_Init(SDL_INIT_GAMEPAD)) {
         std::fprintf(stderr, "SDL_Init(gamepad) failed: %s\n", SDL_GetError());
         return 1;
     }
-    hito("SDL gamepad");
+    log_startup_milestone("SDL gamepad");
     if (!SDL_Init(SDL_INIT_AUDIO)) {
         std::fprintf(stderr, "SDL_Init(audio) failed: %s\n", SDL_GetError());
         return 1;
     }
-    hito("SDL audio");
+    log_startup_milestone("SDL audio");
 
     // La sesion abre a PANTALLA COMPLETA (#627). Es un reproductor de juegos
     // que se usa desde el sillon: una ventana de 1280x720 en una esquina del
@@ -298,7 +302,7 @@ int main(int argc, char* argv[]) {
         SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_FULLSCREEN
     );
     const bool vulkan_window = (window != nullptr);
-    hito("ventana");
+    log_startup_milestone("ventana");
 
     if (!vulkan_window) {
         std::fprintf(stdout,
@@ -329,7 +333,7 @@ int main(int argc, char* argv[]) {
     // -----------------------------------------------------------------------
     VkContext vulkan;
     const bool has_vulkan = vulkan_window && vulkan.init(window);
-    hito("Vulkan");
+    log_startup_milestone("Vulkan");
     if (!has_vulkan) {
         std::fprintf(stdout,
             "[main] Vulkan context not available — running in Phase 1/2 mode\n");
@@ -556,11 +560,11 @@ int main(int argc, char* argv[]) {
     ayther::AytherRenderer renderer;
     bool renderer_ok = false;
     if (swap_ok) {
-        const FitRect cfit = aspect_fit(4, 3, swapchain.extent().width,
-                                              swapchain.extent().height);
+        const FitRect canvas_fit = aspect_fit(
+            4, 3, swapchain.extent().width, swapchain.extent().height);
         renderer_ok = renderer.init(
-            vulkan.engine_view(), static_cast<uint32_t>(cfit.w),
-            static_cast<uint32_t>(cfit.h), AYTHER_SHADER_DIR);
+            vulkan.engine_view(), static_cast<std::uint32_t>(canvas_fit.w),
+            static_cast<std::uint32_t>(canvas_fit.h), AYTHER_SHADER_DIR);
         if (!renderer_ok)
             std::fprintf(stderr, "[main] AytherRenderer::init failed — no HD render.\n");
         // #140: activar el tier del pack para la ALTURA del canvas ANTES de la
@@ -568,38 +572,40 @@ int main(int argc, char* argv[]) {
         // tier después no las recargaría). Packs legacy: no-op.
         if (const auto pack = sess->pack()) {
             pack.select_render_tier_for_height(
-                static_cast<std::uint32_t>(cfit.h));
+                static_cast<std::uint32_t>(canvas_fit.h));
             if (const auto tiers = pack.render_tiers(); !tiers.is_legacy())
                 std::fprintf(stdout,
                              "[main] Pack tiers 0x%x — canvas %dpx\n",
-                             tiers.bits(), static_cast<int>(cfit.h));
+                             tiers.bits(), static_cast<int>(canvas_fit.h));
         }
     }
     // -----------------------------------------------------------------------
-    // #561: los ACETATOS del pack — este runtime es el frontend de Play.
+    // #561: pack overlays — this runtime is the Play frontend.
     //
-    // La sesión los lee y los ofrece (pack_acetatos()); armar el stack es del
-    // que dibuja (#390). Sin esto un pack con Acetatos se jugaba SIN ellos: el
-    // Lab los mostraba en Componer y Play no.
+    // The session reads and exposes them through pack_overlays(); the frontend
+    // that renders them owns assembly of the layer stack (#390).
     //
-    // `layers_ptr` queda en nullptr cuando el pack no trae ninguno, así el
-    // render toma exactamente el camino de antes — un pack sin Acetatos no
-    // cambia un píxel por construcción, no por comparación.
+    // `active_layer_stack` remains null when a pack has no overlays so the
+    // renderer follows its default no-overlay path.
     // -----------------------------------------------------------------------
-    AytherLayerStack        pack_layers;
-    const AytherLayerStack* layers_ptr = nullptr;
-    auto rebuild_pack_layers = [&]() {
-        pack_layers = AytherLayerStack{};
-        layers_ptr  = nullptr;
-        if (!sess->has_pack()) return;
-        const size_t n = ayther_runtime::build_pack_acetato_stack(
-            sess->pack_acetatos(), pack_layers);
-        if (n) {
-            layers_ptr = &pack_layers;
-            std::fprintf(stdout, "[main] Acetatos del pack: %zu capas\n", n);
+    AytherLayerStack pack_layer_stack;
+    const AytherLayerStack* active_layer_stack = nullptr;
+    const auto rebuild_pack_layer_stack = [&]() {
+        pack_layer_stack = AytherLayerStack{};
+        active_layer_stack = nullptr;
+        if (!sess->has_pack()) {
+            return;
+        }
+        const std::size_t appended_overlay_count =
+            ayther_runtime::build_pack_overlay_stack(
+                sess->pack_overlays(), pack_layer_stack);
+        if (appended_overlay_count != 0U) {
+            active_layer_stack = &pack_layer_stack;
+            std::fprintf(stdout, "[main] Pack overlays: %zu layers\n",
+                         appended_overlay_count);
         }
     };
-    rebuild_pack_layers();
+    rebuild_pack_layer_stack();
 
     // (The HD sprite overlay now lives inside the renderer — it renders into the
     //  offscreen target alongside the emu frame + tiles.)
@@ -756,22 +762,26 @@ int main(int argc, char* argv[]) {
     // negarse a arrancar convertiria un guardado ilegible en un juego que no se
     // puede jugar.
     if (!load_state_arg.empty()) {
-        std::vector<uint8_t> estado;
-        bool leido = false;
-        if (std::FILE* f = std::fopen(load_state_arg.c_str(), "rb")) {
-            std::fseek(f, 0, SEEK_END);
-            const long n = std::ftell(f);
-            std::fseek(f, 0, SEEK_SET);
-            if (n > 0) {
-                estado.resize(static_cast<size_t>(n));
-                leido = std::fread(estado.data(), 1, estado.size(), f) == estado.size();
+        std::vector<std::uint8_t> loaded_state;
+        bool state_read_successfully = false;
+        if (std::FILE* state_file =
+                std::fopen(load_state_arg.c_str(), "rb")) {
+            std::fseek(state_file, 0, SEEK_END);
+            const long state_size = std::ftell(state_file);
+            std::fseek(state_file, 0, SEEK_SET);
+            if (state_size > 0) {
+                loaded_state.resize(static_cast<std::size_t>(state_size));
+                state_read_successfully =
+                    std::fread(loaded_state.data(), 1, loaded_state.size(),
+                               state_file) == loaded_state.size();
             }
-            std::fclose(f);
+            std::fclose(state_file);
         }
-        const bool ok = leido && sess && sess->unserialize(estado);
-        if (ok) {
+        const bool state_restored =
+            state_read_successfully && sess && sess->unserialize(loaded_state);
+        if (state_restored) {
             std::fprintf(stdout, "[main] reanudado desde %s (%zu bytes)\n",
-                         load_state_arg.c_str(), estado.size());
+                         load_state_arg.c_str(), loaded_state.size());
         } else {
             std::fprintf(stdout,
                          "AYTHER_STATUS {\"event\":\"warning\",\"reason\":"
@@ -922,7 +932,7 @@ int main(int argc, char* argv[]) {
                 // #561: el stack de Acetatos es del pack — se rearma con él
                 // (y se apaga si el pack se fue). Las texturas ya se
                 // evictaron arriba, así que las láminas nuevas se re-fetchean.
-                rebuild_pack_layers();
+                rebuild_pack_layer_stack();
             } else {
                 std::fprintf(stderr, "[main] Pack reload failed: %s\n",
                              rr.error.message.c_str());
@@ -1018,12 +1028,12 @@ int main(int argc, char* argv[]) {
                 bool split_ready = false;
                 if (split_on_ && hd_on_) {
                     renderer.render(vulkan.engine_view(), cmd, fv, pack,
-                                    /*hd=*/false, layers_ptr);
+                                    /*hd=*/false, active_layer_stack);
                     split_ready = renderer.capture_compare(
                         vulkan.engine_view(), cmd);
                 }
                 renderer.render(vulkan.engine_view(), cmd, fv, pack, hd_on_,
-                                layers_ptr);
+                                active_layer_stack);
 
                 // Present the offscreen HD frame: CRT post-process (samples it)
                 // when the shaders are present, else a plain blit. Both leave the
@@ -1064,11 +1074,11 @@ int main(int argc, char* argv[]) {
                     //     el canvas HD no entraría ni ×1 y «Pixel-perfect»
                     //     caería siempre a fit, que es no hacer nada.
                     const uint32_t emu_h_px = fv.fb_height ? fv.fb_height : kEmuH;
-                    const bool entero =
+                    const bool use_integer_scaling =
                         out_profile_->scaling
                             == ayther::runtime::OutputScaling::Integer;
                     const ayther::runtime::OutputRect r =
-                        entero
+                        use_integer_scaling
                             ? ayther::runtime::output_rect(
                                   *out_profile_, (emu_h_px * 4 + 1) / 3,
                                   emu_h_px, swapchain.extent().width,
@@ -1185,12 +1195,12 @@ int main(int argc, char* argv[]) {
                         if (const uint8_t* p0 =
                                 renderer.export_frame(
                                     vulkan.engine_view(), fv, pack,
-                                    /*hd=*/false, layers_ptr))
+                                    /*hd=*/false, active_layer_stack))
                             orig.assign(p0, p0 + static_cast<size_t>(ex.width) * ex.height * 4);
                         const uint8_t* p1 =
                             renderer.export_frame(
                                 vulkan.engine_view(), fv, pack,
-                                /*hd=*/true, layers_ptr);
+                                /*hd=*/true, active_layer_stack);
                         if (!orig.empty() && p1) {
                             ayther::CaptureMeta m;
                             m.game_id  = sess->game_id();
@@ -1326,64 +1336,93 @@ int main(int argc, char* argv[]) {
             //
             // La revision de la ROM va en el NOMBRE para que sobreviva a copiar
             // la carpeta, que es lo que la gente hace con sus guardados.
-            const auto& saves_dir = runtime_config.saves_directory();
+            const auto& saves_root = runtime_config.saves_directory();
 
-            auto sanear = [](const std::string& in) {
-                std::string o;
-                for (char ch : in)
-                    o += (std::isalnum(static_cast<unsigned char>(ch)) || ch == '-' || ch == '_')
-                             ? ch : '_';
-                return o.empty() ? std::string("sin_nombre") : o;
+            const auto sanitize_path_component = [](const std::string& value) {
+                std::string sanitized;
+                for (const char character : value) {
+                    sanitized +=
+                        (std::isalnum(
+                             static_cast<unsigned char>(character)) ||
+                         character == '-' || character == '_')
+                            ? character
+                            : '_';
+                }
+                return sanitized.empty() ? std::string("sin_nombre") : sanitized;
             };
             const std::string game_id = sess->game_id();
-            const std::string stem    = game_id.empty() ? "unknown" : game_id;
-            std::string perfil = sess->active_profile();
-            if (perfil.empty()) perfil = "original";
+            const std::string game_component =
+                game_id.empty() ? "unknown" : game_id;
+            std::string active_profile = sess->active_profile();
+            if (active_profile.empty()) {
+                active_profile = "original";
+            }
 
-            const auto dir = saves_dir / sanear(stem) / sanear(perfil);
-            std::error_code sec;
-            std::filesystem::create_directories(dir, sec);
+            const auto save_directory =
+                saves_root / sanitize_path_component(game_component) /
+                sanitize_path_component(active_profile);
+            std::error_code directory_error;
+            std::filesystem::create_directories(save_directory,
+                                                directory_error);
 
-            char cuando[32];
-            const std::time_t ahora = std::time(nullptr);
-            std::strftime(cuando, sizeof(cuando), "%Y%m%dT%H%M%SZ", std::gmtime(&ahora));
-            std::string crc = rom_crc32_arg.empty() ? "sinrev" : sanear(rom_crc32_arg);
-            for (char& ch : crc) ch = static_cast<char>(std::tolower(
-                static_cast<unsigned char>(ch)));
+            char timestamp[32];
+            const std::time_t now = std::time(nullptr);
+            std::strftime(timestamp, sizeof(timestamp), "%Y%m%dT%H%M%SZ",
+                          std::gmtime(&now));
+            std::string rom_revision =
+                rom_crc32_arg.empty()
+                    ? "sinrev"
+                    : sanitize_path_component(rom_crc32_arg);
+            for (char& character : rom_revision) {
+                character = static_cast<char>(std::tolower(
+                    static_cast<unsigned char>(character)));
+            }
 
-            const auto destino = dir / ("estado-" + std::string(cuando) + "-" + crc + ".bin");
-            const auto tmp     = destino.string() + ".tmp";
+            const auto destination_path =
+                save_directory /
+                ("estado-" + std::string(timestamp) + "-" + rom_revision +
+                 ".bin");
+            const auto temporary_path = destination_path.string() + ".tmp";
 
             // ATOMICO: temporal y rename. Escribir encima del guardado bueno
             // significa que entre el primer byte y el ultimo no hay partida, y
             // ese es justo el momento en que la consola se apaga.
-            bool ok = false;
-            if (std::FILE* f = std::fopen(tmp.c_str(), "wb")) {
-                ok = std::fwrite(state_data.data(), 1, state_data.size(), f)
-                         == state_data.size();
+            bool save_succeeded = false;
+            if (std::FILE* state_file =
+                    std::fopen(temporary_path.c_str(), "wb")) {
+                save_succeeded =
+                    std::fwrite(state_data.data(), 1, state_data.size(),
+                                state_file) == state_data.size();
                 // El fflush ANTES del fclose: sin el, un fclose que falle deja
                 // un temporal a medias que el rename convertiria en el
                 // guardado bueno.
-                if (ok) ok = std::fflush(f) == 0;
-                if (std::fclose(f) != 0) ok = false;
+                if (save_succeeded) {
+                    save_succeeded = std::fflush(state_file) == 0;
+                }
+                if (std::fclose(state_file) != 0) {
+                    save_succeeded = false;
+                }
             }
-            if (ok) {
-                std::error_code rec;
-                std::filesystem::rename(tmp, destino, rec);
-                ok = !rec;
-                if (!ok) std::filesystem::remove(tmp, rec);
+            if (save_succeeded) {
+                std::error_code rename_error;
+                std::filesystem::rename(temporary_path, destination_path,
+                                        rename_error);
+                save_succeeded = !rename_error;
+                if (!save_succeeded) {
+                    std::filesystem::remove(temporary_path, rename_error);
+                }
             } else {
-                std::error_code rec;
-                std::filesystem::remove(tmp, rec);
+                std::error_code remove_error;
+                std::filesystem::remove(temporary_path, remove_error);
             }
 
-            if (ok) {
-                savestate_path = destino.string();
+            if (save_succeeded) {
+                savestate_path = destination_path.string();
                 std::fprintf(stdout, "[main] guardado: %zu bytes -> %s\n",
                              state_data.size(), savestate_path.c_str());
             } else {
                 std::fprintf(stderr, "[main] no se pudo escribir el guardado: %s\n",
-                             destino.string().c_str());
+                             destination_path.string().c_str());
             }
         }
     }

@@ -6,22 +6,23 @@
 
 namespace ayther_runtime {
 
-size_t build_pack_acetato_stack(
-    const std::vector<ayther::AytherSession::PackAcetato>& acetatos,
-    AytherLayerStack&                              stack) {
-    size_t added = 0;
-    for (const ayther::AytherSession::PackAcetato& a : acetatos) {
-        // Una entrada sin lámina es una ranura de orden (mismo criterio que el
-        // Lab): entra igual, para que el orden relativo de las que sí dibujan
-        // sea el del pack.
-        const uint32_t id =
-            stack.insert_custom(a.name.c_str(), stack.layers().size());
-        if (!id) continue;
-        stack.set_visible(id, a.visible);
-        stack.set_content(id, a.content);
-        ++added;
+std::size_t build_pack_overlay_stack(
+    const std::vector<ayther::AytherSession::PackOverlay>& overlays,
+    AytherLayerStack& layer_stack) {
+    std::size_t appended_count = 0;
+    for (const ayther::AytherSession::PackOverlay& overlay : overlays) {
+        // An entry without an asset is still an ordering slot. Appending it
+        // preserves the pack's relative back-to-front ordering.
+        const std::uint32_t layer_id = layer_stack.insert_custom(
+            overlay.name.c_str(), layer_stack.layers().size());
+        if (layer_id == 0U) {
+            continue;
+        }
+        (void)layer_stack.set_visible(layer_id, overlay.visible);
+        (void)layer_stack.set_content(layer_id, overlay.content);
+        ++appended_count;
     }
-    return added;
+    return appended_count;
 }
 
 }  // namespace ayther_runtime

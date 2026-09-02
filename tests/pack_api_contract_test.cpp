@@ -1,12 +1,19 @@
 #include <ayther/engine/capabilities.hpp>
 #include <ayther/engine/pack.hpp>
+#include <ayther/ayther_session.h>
 
 #include <cstdio>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 static_assert(std::is_trivially_copyable_v<ayther::engine::PackView>);
 static_assert(!std::is_copy_constructible_v<ayther::engine::PackWatcher>);
 static_assert(std::is_nothrow_move_constructible_v<ayther::engine::PackWatcher>);
+static_assert(std::is_same_v<
+              decltype(std::declval<const ayther::AytherSession&>()
+                           .pack_overlays()),
+              const std::vector<ayther::AytherSession::PackOverlay>&>);
 
 int main() {
     const ayther::engine::PackView empty_pack;

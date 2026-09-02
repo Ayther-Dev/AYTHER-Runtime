@@ -272,6 +272,32 @@ add_test(
 )
 
 # ------------------------------------------------------------------
+# input_api_contract_tests — public normalized joypad boundary.
+#
+# The Runtime maps SDL state to this value type and does not include Engine's
+# Libretro implementation header.
+# ------------------------------------------------------------------
+add_executable(input_api_contract_tests
+    input_api_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/game_input.cpp
+)
+target_include_directories(input_api_contract_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+target_link_libraries(input_api_contract_tests PRIVATE
+    Ayther::engine
+    SDL3::SDL3
+)
+set_target_properties(input_api_contract_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    input_api_contract
+    COMMAND input_api_contract_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+# ------------------------------------------------------------------
 # render_image_view_api_tests — MIG-024: public Vulkan image handoff.
 #
 # It compiles only against the installed Ayther::engine target so Vulkan's
