@@ -101,8 +101,8 @@ dependency_matrix:
       thread_model: "The main emulation thread drives each session."
     target_state: >-
       Keep Session and FrameView as stable public contracts under a narrow
-      package target. Replace raw AyArchive exposure with typed pack views and
-      operations whose borrowing and invalidation rules are explicit.
+      package target. Complete: Session exposes a typed PackView with explicit
+      borrowing and invalidation rules instead of a raw archive handle.
     owner: "Engine"
     migration_status: "keep_public"
 
@@ -197,46 +197,51 @@ dependency_matrix:
     migration_status: "complete"
 
   - runtime_files: ["src/main.cpp"]
-    area: "Raw Core FFI and packs"
-    current_headers: ["ayther/ayther_core_ffi.h"]
+    area: "Typed Core and pack services"
+    current_headers:
+      - "ayther/engine/capabilities.hpp"
+      - "ayther/engine/pack.hpp"
+      - "ayther/ayther_session.h"
     current_symbols:
-      - "pack validation report functions"
-      - "pack watcher functions"
-      - "AyArchive and pack metadata functions"
-      - "pack tier selection"
-      - "Sonic work-RAM telemetry readers"
-      - "AytherShaderParams"
+      - "engine::core_abi_revision"
+      - "engine::validate_pack and PackValidationResult"
+      - "engine::PackWatcher"
+      - "engine::PackView and PackInfo"
+      - "engine::PackRenderTiers"
+      - "runtime::decode_sonic_telemetry"
     required_contract:
       validation: >-
         Validate before session creation. Errors reject the pack but preserve
-        original gameplay; warnings do not block use. Caller-owned reports must
-        be released.
+        original gameplay; warnings do not block use. Results own all findings
+        and require no paired release call.
       watcher: >-
-        Poll the pack file with 100 ms debounce. Destroy the watcher before the
-        session, Rust runtime, or Vulkan resources it may affect.
+        Poll the pack file with 100 ms debounce. The RAII watcher is destroyed
+        before the session, Rust runtime, or Vulkan resources it may affect.
       borrowing: >-
-        AyArchive and metadata strings are short-lived borrowed views and become
-        invalid after reload_pack().
+        PackView is non-owning and becomes invalid after reload_pack() or session
+        destruction. PackInfo copies metadata into caller-owned strings.
       tiering: "Select a tier by output height before texture loading and repeat after hot reload."
-      telemetry: "Game-specific RAM reads are human diagnostics only."
+      telemetry: >-
+        Game-specific RAM reads are human diagnostics only and are decoded from
+        a bounded work-RAM span by Runtime-owned code.
     target_state: >-
-      Publish RAII PackValidationResult, PackInfo, PackRenderTier, PackWatcher,
-      and EngineVersion APIs. Keep shader parameters as public POD in FrameView;
-      move game-specific RAM decoding to Runtime or remove it.
+      Complete: Engine publishes RAII PackValidationResult, PackInfo,
+      PackRenderTier, PackWatcher, PackView, and core ABI version queries;
+      Runtime owns game-specific RAM decoding.
     owner: "Engine, except game-specific telemetry owned by Runtime"
-    migration_status: "replace_public"
+    migration_status: "complete"
 
-  - runtime_files: ["src/lab_interface.h"]
+  - runtime_files: []
     area: "Legacy adapter"
-    current_headers: ["ayther/ayther_core_ffi.h"]
+    current_headers: []
     required_contract: >-
       The current executable only instantiates NullLabPlugin. Its arrays are
       borrowed views from the latest FrameView and no real consumer observes them.
     target_state: >-
-      Remove lab_interface.h and no-op calls. If telemetry remains necessary,
-      define a Runtime-local view built from the public FrameView.
+      Complete: lab_interface.h and its no-op calls were removed. Remaining
+      telemetry uses a Runtime-local value decoded from bounded session memory.
     owner: "Runtime"
-    migration_status: "remove"
+    migration_status: "complete"
 
   - runtime_files: ["src/pack_layers.h", "src/pack_layers.cpp"]
     area: "Renderer layers"
@@ -460,9 +465,9 @@ transitive_dependencies:
     engine_uses: ["ROM/patch/pack/assets", "current global configuration", "recording", "hot reload"]
     requirement: "Define path encoding, atomicity, error behavior, and lifetimes at the public boundary."
   dynamic_loading:
-    classification: "direct_currently"
-    owner: "Engine after migration"
-    requirement: "CoreProbe/Session must encapsulate platform loading and propagate required POSIX link dependencies."
+    classification: "transitive_only"
+    owner: "Engine"
+    requirement: "CoreProbe and Session encapsulate platform loading and propagate required POSIX link dependencies."
   vulkan:
     classification: "direct_and_publicly_transitive"
     owner: "Shared"
@@ -508,6 +513,8 @@ runtime_files_without_engine_dependency:
     dependencies: ["C++ filesystem/streams"]
   - files: ["src/game_input.h"]
     dependencies: ["SDL3 events/gamepad"]
+  - files: ["src/sonic_telemetry.h", "src/sonic_telemetry.cpp", "tests/sonic_telemetry_test.cpp"]
+    dependencies: ["C++ standard library"]
   - files: ["src/vulkan_backend/aspect_fit.h", "src/vulkan_backend/split_geometry.h"]
     dependencies: ["C++ standard library"]
   - files: ["tests/capture_test.cpp", "tests/diagnostics_test.cpp", "tests/player_config_test.cpp", "tests/split_geometry_test.cpp", "tests/probe_core_test.cmake"]
@@ -520,7 +527,7 @@ private_header_decisions:
   output_profile.h: "Removed as an Engine dependency; Runtime owns its local presentation policy."
   vulkan_backend/vk_context.h: "Runtime owns its local implementation; Engine's private header and implementation were removed."
   vulkan_backend/vk_texture.h: "Removed from Runtime; presentation consumes public RenderImageView."
-  ayther/ayther_core_ffi.h: "Hide raw operations behind Session, Pack, and EngineVersion APIs."
+  ayther/ayther_core_ffi.h: "Removed from Runtime; the C ABI remains explicit in Engine while Runtime uses Session, Pack, and capability APIs."
   ayther_renderer.h: "Promote a stable facade without exposing backend header closure."
   ayther/ayther_layers.h: "Keep descriptors and LayerStack as a narrow public contract."
   ayther/ayther_session.h: "Keep Session/FrameView public; remove raw FFI handles from returned values."
@@ -534,9 +541,10 @@ acceptance:
   transitive_filesystem_identified: true
   source_history_copied: false
   mig_025_runtime_vulkan_ownership: true
+  mig_027_typed_pack_boundary: true
+  runtime_raw_core_ffi_includes: 0
   source_remote_references_copied: false
   issue_references_in_deliverable: false
   remaining_design_decisions:
     - "Final names and granularity of Engine public targets."
-    - "Whether PackWatcher remains in Engine or moves to Runtime-native filesystem code."
     - "Validated ranges for bus_gain and subsystem masks."

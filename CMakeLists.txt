@@ -61,6 +61,7 @@ add_executable(ayther_runtime
     src/capture.cpp             # #300: synchronized comparison capture
     src/diagnostics.cpp         # #302: audiovisual diagnostics assistant
     src/pack_layers.cpp         # #561: pack overlay-layer stack
+    src/sonic_telemetry.cpp     # Runtime-only game RAM diagnostics
     # Runtime owns the complete window-side Vulkan lifetime and presentation
     # path. Engine receives only a borrowed VulkanContextView.
     src/vulkan_backend/vk_context.cpp

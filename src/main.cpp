@@ -11,12 +11,15 @@
 #include <cstdio>
 #include <fstream>
 #include <memory>
+#include <optional>
+#include <span>
 #include <cstdlib>                   // std::atoi (--frames), std::abort (--crash-test)
 #include <cinttypes>
 #include <ctime>
-#include "lab_interface.h"
 #include "runtime_config.h"
 #include <ayther/ayther_session.h>    // the motor facade (R2.3) — replaces direct host/audio
+#include <ayther/engine/capabilities.hpp>
+#include <ayther/engine/pack.hpp>
 #include "game_input.h"              // SDL keyboard/gamepad → RetroPad bitfield (M3)
 #include "vulkan_backend/aspect_fit.h"  // 4:3 canvas fit (pillarbox, no stretch)
 #include "player_overlay.h"         // in-game pause menu + HD↔Original toggle (M4)
@@ -29,9 +32,9 @@
 #include "vulkan_backend/vk_swapchain.h"
 #include "vulkan_backend/vk_present.h"
 #include "vulkan_backend/vk_postprocess.h"   // CRT presentation pass (samples the offscreen)
-#include <ayther/ayther_core_ffi.h>    // pack watcher, sonic RAM reads, core version
 #include "ayther_renderer.h"          // the motor's HD render layer (R3.1)
 #include "pack_layers.h"           // #561: el stack de Acetatos del pack
+#include "sonic_telemetry.h"       // Runtime-owned game-specific diagnostics
 #include "version_info.h"          // Runtime build version + linked Engine version
 // (vk_postprocess + the HD-tile cache + emu texture moved into the renderer;
 //  the STB_IMAGE_IMPLEMENTATION now lives in engine/tile_tex_cache.cpp.)
@@ -315,7 +318,7 @@ int main(int argc, char* argv[]) {
     // Rust ayther_core sanity check
     // -----------------------------------------------------------------------
     std::fprintf(stdout, "[main] ayther_core version: %u\n",
-                 ayther_core_version());
+                 ayther::engine::core_abi_revision());
 
     // -----------------------------------------------------------------------
     // Vulkan context
@@ -355,8 +358,8 @@ int main(int argc, char* argv[]) {
 
     // HD pack path — explicit --pack (the launcher passes it), else the dev
     // convention "<core stem>.ay" next to the core DLL (legacy .ae fallback,
-    // pre-rebrand). Kept here (not in the session) because the hot-reload
-    // watcher shares it + the Lab reads its size.
+    // pre-rebrand). Kept here because the Runtime-owned reload policy and its
+    // typed watcher share the exact path.
     std::string pack_path = pack_path_arg;
     if (pack_path.empty()) {
         const auto dot  = core_path_str.rfind('.');
@@ -379,29 +382,35 @@ int main(int argc, char* argv[]) {
     // subsistema que este build no conoce, un core distinto del que lo horneó).
     bool pack_rejected = false;
     if (!pack_path.empty() && std::filesystem::exists(pack_path)) {
-        AytherValidateCtx vctx{};
-        vctx.platform = nullptr;        // la sesión todavía no existe: no se sabe
+        ayther::engine::PackValidationContext validation_context;
+        // The session does not exist yet, so platform/core/ROM remain unknown
+        // and the validator reports them as unverified.
 #ifdef NDEBUG
-        vctx.release_build = true;
+        validation_context.release_build = true;
 #endif
-        if (AytherPackReport* rep = ayther_pack_validate(pack_path.c_str(), &vctx)) {
-            const uint32_t nf = ayther_pack_report_count(rep);
-            for (uint32_t i = 0; i < nf; ++i) {
-                const char* code = ayther_pack_report_code(rep, i);
-                const char* msg  = ayther_pack_report_message(rep, i);
-                std::fprintf(ayther_pack_report_severity(rep, i) == 0 ? stderr : stdout,
+        const auto validation = ayther::engine::validate_pack(
+            pack_path, validation_context);
+        if (!validation) {
+            std::fprintf(stderr, "[pack] validation failed: %s\n",
+                         validation.error.message.c_str());
+            pack_path.clear();
+            pack_rejected = true;
+        } else {
+            for (const auto& finding : validation->findings) {
+                const bool is_error = finding.is_error();
+                std::fprintf(is_error ? stderr : stdout,
                              "[pack] %s [%s] %s\n",
-                             ayther_pack_report_severity(rep, i) == 0 ? "ERROR" : "aviso",
-                             code ? code : "?", msg ? msg : "");
+                             is_error ? "ERROR" : "aviso",
+                             finding.code.empty() ? "?" : finding.code.c_str(),
+                             finding.message.c_str());
             }
-            if (ayther_pack_report_has_errors(rep)) {
+            if (validation->has_errors()) {
                 std::fprintf(stderr,
                     "[pack] el pack NO se carga por lo de arriba — el juego "
                     "corre igual, en original\n");
                 pack_path.clear();
                 pack_rejected = true;
             }
-            ayther_pack_report_free(rep);
         }
     }
 
@@ -515,28 +524,21 @@ int main(int argc, char* argv[]) {
         std::abort();   // prove the launcher survives an abnormal child exit
     }
 
-    uint64_t pack_bytes = 0;           // .ay file size for the Lab status bar
-    if (sess->has_pack()) {
-        try { pack_bytes = std::filesystem::file_size(pack_path); } catch (...) { pack_bytes = 0; }
-    }
-
     // -----------------------------------------------------------------------
     // Pack hotreload watcher  (v0.9.5) — frontend policy: watch the .ay file
     // and ask the session to reload. Debounces 100 ms to ride out multi-write
     // "atomic" saves (write temp → rename into place).
     // -----------------------------------------------------------------------
-    AytherPackWatcher* pack_watcher  = ayther_pack_watcher_new(pack_path.c_str());
-    Uint64             reload_due_ms = 0;   // non-zero while debounce is ticking
+    std::optional<ayther::engine::PackWatcher> pack_watcher;
+    if (!pack_path.empty()) {
+        auto watcher = ayther::engine::PackWatcher::create(pack_path);
+        if (watcher) {
+            pack_watcher.emplace(std::move(*watcher));
+        }
+    }
+    Uint64 reload_due_ms = 0;   // non-zero while debounce is ticking
     if (pack_watcher)
         std::fprintf(stdout, "[main] Pack watcher active: %s\n", pack_path.c_str());
-
-    // -----------------------------------------------------------------------
-    // Lab hooks — no-op. The in-process plugin (lab/ayther_lab_cpp) was removed;
-    // the standalone Ayther Lab replaced it. NullLabPlugin keeps the call sites
-    // below harmless until they're retired.
-    // -----------------------------------------------------------------------
-    NullLabPlugin lab_impl;
-    ILabPlugin&   lab = lab_impl;
 
     // -----------------------------------------------------------------------
     // AytherRenderer — the motor's HD visual layer (R3.1). Owns the emu texture,
@@ -560,13 +562,13 @@ int main(int argc, char* argv[]) {
         // #140: activar el tier del pack para la ALTURA del canvas ANTES de la
         // primera carga de texturas (los caches indexan por nombre — cambiar el
         // tier después no las recargaría). Packs legacy: no-op.
-        if (sess->pack()) {
-            ayther_pack_set_tier_for_height(sess->pack(),
-                                            static_cast<int>(cfit.h));
-            if (const uint8_t tm = ayther_pack_tiers(sess->pack()))
+        if (const auto pack = sess->pack()) {
+            pack.select_render_tier_for_height(
+                static_cast<std::uint32_t>(cfit.h));
+            if (const auto tiers = pack.render_tiers(); !tiers.is_legacy())
                 std::fprintf(stdout,
                              "[main] Pack tiers 0x%x — canvas %dpx\n",
-                             tm, static_cast<int>(cfit.h));
+                             tiers.bits(), static_cast<int>(cfit.h));
         }
     }
     // -----------------------------------------------------------------------
@@ -679,10 +681,8 @@ int main(int argc, char* argv[]) {
     const std::filesystem::path& cfg_dir =
         runtime_config.paths().configuration_directory();
     std::string cfg_pack_name;
-    if (sess->has_pack()) {
-        if (const char* nm = ayther_pack_meta_field(
-                const_cast<AyArchive*>(sess->pack()), "name"))
-            cfg_pack_name = nm;
+    if (const auto pack = sess->pack()) {
+        cfg_pack_name = pack.info().name;
     }
     const std::filesystem::path cfg_file =
         ayther::player_config_path(cfg_dir, sess->game_id(), cfg_pack_name);
@@ -725,10 +725,9 @@ int main(int argc, char* argv[]) {
         // eligio gana sobre lo que el pack recomienda, y si no ganara,
         // «recomendar» seria imponer con otro nombre.
         std::string pack_output;
-        if (sess->has_pack())
-            if (const char* r = ayther_pack_meta_field(
-                    const_cast<AyArchive*>(sess->pack()), "output"))
-                pack_output = r;
+        if (const auto pack = sess->pack()) {
+            pack_output = pack.info().recommended_output_profile;
+        }
         const std::string user_output =
             !output_arg.empty() ? output_arg : player_cfg.output;
         out_profile_ = &ayther::runtime::output_profile_resolve(
@@ -783,8 +782,6 @@ int main(int argc, char* argv[]) {
         while (SDL_PollEvent(&event)) {
             // M4: overlay consumes the event first (ImGui keyboard/gamepad nav).
             overlay.handle_event(event);
-            // Let Lab consume the event (ImGui input, window close, …).
-            lab.handle_sdl_event(event);
             input.handle_event(event);   // gamepad hotplug
 
             if (event.type == SDL_EVENT_QUIT) {
@@ -886,7 +883,7 @@ int main(int argc, char* argv[]) {
         // ---- Pack hotreload (v0.9.5) ----------------------------------------
         // poll() drains the OS event queue; set a 100 ms debounce timer on
         // the first change so multi-write saves don't trigger double reloads.
-        if (pack_watcher && ayther_pack_watcher_poll(pack_watcher)) {
+        if (pack_watcher && pack_watcher->poll()) {
             if (reload_due_ms == 0)
                 reload_due_ms = SDL_GetTicks() + 100;
         }
@@ -907,15 +904,13 @@ int main(int argc, char* argv[]) {
             // substitutors (and reloads scripts/init.lua). The frontend only had
             // to evict its GPU caches above.
             if (auto rr = sess->reload_pack(); rr) {
-                pack_bytes = 0;
                 if (sess->has_pack()) {
                     // #140: el reload re-abre el pack (tier default = el más
                     // alto) → re-activar el tier del canvas vigente.
-                    if (sess->pack() && renderer_ok)
-                        ayther_pack_set_tier_for_height(
-                            sess->pack(),
-                            static_cast<int>(renderer.render_image().extent.height));
-                    try { pack_bytes = std::filesystem::file_size(pack_path); } catch (...) {}
+                    if (const auto pack = sess->pack(); pack && renderer_ok) {
+                        pack.select_render_tier_for_height(
+                            renderer.render_image().extent.height);
+                    }
                     std::fprintf(stdout, "[main] Pack reloaded  game=%s\n", sess->game_id());
                 } else {
                     std::fprintf(stdout, "[main] Pack gone — continuing without assets\n");
@@ -925,14 +920,11 @@ int main(int argc, char* argv[]) {
                 // evictaron arriba, así que las láminas nuevas se re-fetchean.
                 rebuild_pack_layers();
             } else {
-                pack_bytes = 0;
                 std::fprintf(stderr, "[main] Pack reload failed: %s\n",
                              rr.error.message.c_str());
             }
         }
         // ---------------------------------------------------------------------
-
-        lab.on_tick_begin();
 
         // Advance the emulation. While paused, step() is frozen so the last
         // FrameView remains valid (its pointers live until the next step()).
@@ -987,53 +979,23 @@ int main(int argc, char* argv[]) {
             running = false;   // the authoritative exit status is emitted post-loop
         }
 
-        // 6. Feed tile + sprite + audio catalog data + frame snap to Lab (v0.7.0–v0.9.0).
-        {
-            LabFrameData lfd{};
-            lfd.occs               = fv.tile_occs;
-            lfd.occ_count          = fv.tile_occ_count;
-            lfd.subs               = fv.tile_subs;
-            lfd.sub_count          = fv.tile_sub_count;
-            lfd.unique_tile_count  = fv.unique_tile_count;
-            lfd.frame_index        = fv.frame_index;
-            // Frame snap for thumbnail extraction (v0.7.1).
-            // fv.fb_pixels is valid until the next sess->step().
-            lfd.snap_pixels        = fv.fb_pixels;
-            lfd.snap_w             = fv.fb_width;
-            lfd.snap_h             = fv.fb_height;
-            lfd.snap_pitch         = fv.fb_pitch;
-            lfd.snap_fmt           = static_cast<uint32_t>(fv.fb_format);
-            // Sprite catalog fields (v0.8.1).
-            lfd.sprite_occs          = fv.sprite_occs;
-            lfd.sprite_occ_count     = fv.sprite_occ_count;
-            lfd.unique_sprite_count  = fv.unique_sprite_count;
-            // Audio catalog fields (v0.9.0).
-            lfd.audio_occs          = fv.audio_occs;
-            lfd.audio_occ_count     = fv.audio_occ_count;
-            lfd.unique_audio_count  = fv.unique_audio_count;
-            // Performance telemetry (v0.9.7).
-            lfd.emu_fps         = fv.emu_fps;
-            lfd.tile_ms         = fv.tile_ms;
-            lfd.sprite_ms       = fv.sprite_ms;
-            lfd.audio_ms        = fv.audio_ms;
-            lfd.audio_drc_ratio = fv.drc_ratio;
-            lfd.pack_bytes      = pack_bytes;
-            lab.on_frame(lfd);
-        }
-
         // ----------------------------------------------------------------
         // Sonic RAM reads (debug overlay)
         // ----------------------------------------------------------------
-        const uint8_t* ram = sess->work_ram();
-        const size_t   rsz = sess->work_ram_size();
-        int16_t px = 0, py = 0, vx = 0, vy = 0;
-        const bool xy_ok  = ayther_sonic_read_xy      (ram, rsz, &px, &py);
-        const bool vel_ok = ayther_sonic_read_velocity(ram, rsz, &vx, &vy);
+        const auto telemetry = ayther::runtime::decode_sonic_telemetry(
+            std::span<const std::uint8_t>{sess->work_ram(),
+                                          sess->work_ram_size()});
+        const auto px = telemetry.x;
+        const auto py = telemetry.y;
+        const auto vx = telemetry.velocity_x;
+        const auto vy = telemetry.velocity_y;
+        const bool xy_ok = telemetry.has_position;
+        const bool vel_ok = telemetry.has_velocity;
 
         // ---- Vulkan present path ------------------------------------------
         if (swap_ok && renderer_ok && fv.fb_pixels) {
             if (swapchain.begin_frame(vulkan)) {
-                AyArchive*      pack = sess->pack();   // borrowed: HD asset source
+                const auto      pack = sess->pack();   // typed borrowed HD assets
                 VkCommandBuffer cmd  = swapchain.current_frame().cmd;
 
                 // The motor renders the emulator frame + HD tile/sprite subs
@@ -1229,9 +1191,9 @@ int main(int argc, char* argv[]) {
                             ayther::CaptureMeta m;
                             m.game_id  = sess->game_id();
                             m.pack_name = cfg_pack_name;
-                            if (sess->has_pack())
-                                if (const char* bid = ayther_pack_build_id(sess->pack()))
-                                    m.pack_build = bid;
+                            if (const auto current_pack = sess->pack()) {
+                                m.pack_build = current_pack.info().build_id;
+                            }
                             m.profile = sess->active_profile();
                             char ts[32];
                             const std::time_t now = std::time(nullptr);
@@ -1323,8 +1285,6 @@ int main(int argc, char* argv[]) {
             last_print_ms = now_ms;
         }
 
-        lab.render_overlay();
-        lab.on_tick_end();
         // (audio SFX reaping now happens inside AytherSession::step())
 
         {
@@ -1440,8 +1400,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Stop the file watcher before any Rust/Vulkan teardown.
-    ayther_pack_watcher_free(pack_watcher);
-    pack_watcher = nullptr;
+    pack_watcher.reset();
 
     // Export the tile catalog, then drop the session. Its destructor frees the
     // emulator host, every hasher/substitutor, the Lua script and the pack, and

@@ -198,6 +198,22 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
+add_executable(sonic_telemetry_tests
+    sonic_telemetry_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/sonic_telemetry.cpp
+)
+target_include_directories(sonic_telemetry_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+set_target_properties(sonic_telemetry_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    sonic_telemetry
+    COMMAND sonic_telemetry_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
 # ------------------------------------------------------------------
 # version_info_tests — MIG-001: versiones de Runtime y Engine.
 #
@@ -236,6 +252,23 @@ set_target_properties(core_probe_api_tests PROPERTIES
 add_test(
     NAME    core_probe_api
     COMMAND core_probe_api_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+# ------------------------------------------------------------------
+# pack_api_contract_tests — MIG-027: typed core/pack/watcher boundary.
+#
+# Compiles only against the installed Engine target. No raw C FFI header or
+# opaque core handle is visible to this Runtime consumer.
+# ------------------------------------------------------------------
+add_executable(pack_api_contract_tests pack_api_contract_test.cpp)
+target_link_libraries(pack_api_contract_tests PRIVATE Ayther::engine)
+set_target_properties(pack_api_contract_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    pack_api_contract
+    COMMAND pack_api_contract_tests
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 

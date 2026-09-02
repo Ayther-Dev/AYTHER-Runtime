@@ -74,12 +74,16 @@ with `AYTHER_STATUS `.
 4. **Single-threaded session driver.** The main emulation thread drives the
    session and renderer. Internally owned workers must stop and join before their
    resources are destroyed.
-5. **Explicit Vulkan ownership.** Runtime owns the instance, surface, physical
+5. **Typed pack boundary.** Runtime obtains the core ABI revision, owned pack
+   metadata and validation findings, render tiers, and reload events through
+   `ayther::engine` C++ APIs. `PackView` borrows from the session; `PackWatcher`
+   owns its watcher. Runtime does not include or release raw core FFI handles.
+6. **Explicit Vulkan ownership.** Runtime owns the instance, surface, physical
    and logical devices, queues, VMA allocator, swapchain, presentation, and UI
    resources. Engine owns only its offscreen renderer resources. The public
    `VulkanContextView` and `RenderImageView` values borrow handles; neither side
    destroys the other side's resources.
-6. **Single-purpose window.** The Runtime window contains gameplay and in-game
+7. **Single-purpose window.** The Runtime window contains gameplay and in-game
    controls only. Library management belongs to AYTHER Play.
 
 ## 4. Component map
@@ -93,11 +97,11 @@ with `AYTHER_STATUS `.
 | `src/capture.*` | Synchronized original/HD/comparison PNGs and non-content metadata. |
 | `src/diagnostics.*` | Pure diagnostic decision logic and Markdown report generation. |
 | `src/pack_layers.*` | Runtime-owned presentation stack derived from pack layers. |
+| `src/sonic_telemetry.*` | Bounds-checked Runtime-only decoding of game-specific work-RAM diagnostics. |
 | `src/vulkan_backend/vk_context.*` | Runtime-owned Vulkan instance, device, queues, surface, and VMA allocator; exports a borrowed Engine view. |
 | `src/vulkan_backend/vk_swapchain.*` | Swapchain and two-frames-in-flight synchronization. |
 | `src/vulkan_backend/vk_present.*` | Aspect-correct blit, split presentation, and layout transitions. |
 | `src/vulkan_backend/vk_postprocess.*` | CRT/post-process pipeline and fallback behavior. |
-| `src/lab_interface.h` | Legacy no-op adapter scheduled for removal. |
 
 ## 5. Session lifecycle
 

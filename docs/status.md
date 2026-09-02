@@ -20,7 +20,8 @@ There are currently:
 
 The source tree contains focused tests for Runtime path resolution, output
 profiles, player configuration, split geometry, capture metadata, pack-layer
-assembly, diagnostic decisions, and the real core-probe process contract. The
+assembly, typed pack/watcher APIs, bounded game telemetry, diagnostic decisions,
+and the real core-probe process contract. The
 standalone smoke bootstraps the pinned, attested Engine release and proves that
 Runtime can consume its CMake package
 without an Engine or monorepo checkout.
@@ -34,22 +35,23 @@ compatibility.
 
 ## Known technical gaps
 
-1. `Ayther::engine` exposes a broad first-party surface whose stability is not
-   guaranteed. Several Runtime responsibilities still depend on engine backend
-   types or raw FFI details.
-2. Normalized input should not require Runtime to include the full Libretro
+1. `Ayther::engine` remains provisional, although Runtime pack operations now
+   use typed `PackInfo`, `PackValidationResult`, `PackView`, and `PackWatcher`
+   contracts and no longer include the raw core FFI.
+2. The installed Engine package still omits `ayther_renderer.h` and the
+   Libretro constants/pack-layer declarations used by the full executable.
+   The isolated typed consumers pass, but the package-only Runtime executable
+   build remains blocked at those older publication boundaries.
+3. Normalized input should not require Runtime to include the full Libretro
    header. Core probing already uses the narrow public Engine `CoreProbe` API.
-3. Vulkan ownership needs a stable public interop structure and render-image
-   view with explicit handle, layout, and lifetime rules.
-4. `lab_interface.h` is a no-op legacy adapter and is scheduled for removal.
-5. Numeric CLI parsing does not consistently detect malformed values or
+4. Numeric CLI parsing does not consistently detect malformed values or
    overflow.
-6. Capture currently relies on an stb implementation that arrives indirectly
+5. Capture currently relies on an stb implementation that arrives indirectly
    through the broad engine target. Runtime should own that implementation or
    link a dedicated image writer explicitly.
-7. Manual staging of `tomlplusplus` should be verified against the actual link
+6. Manual staging of `tomlplusplus` should be verified against the actual link
    closure and removed if the executable no longer imports it.
-8. GPU-dependent integration coverage, compatibility matrices, packaging, and
+7. GPU-dependent integration coverage, compatibility matrices, packaging, and
    reproducible release automation are not yet established.
 
 The evidence and proposed ownership for these items are recorded in
