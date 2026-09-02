@@ -16,6 +16,9 @@ once stable compatibility guarantees are defined.
 
 ### Fixed
 
+- Core probing now uses the installed Engine `CoreProbe` RAII facade and its
+  JSON serialization; Runtime no longer includes Engine's unpublished dynamic
+  loader or Libretro metadata types.
 - Output-profile presets, filter selection, integer/fit scaling, and shader
   mixing now live entirely in Runtime under `ayther::runtime`; Runtime no
   longer consumes Engine's unpublished `output_profile.h`.

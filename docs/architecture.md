@@ -203,7 +203,8 @@ target_link_libraries(ayther_runtime PRIVATE Ayther::engine)
 
 The current `engine` surface is intentionally marked for narrowing. Runtime
 still consumes broad engine headers for session, renderer, Vulkan interop,
-Libretro probing, and pack operations. The detailed evidence and target
+input constants, and pack operations. Core probing is already isolated behind
+the public `ayther::engine::CoreProbe` contract. The detailed evidence and target
 ownership decisions live in
 [`runtime-engine-dependency-audit.yaml`](runtime-engine-dependency-audit.yaml).
 

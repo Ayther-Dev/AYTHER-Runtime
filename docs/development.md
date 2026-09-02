@@ -126,6 +126,7 @@ Current CTest coverage includes:
 | `capture` | image-source selection and metadata that excludes protected content |
 | `pack_layers` | default/custom layer composition and deterministic ordering |
 | `diagnostics` | pure recommendation rules without SDL or Vulkan |
+| `core_probe_api` | installed `CoreProbe` ownership, JSON, and loader-error contract |
 | `probe_core` | real process exit codes and one-line `AYTHER_STATUS` core-probe output |
 
 The test suite does not establish full GPU-driver compatibility, frame-perfect
@@ -169,8 +170,8 @@ post-process shaders into `build/bin/shaders/`.
 ## Debugging and diagnostics
 
 - Invoke Runtime without required arguments to print the implemented CLI usage.
-- Use `--probe-core <path>` to isolate dynamic-load and Libretro-symbol failures
-  without initializing SDL.
+- Use `--probe-core <path>` to exercise Engine's public RAII probe and isolate
+  dynamic-load and Libretro-symbol failures without initializing SDL.
 - Use `--frames N` for bounded development and CI sessions.
 - Use `--capture-at N[,M...]` for deterministic comparative captures.
 - Treat only complete `AYTHER_STATUS ` lines as launcher protocol; all other

@@ -75,12 +75,16 @@ the current implementation.
 Successful probe:
 
 ```json
-{"event":"probe","ok":true,"api":1,"library_name":"...","library_version":"...","valid_extensions":"..."}
+{"event":"probe","ok":true,"api":1,"library_name":"...","library_version":"...","valid_extensions":"...","need_fullpath":false,"block_extract":false}
 ```
 
 Failure reasons currently include `no_carga` (library load failure) and
 `no_es_libretro` (required Libretro symbols missing). These reason tokens are
 legacy wire values and MUST be treated as opaque identifiers.
+
+Engine owns the temporary dynamic-library handle, copies the Libretro metadata,
+and serializes it with JSON control-character escaping. Runtime adds only the
+launcher-facing `event` and `ok` fields plus the `AYTHER_STATUS` framing.
 
 ### `ready`
 
@@ -147,7 +151,3 @@ A Libretro core is native code loaded into the Runtime process. Probing reduces
 launcher exposure but does not sandbox the core. Callers should treat cores,
 ROMs, packs, patches, manifests, paths, and save states as untrusted input and
 apply distribution-appropriate validation and provenance controls.
-
-The current probe JSON escaping covers quotes and backslashes but not every JSON
-control character. Until this is fixed, launchers SHOULD reject malformed status
-JSON without attempting to repair or execute its contents.

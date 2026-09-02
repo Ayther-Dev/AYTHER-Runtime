@@ -37,14 +37,13 @@ compatibility.
 1. `Ayther::engine` exposes a broad first-party surface whose stability is not
    guaranteed. Several Runtime responsibilities still depend on engine backend
    types or raw FFI details.
-2. Core probing should move behind a narrow engine API, and normalized input
-   should not require Runtime to include the full Libretro header.
+2. Normalized input should not require Runtime to include the full Libretro
+   header. Core probing already uses the narrow public Engine `CoreProbe` API.
 3. Vulkan ownership needs a stable public interop structure and render-image
    view with explicit handle, layout, and lifetime rules.
 4. `lab_interface.h` is a no-op legacy adapter and is scheduled for removal.
 5. Numeric CLI parsing does not consistently detect malformed values or
-   overflow. The core-probe JSON escape path does not cover all control
-   characters.
+   overflow.
 6. Capture currently relies on an stb implementation that arrives indirectly
    through the broad engine target. Runtime should own that implementation or
    link a dedicated image writer explicitly.

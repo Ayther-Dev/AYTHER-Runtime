@@ -22,8 +22,7 @@
 #include "player_overlay.h"         // in-game pause menu + HD↔Original toggle (M4)
 #include "player_config.h"          // #299: lo que el panel ajusta y se recuerda
 #include "capture.h"                // #300: captura comparativa sincronizada
-#include "libretro_host/core_loader.h"  // #589: --probe-core carga el core y lo describe
-#include "libretro_host/libretro.h"     // #589: retro_system_info del sondeo
+#include <ayther/engine/core_probe.hpp>  // MIG-022: sondeo RAII publico del Engine
 #include "output_profile.h"         // #296: perfiles de salida (CRT/LCD/pixel)
 #include "diagnostics.h"            // #302: asistente de diagnostico
 #include "vulkan_backend/vk_context.h"
@@ -213,40 +212,25 @@ int main(int argc, char* argv[]) {
     // entera por el codigo de salida, en vez de llevarse el launcher puesto.
     // -----------------------------------------------------------------------
     if (!probe_core.empty()) {
-        CoreLoader probe;
-        if (!probe.load(probe_core)) {
+        auto probed = ayther::engine::probe_core(probe_core);
+        if (!probed) {
+            const bool invalid_core =
+                probed.error.code == ayther::ErrorCode::BadFormat;
+            std::fprintf(stderr, "[core-probe] %s\n",
+                         probed.error.message.c_str());
             std::fprintf(stdout,
-                "AYTHER_STATUS {\"event\":\"probe\",\"ok\":false,\"reason\":\"no_carga\"}\n");
+                "AYTHER_STATUS {\"event\":\"probe\",\"ok\":false,\"reason\":\"%s\"}\n",
+                invalid_core ? "no_es_libretro" : "no_carga");
             std::fflush(stdout);
-            return 2;
+            return invalid_core ? 3 : 2;
         }
-        auto api_fn  = probe.sym<unsigned (*)(void)>("retro_api_version");
-        auto info_fn = probe.sym<void (*)(retro_system_info*)>("retro_get_system_info");
-        if (!api_fn || !info_fn) {
-            std::fprintf(stdout,
-                "AYTHER_STATUS {\"event\":\"probe\",\"ok\":false,\"reason\":\"no_es_libretro\"}\n");
-            std::fflush(stdout);
-            return 3;
-        }
-        retro_system_info info{};
-        info_fn(&info);
-        // El nombre y las extensiones vienen del core, o sea de un tercero: se
-        // escapan. Un JSON roto aca se lee como «no se pudo sondear» sin decir
-        // por que.
-        auto esc = [](const char* raw) {
-            std::string out;
-            for (const char* p = raw ? raw : ""; *p; ++p) {
-                if (*p == '"' || *p == '\\') out.push_back('\\');
-                out.push_back(*p);
-            }
-            return out;
-        };
-        std::fprintf(stdout,
-            "AYTHER_STATUS {\"event\":\"probe\",\"ok\":true,\"api\":%u,"
-            "\"library_name\":\"%s\",\"library_version\":\"%s\","
-            "\"valid_extensions\":\"%s\"}\n",
-            api_fn(), esc(info.library_name).c_str(),
-            esc(info.library_version).c_str(), esc(info.valid_extensions).c_str());
+
+        // Engine serializa todos los valores que entrega el core. Runtime solo
+        // agrega el framing de proceso que consume Play; no interpreta ni
+        // conserva punteros Libretro prestados.
+        std::string payload = probed->serialize();
+        payload.insert(1, "\"event\":\"probe\",\"ok\":true,");
+        std::fprintf(stdout, "AYTHER_STATUS %s\n", payload.c_str());
         std::fflush(stdout);
         return 0;
     }

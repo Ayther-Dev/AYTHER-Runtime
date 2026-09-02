@@ -221,12 +221,31 @@ add_test(
 )
 
 # ------------------------------------------------------------------
+# core_probe_api_tests — MIG-022: installed public Engine probe facade.
+#
+# This test remains buildable while other private-header migrations keep the
+# complete Runtime executable from compiling against the narrowed package.
+# ------------------------------------------------------------------
+add_executable(core_probe_api_tests core_probe_api_test.cpp)
+target_link_libraries(core_probe_api_tests PRIVATE Ayther::engine)
+target_compile_definitions(core_probe_api_tests PRIVATE
+    AYTHER_MISSING_CORE_PATH="${CMAKE_CURRENT_BINARY_DIR}/missing-core")
+set_target_properties(core_probe_api_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    core_probe_api
+    COMMAND core_probe_api_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+# ------------------------------------------------------------------
 # probe_core — #589: el sondeo de cores que consume Play.
 #
 # Corre el binario del runtime en vez de compilar fuentes: lo que se
 # prueba es el CONTRATO de linea de comandos (codigo de salida + una
 # linea AYTHER_STATUS), que es exactamente lo que Play ve. Un test que
-# llamara a CoreLoader directo pasaria en verde con el contrato roto.
+# llamara a CoreProbe directo pasaria en verde con el contrato roto.
 #
 # El nombre de la DLL sale de core.lock para no repetirlo: el dia que
 # el fork cambie de version, cambia en un solo lugar.
