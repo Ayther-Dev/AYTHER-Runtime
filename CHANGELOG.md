@@ -16,6 +16,9 @@ once stable compatibility guarantees are defined.
 
 ### Fixed
 
+- Output-profile presets, filter selection, integer/fit scaling, and shader
+  mixing now live entirely in Runtime under `ayther::runtime`; Runtime no
+  longer consumes Engine's unpublished `output_profile.h`.
 - Runtime now discovers and resolves player configuration, save-state, capture,
   and diagnostic paths through local `RuntimePaths`/`RuntimeConfig` types,
   without including Engine's unpublished `ayther_config.h` or initializing SDL.

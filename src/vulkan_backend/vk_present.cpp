@@ -230,10 +230,11 @@ void VkPresent::blit_to_swapchain(VkContext& ctx, VkSwapchain& swap,
 
     // Aspect-correct blit src → a centered rect (4:3 content, black bars around).
     // #296: el perfil de salida decide como se escala.
-    const ayther::OutputProfile prof{
-        "", "", integer ? ayther::OutputScaling::Integer : ayther::OutputScaling::Fit,
+    const ayther::runtime::OutputProfile prof{
+        "", "", integer ? ayther::runtime::OutputScaling::Integer
+                          : ayther::runtime::OutputScaling::Fit,
         smooth, 0.0f, 0.0f, 0.0f };
-    const ayther::OutputRect r = ayther::output_rect(
+    const ayther::runtime::OutputRect r = ayther::runtime::output_rect(
         prof, src_extent.width, src_extent.height,
         swap.extent().width, swap.extent().height);
     const FitRect fit{ r.x, r.y, r.w, r.h };

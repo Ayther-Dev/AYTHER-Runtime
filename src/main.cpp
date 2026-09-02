@@ -1,5 +1,6 @@
 #include <SDL3/SDL.h>
 #include <cctype>
+#include <cstddef>
 #include <chrono>
 #include <string>
 #include <vector>
@@ -672,9 +673,10 @@ int main(int argc, char* argv[]) {
     bool hd_on_ = true;   // HD substitutions on by default; toggled by overlay or F1
     bool shaders_on_ = true;   // #299: post-proceso de presentación (CRT)
     // #296: el perfil de SALIDA activo. Puntero a la tabla estatica del
-    // Engine: cambiar de perfil es mover este puntero, y por eso no hay que
+    // Runtime: cambiar de perfil es mover este puntero, y por eso no hay que
     // reiniciar nada.
-    const ayther::OutputProfile* out_profile_ = &ayther::output_profile_default();
+    const ayther::runtime::OutputProfile* out_profile_ =
+        &ayther::runtime::output_profile_default();
     // #298: comparación con pantalla dividida. Apagada por default — cuesta un
     // segundo render por frame y no es el modo de jugar.
     bool  capture_req_    = false;   // #300: F12 pidio una captura
@@ -746,9 +748,9 @@ int main(int argc, char* argv[]) {
                 pack_output = r;
         const std::string user_output =
             !output_arg.empty() ? output_arg : player_cfg.output;
-        out_profile_ = &ayther::output_profile_resolve(user_output.c_str(),
-                                                       pack_output.c_str());
-        player_cfg.output = out_profile_->id;
+        out_profile_ = &ayther::runtime::output_profile_resolve(
+            user_output, pack_output);
+        player_cfg.output = std::string(out_profile_->id);
     }
 
     // Last valid FrameView — kept alive across paused frames (step() not called
@@ -825,17 +827,18 @@ int main(int argc, char* argv[]) {
                 // #296: F4 cicla el perfil de SALIDA. Sin reiniciar nada —
                 // cambiar de perfil es mover un puntero a la tabla estatica.
                 if (event.key.scancode == SDL_SCANCODE_F4) {
-                    uint32_t n = 0;
-                    const ayther::OutputProfile* all = ayther::output_profiles(&n);
-                    uint32_t cur = 0;
-                    for (uint32_t i = 0; i < n; ++i)
+                    const auto all = ayther::runtime::output_profiles();
+                    std::size_t cur = 0;
+                    for (std::size_t i = 0; i < all.size(); ++i)
                         if (&all[i] == out_profile_) cur = i;
-                    out_profile_ = &all[(cur + 1) % n];
+                    out_profile_ = &all[(cur + 1) % all.size()];
                     // Ciclar es ELEGIR: a partir de aca manda el usuario y
                     // no la recomendacion del pack.
-                    player_cfg.output = out_profile_->id;
+                    player_cfg.output = std::string(out_profile_->id);
                     ayther::player_config_save(cfg_file, player_cfg);
-                    std::fprintf(stdout, "[main] salida: %s\n", out_profile_->name);
+                    std::fprintf(stdout, "[main] salida: %.*s\n",
+                                 static_cast<int>(out_profile_->name.size()),
+                                 out_profile_->name.data());
                 }
                 if (event.key.scancode == SDL_SCANCODE_F3 && split_on_)
                     split_vertical_ = !split_vertical_;
@@ -1088,11 +1091,13 @@ int main(int argc, char* argv[]) {
                     // #296: el perfil ESCALA lo que el pack pidio y pone lo
                     // suyo cuando el pack no pidio nada. Las dos mitades de esa
                     // regla viven en `output_shader`, que se prueba sin GPU.
-                    const ayther::OutputShader fx =
+                    const ayther::runtime::OutputShader fx =
                         shaders_on_
-                            ? ayther::output_shader(*out_profile_, sp.crt_strength,
-                                                    sp.scan_strength, sp.vignette)
-                            : ayther::OutputShader{ 0.0f, 0.0f, 0.0f, 0.0f };
+                            ? ayther::runtime::output_shader(
+                                  *out_profile_, sp.crt_strength,
+                                  sp.scan_strength, sp.vignette)
+                            : ayther::runtime::OutputShader{
+                                  0.0f, 0.0f, 0.0f, 0.0f };
 
                     // Y el rect: el ESCALADO tambien es del perfil.
                     //
@@ -1109,15 +1114,18 @@ int main(int argc, char* argv[]) {
                     //     caería siempre a fit, que es no hacer nada.
                     const uint32_t emu_h_px = fv.fb_height ? fv.fb_height : kEmuH;
                     const bool entero =
-                        out_profile_->scaling == ayther::OutputScaling::Integer;
-                    const ayther::OutputRect r =
-                        entero ? ayther::output_rect(*out_profile_,
-                                                     (emu_h_px * 4 + 1) / 3, emu_h_px,
-                                                     swapchain.extent().width,
-                                                     swapchain.extent().height)
-                               : ayther::output_rect(*out_profile_, 4, 3,
-                                                     swapchain.extent().width,
-                                                     swapchain.extent().height);
+                        out_profile_->scaling
+                            == ayther::runtime::OutputScaling::Integer;
+                    const ayther::runtime::OutputRect r =
+                        entero
+                            ? ayther::runtime::output_rect(
+                                  *out_profile_, (emu_h_px * 4 + 1) / 3,
+                                  emu_h_px, swapchain.extent().width,
+                                  swapchain.extent().height)
+                            : ayther::runtime::output_rect(
+                                  *out_profile_, 4, 3,
+                                  swapchain.extent().width,
+                                  swapchain.extent().height);
                     postprocess.apply(vulkan, swapchain,
                         static_cast<float>(swapchain.extent().width),
                         static_cast<float>(swapchain.extent().height),
@@ -1137,7 +1145,8 @@ int main(int argc, char* argv[]) {
                     VkPresent::blit_to_swapchain(
                         vulkan, swapchain,
                         renderer.framebuffer_image(), renderer.framebuffer_extent(),
-                        out_profile_->scaling == ayther::OutputScaling::Integer,
+                        out_profile_->scaling
+                            == ayther::runtime::OutputScaling::Integer,
                         out_profile_->smoothing);
                 }
 

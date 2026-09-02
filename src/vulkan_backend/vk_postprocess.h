@@ -46,7 +46,8 @@ class VkSwapchain;
 
 /// Output-profile destination rectangle in swapchain pixels (#296).
 ///
-/// The caller computes this with the GPU-independent `ayther::output_rect`
+/// The caller computes this with the GPU-independent
+/// `ayther::runtime::output_rect`
 /// policy. Keeping policy outside the Vulkan backend makes it directly testable.
 ///
 /// Zero width or height requests the legacy 4:3 aspect-fit fallback.

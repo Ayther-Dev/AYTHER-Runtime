@@ -51,6 +51,25 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
+# ------------------------------------------------------------------
+# output_profile_tests — MIG-021: Runtime-owned presentation policy.
+#
+# Profiles, scaling geometry, filtering, and shader mixing are pure window
+# policy. This target links neither Engine nor Vulkan and must stay that way.
+# ------------------------------------------------------------------
+add_executable(output_profile_tests output_profile_test.cpp)
+target_include_directories(output_profile_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+set_target_properties(output_profile_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    output_profile
+    COMMAND output_profile_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
 # stb_image_write.h (capture_tests): header-only. Se busca el ARCHIVO y no el
 # paquete `Stb`: ese Find module lo inyecta el toolchain de vcpkg, y fuera del
 # monorepo el runtime se configura contra un prefijo, sin toolchain.

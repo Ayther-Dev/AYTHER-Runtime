@@ -24,8 +24,8 @@ audit:
       - "engine/include"
       - "engine/CMakeLists.txt"
       - "cmake"
-    direct_engine_headers: 9
-    direct_runtime_to_engine_include_edges: 20
+    direct_engine_headers: 8
+    direct_runtime_to_engine_include_edges: 18
     engine_source_includes: 0
     relative_engine_includes: 0
     private_or_internal_path_includes: 0
@@ -147,17 +147,17 @@ dependency_matrix:
     owner: "Shared: Runtime maps devices; Engine owns Libretro adaptation"
     migration_status: "replace_public"
 
-  - runtime_files: ["src/main.cpp"]
+  - runtime_files: ["src/main.cpp", "src/output_profile.h", "tests/output_profile_test.cpp"]
     area: "Output profiles"
-    current_headers: ["output_profile.h"]
+    current_headers: ["src/output_profile.h"]
     current_symbols:
-      - "OutputProfile"
-      - "OutputScaling"
-      - "OutputShader"
-      - "output_profiles"
-      - "output_profile_resolve"
-      - "output_rect"
-      - "output_shader"
+      - "ayther::runtime::OutputProfile"
+      - "ayther::runtime::OutputScaling"
+      - "ayther::runtime::OutputShader"
+      - "ayther::runtime::output_profiles"
+      - "ayther::runtime::output_profile_resolve"
+      - "ayther::runtime::output_rect"
+      - "ayther::runtime::output_shader"
     required_contract:
       ids: ["lcd", "crt", "pixel", "smooth", "cinema", "ntsc"]
       default: "lcd"
@@ -169,9 +169,12 @@ dependency_matrix:
         When pack CRT values are nonzero, scale the authored CRT, scanline, and
         vignette values. Otherwise use profile base values. NTSC is absolute.
       persistence: "PlayerConfig.output stores the stable profile id."
-    target_state: "Move output policy, geometry, and shader mixing to Runtime."
+    target_state: >-
+      Runtime owns immutable profile presets, selection precedence, output
+      geometry, filter choice, and shader mixing. The policy is Vulkan-free and
+      links neither SDL nor Engine in its test target.
     owner: "Runtime"
-    migration_status: "move_to_runtime"
+    migration_status: "complete"
 
   - runtime_files: ["src/main.cpp"]
     area: "Vulkan context and renderer interop"
@@ -287,7 +290,7 @@ dependency_matrix:
 
   - runtime_files: ["src/vulkan_backend/vk_present.cpp", "src/vulkan_backend/vk_present.h"]
     area: "Presentation and output profiles"
-    current_headers: ["vulkan_backend/vk_context.h", "vulkan_backend/vk_texture.h", "output_profile.h"]
+    current_headers: ["vulkan_backend/vk_context.h", "vulkan_backend/vk_texture.h", "src/output_profile.h"]
     required_contract:
       layouts:
         renderer_source: "SHADER_READ_ONLY -> TRANSFER_SRC -> SHADER_READ_ONLY"
@@ -495,6 +498,8 @@ transitive_dependencies:
     requirement: "Keep translation units self-contained; never rely on transitive SDL or Engine includes."
 
 runtime_files_without_engine_dependency:
+  - files: ["src/output_profile.h", "tests/output_profile_test.cpp"]
+    dependencies: ["C++ standard library"]
   - files: ["src/runtime_config.h", "src/runtime_config.cpp", "tests/runtime_config_test.cpp"]
     dependencies: ["C++ standard library"]
   - files: ["src/capture.h", "src/capture.cpp"]
@@ -514,7 +519,7 @@ private_header_decisions:
   ayther_config.h: "Removed; RuntimeConfig and RuntimePaths own Runtime persistence locations."
   libretro_host/core_loader.h: "Replace with public CoreProbe."
   libretro_host/libretro.h: "Hide behind CoreProbe and EngineInputButton."
-  output_profile.h: "Move presentation policy to Runtime."
+  output_profile.h: "Removed as an Engine dependency; Runtime owns its local presentation policy."
   vulkan_backend/vk_context.h: "Replace with public interop; move presentation ownership to Runtime."
   vulkan_backend/vk_texture.h: "Remove unused includes and replace remaining use with RenderImageView."
   ayther/ayther_core_ffi.h: "Hide raw operations behind Session, Pack, and EngineVersion APIs."

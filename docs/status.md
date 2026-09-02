@@ -18,11 +18,11 @@ There are currently:
 
 ## Verified today
 
-The source tree contains focused tests for Runtime path resolution, player
-configuration, split geometry, capture metadata, pack-layer assembly,
-diagnostic decisions, and the real core-probe process contract. The standalone
-smoke bootstraps the pinned,
-attested Engine release and proves that Runtime can consume its CMake package
+The source tree contains focused tests for Runtime path resolution, output
+profiles, player configuration, split geometry, capture metadata, pack-layer
+assembly, diagnostic decisions, and the real core-probe process contract. The
+standalone smoke bootstraps the pinned, attested Engine release and proves that
+Runtime can consume its CMake package
 without an Engine or monorepo checkout.
 
 A clean vcpkg manifest installation resolves the complete native dependency
@@ -41,18 +41,16 @@ compatibility.
    should not require Runtime to include the full Libretro header.
 3. Vulkan ownership needs a stable public interop structure and render-image
    view with explicit handle, layout, and lifetime rules.
-4. Runtime presentation policy still needs to move fully out of Engine-facing
-   types. Runtime configuration and persistence paths are already Runtime-owned.
-5. `lab_interface.h` is a no-op legacy adapter and is scheduled for removal.
-6. Numeric CLI parsing does not consistently detect malformed values or
+4. `lab_interface.h` is a no-op legacy adapter and is scheduled for removal.
+5. Numeric CLI parsing does not consistently detect malformed values or
    overflow. The core-probe JSON escape path does not cover all control
    characters.
-7. Capture currently relies on an stb implementation that arrives indirectly
+6. Capture currently relies on an stb implementation that arrives indirectly
    through the broad engine target. Runtime should own that implementation or
    link a dedicated image writer explicitly.
-8. Manual staging of `tomlplusplus` should be verified against the actual link
+7. Manual staging of `tomlplusplus` should be verified against the actual link
    closure and removed if the executable no longer imports it.
-9. GPU-dependent integration coverage, compatibility matrices, packaging, and
+8. GPU-dependent integration coverage, compatibility matrices, packaging, and
    reproducible release automation are not yet established.
 
 The evidence and proposed ownership for these items are recorded in

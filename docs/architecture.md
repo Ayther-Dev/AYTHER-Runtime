@@ -138,6 +138,10 @@ The snippet is conceptual and intentionally omits error and fallback branches.
 
 Presentation rules:
 
+- `ayther::runtime::OutputProfile` owns the `lcd`, `crt`, `pixel`, `smooth`,
+  `cinema`, and `ntsc` presets, including filtering, scaling, and shader mixing.
+  Engine provides authored effect values and an optional recommendation id, but
+  knows no Runtime window profile or filter type.
 - Output is pillarboxed or letterboxed without stretching.
 - Integer scaling falls back to fit when a 1x image cannot fit; it does not crop.
 - Renderer images return to `SHADER_READ_ONLY_OPTIMAL` after transfer use.
@@ -161,6 +165,10 @@ Configuration is applied from least to most specific:
 Session-creation inputs such as the core path, ROM path, patch, and core options
 are immutable after `AytherSession::create()`. Runtime controls such as output
 profile, HD mode, subsystem mask, and bus state may change during the session.
+
+For output presentation specifically, Runtime applies its neutral LCD default,
+then a recognized pack recommendation, then a recognized persisted or explicit
+user choice. Unknown ids fall through without invalidating the session.
 
 The `--manifest` path is correlation metadata only. Runtime deliberately does
 not parse it; AYTHER Play remains the single translator from a launch manifest
