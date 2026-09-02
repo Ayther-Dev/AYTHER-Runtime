@@ -1,6 +1,8 @@
 #include "sonic_telemetry.h"
 
 #include <cstddef>
+#include <cstdint>
+#include <span>
 
 namespace ayther::runtime {
 namespace {

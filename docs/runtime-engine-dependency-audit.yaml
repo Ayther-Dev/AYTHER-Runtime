@@ -498,7 +498,9 @@ transitive_dependencies:
     owner: "Runtime"
     evidence:
       - "main.cpp directly includes chrono, memory, and cctype for the symbols it uses."
-      - "runtime_config.cpp directly includes its environment, ownership, error, and move dependencies."
+      - "Runtime implementation files directly include fixed-width integers, filesystem, error, stream, container, and utility facilities they use."
+      - "All Runtime headers except pack_layers.h compile as the first include of an empty translation unit; pack_layers.h reaches the separately recorded PackAcetato package-API mismatch, not a missing standard declaration."
+      - "Runtime tests directly include the standard types used by their assertions and fixtures."
     requirement: "Keep translation units self-contained; never rely on transitive SDL or Engine includes."
 
 runtime_files_without_engine_dependency:
@@ -544,6 +546,7 @@ acceptance:
   mig_025_runtime_vulkan_ownership: true
   mig_027_typed_pack_boundary: true
   mig_030_runtime_owns_stbi_write_png: true
+  mig_032_explicit_standard_includes: true
   runtime_raw_core_ffi_includes: 0
   source_remote_references_copied: false
   issue_references_in_deliverable: false

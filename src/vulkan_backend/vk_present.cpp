@@ -5,6 +5,8 @@
 #include "split_geometry.h"
 #include "output_profile.h"   // #296: escalado y filtro del perfil   // #298: la geometria del split, testeable sin GPU
 
+#include <cstdint>
+
 // Note: the current swapchain VkImage is cached in VkSwapchain::images_ —
 // we fetch it via swap.current_image().  This removes the 6 redundant
 // vkGetSwapchainImagesKHR calls per frame the old helper used to do.

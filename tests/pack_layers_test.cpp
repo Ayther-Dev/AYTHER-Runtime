@@ -18,6 +18,8 @@
 // ---------------------------------------------------------------------------
 #include "pack_layers.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <vector>

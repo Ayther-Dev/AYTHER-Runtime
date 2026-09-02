@@ -5,6 +5,7 @@
 
 #include <cstdio>
 #include <sstream>
+#include <string>
 
 namespace ayther {
 

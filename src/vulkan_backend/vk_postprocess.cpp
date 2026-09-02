@@ -27,6 +27,8 @@
 #include "vk_swapchain.h"
 #include "aspect_fit.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <vector>

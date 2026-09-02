@@ -1,8 +1,10 @@
 #include "vk_swapchain.h"
 #include "vulkan_backend/vk_context.h"
 #include <VkBootstrap.h>
-#include <cstdio>
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
 
 // ---------------------------------------------------------------------------
 // helpers

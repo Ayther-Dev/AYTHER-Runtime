@@ -35,6 +35,7 @@
 // ---------------------------------------------------------------------------
 #include <vulkan/vulkan.h>
 #include <SDL3/SDL_events.h>
+#include <cstdint>
 #include <vector>
 
 #include "player_config.h"   // #299: preferences edited and persisted by the panel

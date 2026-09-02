@@ -15,6 +15,7 @@
 #include <imgui_impl_vulkan.h>
 
 #include <SDL3/SDL.h>
+#include <cstdint>
 #include <cstdio>
 #include <string>
 

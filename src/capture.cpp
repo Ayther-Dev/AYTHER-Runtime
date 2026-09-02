@@ -3,10 +3,18 @@
 // ---------------------------------------------------------------------------
 #include "capture.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
+#include <initializer_list>
+#include <ios>
 #include <sstream>
+#include <string>
+#include <system_error>
+#include <vector>
 
 // Runtime owns its PNG writer. Keep stb's definitions local to this translation
 // unit so they cannot collide with, or be satisfied by, implementation details

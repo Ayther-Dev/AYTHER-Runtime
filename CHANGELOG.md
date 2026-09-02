@@ -16,6 +16,9 @@ once stable compatibility guarantees are defined.
 
 ### Fixed
 
+- Runtime sources and tests now include the standard-library headers for every
+  directly used type or facility instead of inheriting them from Engine, SDL,
+  Vulkan, or another project header.
 - Core probing now uses the installed Engine `CoreProbe` RAII facade and its
   JSON serialization; Runtime no longer includes Engine's unpublished dynamic
   loader or Libretro metadata types.

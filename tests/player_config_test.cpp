@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <string>
+#include <system_error>
 
 namespace {
 

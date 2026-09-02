@@ -1,5 +1,9 @@
 #include "pack_layers.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <vector>
+
 namespace ayther_runtime {
 
 size_t build_pack_acetato_stack(

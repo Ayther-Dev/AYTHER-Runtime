@@ -1,6 +1,8 @@
 #include "runtime_config.h"
 
+#include <cstddef>
 #include <cstdlib>
+#include <filesystem>
 #include <memory>
 #include <system_error>
 #include <utility>

@@ -1,6 +1,7 @@
 #include "game_input.h"
 #include "libretro_host/libretro.h"   // RETRO_DEVICE_ID_JOYPAD_* (via ayther_engine)
 
+#include <cstdint>
 #include <cstdio>
 #include <SDL3/SDL_keyboard.h>
 

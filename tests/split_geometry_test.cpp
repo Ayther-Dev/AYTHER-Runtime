@@ -12,6 +12,7 @@
 // ---------------------------------------------------------------------------
 #include "vulkan_backend/split_geometry.h"
 
+#include <cstdint>
 #include <cstdio>
 
 namespace {

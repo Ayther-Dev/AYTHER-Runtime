@@ -4,9 +4,15 @@
 #include "player_config.h"
 
 #include <cctype>
+#include <cstddef>
+#include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
+#include <ios>
 #include <sstream>
+#include <string>
+#include <system_error>
 
 namespace ayther {
 namespace {

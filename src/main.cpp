@@ -1,6 +1,7 @@
 #include <SDL3/SDL.h>
 #include <cctype>
 #include <cstddef>
+#include <cstdint>
 #include <chrono>
 #include <string>
 #include <vector>
@@ -10,9 +11,12 @@
 #include <SDL3/SDL_vulkan.h>
 #include <cstdio>
 #include <fstream>
+#include <ios>
 #include <memory>
 #include <optional>
 #include <span>
+#include <system_error>
+#include <utility>
 #include <cstdlib>                   // std::atoi (--frames), std::abort (--crash-test)
 #include <cinttypes>
 #include <ctime>
