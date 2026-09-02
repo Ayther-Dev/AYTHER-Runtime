@@ -1,4 +1,6 @@
 #include <SDL3/SDL.h>
+#include <cctype>
+#include <chrono>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -7,11 +9,12 @@
 #include <SDL3/SDL_vulkan.h>
 #include <cstdio>
 #include <fstream>
+#include <memory>
 #include <cstdlib>                   // std::atoi (--frames), std::abort (--crash-test)
 #include <cinttypes>
 #include <ctime>
-#include "ayther_config.h"
 #include "lab_interface.h"
+#include "runtime_config.h"
 #include <ayther/ayther_session.h>    // the motor facade (R2.3) — replaces direct host/audio
 #include "game_input.h"              // SDL keyboard/gamepad → RetroPad bitfield (M3)
 #include "vulkan_backend/aspect_fit.h"  // 4:3 canvas fit (pillarbox, no stretch)
@@ -60,10 +63,12 @@ int main(int argc, char* argv[]) {
         std::fprintf(stdout, "[tiempo] %6lld ms  %s\n", (long long)ms, que);
     };
 
-    // Load (or create) persistent user configuration.
-    AytherConfig config = AytherConfig::load();
-    std::fprintf(stdout, "[Config] Loaded from %s\n",
-                 AytherConfig::config_file().string().c_str());
+    // Resolve Runtime-owned storage before core probing or SDL initialization.
+    // Engine authoring configuration is intentionally outside this process.
+    const ayther::runtime::RuntimePaths runtime_paths =
+        ayther::runtime::RuntimePaths::discover();
+    std::fprintf(stdout, "[Config] Runtime data: %s\n",
+                 runtime_paths.user_data_directory().string().c_str());
 
     // SDL se inicializa DESPUES de leer los argumentos (mas abajo, junto a la
     // ventana). Estaba aca arriba, y eso le cobraba a `--probe-core` y a
@@ -190,6 +195,8 @@ int main(int argc, char* argv[]) {
         if (core_path_str.empty() && pos.size() >= 1) core_path_str = pos[0];
         if (rom_path_str.empty()  && pos.size() >= 2) rom_path_str  = pos[1];
     }
+    const ayther::runtime::RuntimeConfig runtime_config(
+        runtime_paths, std::filesystem::path{saves_dir_arg});
     // #230 EM-7.4: el parche del usuario. Deja de ser un `(void)`: se aplica
     // al buffer de la ROM en `RetroRunner::load_rom`, nunca al archivo.
 
@@ -546,7 +553,6 @@ int main(int argc, char* argv[]) {
     // -----------------------------------------------------------------------
     NullLabPlugin lab_impl;
     ILabPlugin&   lab = lab_impl;
-    lab.set_config(&config);
 
     // -----------------------------------------------------------------------
     // AytherRenderer — the motor's HD visual layer (R3.1). Owns the emu texture,
@@ -685,9 +691,8 @@ int main(int argc, char* argv[]) {
     // Se carga antes del primer frame y se aplica sobre la sesión: si no se
     // aplicara acá, el panel mostraría lo guardado y el juego se vería con otra
     // cosa hasta que alguien abriera el menú.
-    const std::filesystem::path cfg_dir =
-        std::filesystem::path(SDL_GetPrefPath("Ayther", "runtime")
-                                  ? SDL_GetPrefPath("Ayther", "runtime") : ".");
+    const std::filesystem::path& cfg_dir =
+        runtime_config.paths().configuration_directory();
     std::string cfg_pack_name;
     if (sess->has_pack()) {
         if (const char* nm = ayther_pack_meta_field(
@@ -1198,9 +1203,10 @@ int main(int argc, char* argv[]) {
                     }
                     ayther::diagnose_suggest(dr);
 
-                    const std::filesystem::path dp = cfg_dir / "diagnostico.md";
+                    const std::filesystem::path dp =
+                        runtime_config.paths().diagnostics_file();
                     std::error_code dec;
-                    std::filesystem::create_directories(cfg_dir, dec);
+                    std::filesystem::create_directories(dp.parent_path(), dec);
                     std::ofstream df(dp, std::ios::binary | std::ios::trunc);
                     const std::string md = ayther::diagnostic_report_markdown(dr);
                     if (df) df.write(md.data(),
@@ -1242,7 +1248,8 @@ int main(int argc, char* argv[]) {
                             base += ts;
                             for (char& c : base) if (c == ':') c = '-';
                             const std::string out = ayther::capture_write(
-                                cfg_dir / "capturas", base, orig.data(), p1,
+                                runtime_config.paths().captures_directory(),
+                                base, orig.data(), p1,
                                 ex.width, ex.height, split_pos_, split_vertical_, m);
                             std::fprintf(stdout, "[main] captura: %s\n",
                                          out.empty() ? "FALLO" : out.c_str());
@@ -1358,9 +1365,7 @@ int main(int argc, char* argv[]) {
             //
             // La revision de la ROM va en el NOMBRE para que sobreviva a copiar
             // la carpeta, que es lo que la gente hace con sus guardados.
-            const auto saves_dir = saves_dir_arg.empty()
-                ? AytherConfig::config_file().parent_path() / "saves"
-                : std::filesystem::path(saves_dir_arg);
+            const auto& saves_dir = runtime_config.saves_directory();
 
             auto sanear = [](const std::string& in) {
                 std::string o;

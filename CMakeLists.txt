@@ -32,8 +32,8 @@ configure_file(
     @ONLY
 )
 
-# Request the first-party `engine` surface because Runtime needs the renderer,
-# Vulkan backend, RetroRunner, and configuration API, not only ADR-003's SDK API.
+# Request the first-party `engine` surface because Runtime still needs the
+# renderer, Vulkan backend, and RetroRunner, not only ADR-003's SDK API.
 find_package(Ayther 0.1.0 CONFIG REQUIRED COMPONENTS engine)
 if(NOT DEFINED Ayther_SHADER_DIR OR Ayther_SHADER_DIR STREQUAL "")
     message(FATAL_ERROR
@@ -53,6 +53,7 @@ find_package(imgui        CONFIG REQUIRED)   # overlay in-game (M4)
 
 add_executable(ayther_runtime
     src/main.cpp
+    src/runtime_config.cpp      # MIG-020: Runtime-owned data/save/capture paths
     src/game_input.cpp          # SDL keyboard/gamepad → RetroPad bitfield (M3)
     src/player_overlay.cpp      # in-game pause menu + HD toggle (M4)
     src/player_config.cpp       # #299: per-game-and-pack player preferences

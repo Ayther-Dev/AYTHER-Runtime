@@ -166,6 +166,12 @@ The `--manifest` path is correlation metadata only. Runtime deliberately does
 not parse it; AYTHER Play remains the single translator from a launch manifest
 to process arguments.
 
+`RuntimePaths` discovers Runtime's platform user-data root before core probing
+and before SDL initialization. `RuntimeConfig` resolves the effective save root,
+with a non-empty `--saves-dir` taking precedence. Player settings, captures,
+diagnostics, and default saves are therefore Runtime-owned and do not require
+an Engine configuration header or an Engine checkout.
+
 ## 8. Persistence and generated artifacts
 
 - Player settings use a tolerant local TOML-like file keyed by sanitized game
@@ -173,9 +179,10 @@ to process arguments.
   falls back to defaults.
 - Save states use a temporary file followed by rename. The launcher receives the
   final path only after a successful clean shutdown.
-- Comparative capture writes original, HD, comparison PNGs, and metadata. The
-  metadata contract must not embed protected game pixels or other game content.
-- Diagnostics are written as Markdown beneath Runtime's SDL preference path.
+- Comparative capture writes original, HD, comparison PNGs, and metadata below
+  Runtime's `capturas` directory. The metadata contract must not embed protected
+  game pixels or other game content.
+- Diagnostics are written as Markdown below Runtime's platform data directory.
 
 ## 9. Build boundary
 
@@ -188,8 +195,8 @@ target_link_libraries(ayther_runtime PRIVATE Ayther::engine)
 
 The current `engine` surface is intentionally marked for narrowing. Runtime
 still consumes broad engine headers for session, renderer, Vulkan interop,
-Libretro probing, configuration, and pack operations. The detailed evidence and
-target ownership decisions live in
+Libretro probing, and pack operations. The detailed evidence and target
+ownership decisions live in
 [`runtime-engine-dependency-audit.yaml`](runtime-engine-dependency-audit.yaml).
 
 ## 10. Failure model

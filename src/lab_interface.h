@@ -29,9 +29,6 @@
 #include <SDL3/SDL_events.h>
 #include <ayther/ayther_core_ffi.h>  // AytherTileOccurrence, AytherTileSub, AytherSpriteOccurrence, AytherAudioOccurrence
 
-// Forward declaration — full definition in ayther_config.h
-struct AytherConfig;
-
 // ---------------------------------------------------------------------------
 // LabFrameData — snapshot of one game frame passed to the Lab UI.
 // ---------------------------------------------------------------------------
@@ -120,10 +117,6 @@ public:
     /// Called at the end of each game tick, after render_overlay().
     /// Was onFrameEnd() in v0.6.x.
     virtual void on_tick_end() {}
-
-    /// Provide the shared engine config (paths, recent ROMs).
-    /// Call once after construction, before the first tick.
-    virtual void set_config(AytherConfig* /*config*/) {}
 };
 
 // ---------------------------------------------------------------------------

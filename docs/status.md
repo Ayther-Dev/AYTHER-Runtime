@@ -18,9 +18,10 @@ There are currently:
 
 ## Verified today
 
-The source tree contains focused tests for player configuration, split geometry,
-capture metadata, pack-layer assembly, diagnostic decisions, and the real
-core-probe process contract. The standalone smoke bootstraps the pinned,
+The source tree contains focused tests for Runtime path resolution, player
+configuration, split geometry, capture metadata, pack-layer assembly,
+diagnostic decisions, and the real core-probe process contract. The standalone
+smoke bootstraps the pinned,
 attested Engine release and proves that Runtime can consume its CMake package
 without an Engine or monorepo checkout.
 
@@ -40,8 +41,8 @@ compatibility.
    should not require Runtime to include the full Libretro header.
 3. Vulkan ownership needs a stable public interop structure and render-image
    view with explicit handle, layout, and lifetime rules.
-4. Runtime presentation policy and configuration paths should move fully out of
-   engine-facing configuration types.
+4. Runtime presentation policy still needs to move fully out of Engine-facing
+   types. Runtime configuration and persistence paths are already Runtime-owned.
 5. `lab_interface.h` is a no-op legacy adapter and is scheduled for removal.
 6. Numeric CLI parsing does not consistently detect malformed values or
    overflow. The core-probe JSON escape path does not cover all control

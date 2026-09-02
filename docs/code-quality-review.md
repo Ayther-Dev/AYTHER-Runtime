@@ -23,23 +23,22 @@ testable policy.
 
 The largest risk is concentration of lifecycle, protocol, persistence, input,
 and rendering policy in a single 1,450-line `main` function. The most urgent
-concrete defects are an SDL-owned string leak, permissive numeric parsing, and
-unchecked Vulkan and file-read results. The Vulkan frontend also relies on
-manual shutdown in types whose destructors cannot enforce cleanup.
+remaining concrete defects are permissive numeric parsing and unchecked Vulkan
+and file-read results. The Vulkan frontend also relies on manual shutdown in
+types whose destructors cannot enforce cleanup.
+
+## Resolved since the review
+
+- MIG-020 replaced `SDL_GetPrefPath` and Engine's unpublished
+  `ayther_config.h` with Runtime-owned `RuntimePaths`/`RuntimeConfig`. Path
+  discovery now occurs once before SDL initialization, so the SDL-owned string
+  leak described by the original first high-priority finding no longer exists.
 
 ## Prioritized corrections
 
 ### High — fix before treating Runtime as integration-stable
 
-1. **Release the value returned by `SDL_GetPrefPath` and call it once.**
-   `src/main.cpp:680-682` calls `SDL_GetPrefPath` in both the condition and the
-   selected expression. Each successful call returns SDL-owned allocated memory
-   that the caller must release with `SDL_free`; the current code leaks both
-   allocations and may theoretically use two different results. Wrap the result
-   in a small SDL deleter or immediately copy it into a path and call `SDL_free`.
-   This is a direct resource-ownership violation (R.1, R.11, R.12).
-
-2. **Replace `std::atoi` with validated, bounded parsing.**
+1. **Replace `std::atoi` with validated, bounded parsing.**
    `src/main.cpp:138-139`, `:172`, and `:177` silently map malformed text to
    zero, accept trailing garbage, and provide no overflow signal. Negative masks
    are later converted to unsigned values. Introduce one `parse_integer` helper
@@ -48,7 +47,7 @@ manual shutdown in types whose destructors cannot enforce cleanup.
    missing option value terminate parsing instead of returning an empty string
    and continuing. This follows I.1, I.4, and ES.46.
 
-3. **Make Vulkan failure paths transactional.**
+2. **Make Vulkan failure paths transactional.**
    `VkPostProcess::init` (`src/vulkan_backend/vk_postprocess.cpp:410-417`) returns
    immediately after any failed stage without rolling back resources created by
    earlier stages. `PlayerOverlay` and `VkPostProcess` require an explicit
@@ -58,7 +57,7 @@ manual shutdown in types whose destructors cannot enforce cleanup.
    after full initialization. Keep `shutdown` idempotent for controlled teardown.
    This implements R.1 and C.30 instead of relying on call-site discipline.
 
-4. **Check complete SPIR-V reads and every Vulkan result.**
+3. **Check complete SPIR-V reads and every Vulkan result.**
    `src/vulkan_backend/vk_postprocess.cpp:40-69` ignores the return from
    `std::fread` and from `vkCreateShaderModule`. A truncated read can pass a
    partially zero-filled module to Vulkan, and module creation failure loses the
@@ -67,7 +66,7 @@ manual shutdown in types whose destructors cannot enforce cleanup.
    and result code. Apply the same policy to waits, resets, and acquire/submit
    calls throughout the backend (E.5, E.19).
 
-5. **Use one JSON serializer for every `AYTHER_STATUS` message.**
+4. **Use one JSON serializer for every `AYTHER_STATUS` message.**
    The exit event at `src/main.cpp:1422-1429` replaces backslashes but does not
    escape quotes or control characters in a path. Other protocol fields are also
    formatted manually. A valid Windows path can therefore produce invalid
@@ -78,7 +77,7 @@ manual shutdown in types whose destructors cannot enforce cleanup.
 
 ### Medium — address during the next structural iteration
 
-6. **Decompose `main` by responsibility.**
+5. **Decompose `main` by responsibility.**
    `src/main.cpp:43-1456` combines CLI parsing, core probing, SDL/Vulkan setup,
    pack validation, configuration precedence, the frame loop, capture,
    diagnostics, save-state persistence, IPC, and teardown. Extract cohesive
@@ -87,7 +86,7 @@ manual shutdown in types whose destructors cannot enforce cleanup.
    top-level function as orchestration. This directly applies F.2, F.3, and P.4
    and makes failure paths independently testable.
 
-7. **Replace the ad-hoc configuration parser or make its grammar exact.**
+6. **Replace the ad-hoc configuration parser or make its grammar exact.**
    `src/player_config.cpp:67-92` matches key prefixes rather than exact keys, so
    `hd_backup` is accepted as `hd`; invalid numbers and booleans silently become
    plausible values. Strings are written without escaping. Prefer the project's
@@ -95,7 +94,7 @@ manual shutdown in types whose destructors cannot enforce cleanup.
    is intentionally avoided, define an exact grammar, reject malformed fields,
    clamp gains, and return diagnostics separately from defaults (I.5, E.2).
 
-8. **Unify bus cardinality and replace raw arrays.**
+7. **Unify bus cardinality and replace raw arrays.**
    `src/player_config.h:29-30` hardcodes four entries while consumers iterate to
    `ayther::kAudioBusCount` (`src/main.cpp:709-711`). A future Engine count change
    could cause an out-of-bounds access. Use `std::array<T, kAudioBusCount>` or a
@@ -103,7 +102,7 @@ manual shutdown in types whose destructors cannot enforce cleanup.
    compile-time assertion when ABI constraints require a fixed count (ES.42,
    ES.45).
 
-9. **Harden capture size and commit semantics.**
+8. **Harden capture size and commit semantics.**
    Pixel byte counts in `src/capture.cpp:44-45` and `:57-79` multiply dimensions
    without overflow checks. PNG failure removes images, but a metadata open or
    write failure at `:139-144` leaves all three PNGs behind despite the API's
@@ -112,14 +111,14 @@ manual shutdown in types whose destructors cannot enforce cleanup.
    then rename them into place as one best-effort commit. Return an error type
    rather than an empty string so callers can report the cause (I.12, E.2).
 
-10. **Make swapchain access preconditions enforceable.**
+9. **Make swapchain access preconditions enforceable.**
     `src/vulkan_backend/vk_swapchain.h:70-80` exposes unchecked indexing into
     image and framebuffer vectors. Documented call order helps, but it does not
     prevent access before acquisition or after a failed rebuild. Represent the
     acquired frame as a short-lived object, or return checked views/spans and
     assert invariants in debug builds (I.6, Bounds.4).
 
-11. **Remove the obsolete Lab null-plugin seam.**
+10. **Remove the obsolete Lab null-plugin seam.**
     `src/lab_interface.h` defines a broad virtual callback surface, while
     `src/main.cpp:534-541` states that the in-process plugin has been removed and
     instantiates only `NullLabPlugin`. Removing the interface and its per-frame
@@ -128,26 +127,20 @@ manual shutdown in types whose destructors cannot enforce cleanup.
     data contract rather than preserving an unused historical interface (I.2,
     I.23).
 
-12. **Make translation units self-contained.**
-    `src/main.cpp` uses `std::chrono`, character classification, and smart-pointer
-    facilities without directly including all corresponding standard headers.
-    Add `<chrono>`, `<cctype>`, and `<memory>` as required rather than depending
-    on transitive Engine or SDL includes (SF.10, SF.11).
-
 ### Low — maintainability and consistency
 
-13. **Move global Vulkan helpers into a Runtime namespace.** `FitRect`,
+11. **Move global Vulkan helpers into a Runtime namespace.** `FitRect`,
     `aspect_fit`, `VkPresent`, `VkPostProcess`, and `VkSwapchain` currently occupy
     the global namespace. A dedicated `ayther::runtime` namespace prevents symbol
     collisions and makes ownership visible (SF.20).
 
-14. **Use typed parameter objects for rendering calls.** `PlayerOverlay::render`
+12. **Use typed parameter objects for rendering calls.** `PlayerOverlay::render`
     and `VkPostProcess::apply` have long lists of booleans, floats, and nullable
     pointers. Small value types such as `OverlayModel` and `PostProcessSettings`
     make units and valid ranges explicit and reduce argument-order mistakes
     (I.4, F.2).
 
-15. **Replace historical comments with current invariants.** Issue references
+13. **Replace historical comments with current invariants.** Issue references
     are useful traceability, but comments should lead with the rule the current
     code must preserve. Keep historical detail in architecture decisions or the
     changelog. Public header documentation has been revised in this pass to use

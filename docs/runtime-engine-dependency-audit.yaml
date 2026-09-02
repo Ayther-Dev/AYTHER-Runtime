@@ -24,8 +24,8 @@ audit:
       - "engine/include"
       - "engine/CMakeLists.txt"
       - "cmake"
-    direct_engine_headers: 10
-    direct_runtime_to_engine_include_edges: 21
+    direct_engine_headers: 9
+    direct_runtime_to_engine_include_edges: 20
     engine_source_includes: 0
     relative_engine_includes: 0
     private_or_internal_path_includes: 0
@@ -35,6 +35,7 @@ audit:
       engine/include as an unstable first-party surface.
 
 status_definitions:
+  complete: "The migration is implemented and covered by a Runtime-owned test."
   keep_public: "Keep the dependency behind a documented, stable public contract."
   replace_public: "Replace the broad or private-facing dependency with a narrower public facade."
   move_to_runtime: "Move ownership to Runtime because the behavior is presentation or process policy."
@@ -43,18 +44,22 @@ status_definitions:
   transitive_only: "Runtime does not use the API directly; Engine must propagate it through its link interface."
 
 dependency_matrix:
-  - runtime_files: ["src/main.cpp"]
+  - runtime_files: ["src/main.cpp", "src/runtime_config.h", "src/runtime_config.cpp"]
     area: "Configuration and paths"
-    current_headers: ["ayther_config.h"]
-    current_symbols: ["AytherConfig::load", "AytherConfig::config_file", "AytherConfig"]
+    current_headers: ["runtime_config.h"]
+    current_symbols:
+      - "ayther::runtime::RuntimePaths::discover"
+      - "ayther::runtime::RuntimeConfig"
+      - "RuntimePaths persistence-location accessors"
     required_contract:
       - "Resolve user data, configuration, and save directories before core probing and SDL initialization."
       - "Runtime reads locations but does not need Engine authoring-tool fields."
     target_state: >-
-      Move RuntimePaths/RuntimeConfig to Runtime and stop loading broad Engine
-      configuration solely to discover local paths.
+      RuntimePaths discovers platform storage without SDL. RuntimeConfig applies
+      launcher save-root precedence. Runtime never loads Engine configuration to
+      locate player settings, saves, captures, or diagnostics.
     owner: "Runtime"
-    migration_status: "move_to_runtime"
+    migration_status: "complete"
 
   - runtime_files: ["src/main.cpp"]
     area: "Session and emulation"
@@ -222,7 +227,7 @@ dependency_matrix:
 
   - runtime_files: ["src/lab_interface.h"]
     area: "Legacy adapter"
-    current_headers: ["ayther/ayther_core_ffi.h", "forward-declared AytherConfig"]
+    current_headers: ["ayther/ayther_core_ffi.h"]
     required_contract: >-
       The current executable only instantiates NullLabPlugin. Its arrays are
       borrowed views from the latest FrameView and no real consumer observes them.
@@ -395,6 +400,17 @@ configuration_inventory:
       filename_charset: "A-Z, a-z, 0-9, period, hyphen, underscore; replace other characters with underscore."
       write_policy: "Create parent directory and truncate; save after relevant overlay/output changes."
     precedence: "Engine/pack defaults, then local file, then explicit launch arguments."
+  runtime_storage:
+    owner: "Runtime"
+    discovery: >-
+      RuntimePaths resolves the platform user-data root before core probing and
+      SDL initialization, then scopes it below Ayther/runtime.
+    layout:
+      player_configuration: "<runtime-data>/"
+      saves: "<runtime-data>/saves unless --saves-dir is non-empty"
+      captures: "<runtime-data>/capturas"
+      diagnostics: "<runtime-data>/diagnostico.md"
+    dependencies: "C++ standard library only; no SDL or Engine configuration API."
   process_cli:
     owner: "Runtime"
     required: ["--core", "--rom"]
@@ -470,16 +486,17 @@ transitive_dependencies:
     owner: "Engine package"
     libraries: ["ayther_core Rust static library and cxx bridge", "zstd", "VulkanMemoryAllocator", "vk-bootstrap", "ymfm", "optional libvpx", "Rust platform system libraries"]
     requirement: "Ayther imported targets propagate the complete link closure; Runtime does not enumerate internals."
-  standard_library_header_leaks:
-    classification: "direct_but_implicit"
+  standard_library_header_self_containment:
+    classification: "direct"
     owner: "Runtime"
     evidence:
-      - "main.cpp uses std::chrono without including <chrono>."
-      - "main.cpp uses std::unique_ptr without including <memory>."
-      - "main.cpp uses std::isalnum/std::tolower without including <cctype>."
-    requirement: "Add direct standard-library includes; never rely on transitive SDL or Engine includes."
+      - "main.cpp directly includes chrono, memory, and cctype for the symbols it uses."
+      - "runtime_config.cpp directly includes its environment, ownership, error, and move dependencies."
+    requirement: "Keep translation units self-contained; never rely on transitive SDL or Engine includes."
 
 runtime_files_without_engine_dependency:
+  - files: ["src/runtime_config.h", "src/runtime_config.cpp", "tests/runtime_config_test.cpp"]
+    dependencies: ["C++ standard library"]
   - files: ["src/capture.h", "src/capture.cpp"]
     dependencies: ["C++ filesystem/streams", "stb_image_write"]
   - files: ["src/diagnostics.h", "src/diagnostics.cpp"]
@@ -494,7 +511,7 @@ runtime_files_without_engine_dependency:
     dependencies: ["Runtime code", "process contract"]
 
 private_header_decisions:
-  ayther_config.h: "Move Runtime-specific configuration and paths to Runtime."
+  ayther_config.h: "Removed; RuntimeConfig and RuntimePaths own Runtime persistence locations."
   libretro_host/core_loader.h: "Replace with public CoreProbe."
   libretro_host/libretro.h: "Hide behind CoreProbe and EngineInputButton."
   output_profile.h: "Move presentation policy to Runtime."

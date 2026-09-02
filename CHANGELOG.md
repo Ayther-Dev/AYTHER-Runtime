@@ -16,6 +16,9 @@ once stable compatibility guarantees are defined.
 
 ### Fixed
 
+- Runtime now discovers and resolves player configuration, save-state, capture,
+  and diagnostic paths through local `RuntimePaths`/`RuntimeConfig` types,
+  without including Engine's unpublished `ayther_config.h` or initializing SDL.
 - Engine shaders are now staged exclusively through the relocatable
   `Ayther_SHADER_DIR` package contract, which is validated during configure.
 - Engine public headers now use their package-root `ayther/` paths, so Runtime
@@ -45,8 +48,9 @@ once stable compatibility guarantees are defined.
 - Libretro core probing and line-delimited `AYTHER_STATUS` process events.
 - Per-game/per-pack player configuration, atomic save states, synchronized
   comparative captures, diagnostics, pack-layer composition, and pack hot reload.
-- Focused CTest coverage for configuration, split geometry, capture metadata,
-  pack layers, diagnostics, and the core-probe process contract.
+- Focused CTest coverage for Runtime paths, player configuration, split
+  geometry, capture metadata, pack layers, diagnostics, and the core-probe
+  process contract.
 - Project architecture, development, security, support, contribution, and
   release-readiness documentation.
 - Mozilla Public License 2.0 coverage with a Runtime-specific project notice.

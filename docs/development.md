@@ -119,6 +119,7 @@ Current CTest coverage includes:
 | --- | --- |
 | `ayther_engine_lock` | offline validation of release identity, checksum manifest, attestation policy, and supported artifact matrix |
 | `vcpkg_manifest` | Engine package closure, pinned baseline, SDL3/ImGui features, and direct Runtime ownership of ImGui/stb |
+| `runtime_config` | SDL/Engine-independent data paths and launcher save-root precedence |
 | `player_config` | key generation, defaults, persistence distinctions, and tolerant parsing |
 | `split_geometry` | comparison geometry and zero-width edge cases without a GPU |
 | `capture` | image-source selection and metadata that excludes protected content |

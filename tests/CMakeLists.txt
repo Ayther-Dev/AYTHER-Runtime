@@ -29,6 +29,28 @@ else()
     message(STATUS "pwsh not found; dependency manifest tests disabled")
 endif()
 
+# ------------------------------------------------------------------
+# runtime_config_tests — MIG-020: Runtime owns its persistence paths.
+#
+# This target deliberately links neither SDL nor Engine. Path discovery and
+# launcher override precedence must remain usable before either is initialized.
+# ------------------------------------------------------------------
+add_executable(runtime_config_tests
+    runtime_config_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime_config.cpp
+)
+target_include_directories(runtime_config_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+set_target_properties(runtime_config_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    runtime_config
+    COMMAND runtime_config_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
 # stb_image_write.h (capture_tests): header-only. Se busca el ARCHIVO y no el
 # paquete `Stb`: ese Find module lo inyecta el toolchain de vcpkg, y fuera del
 # monorepo el runtime se configura contra un prefijo, sin toolchain.
