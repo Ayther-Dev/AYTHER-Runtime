@@ -48,7 +48,8 @@ endif()
 
 find_package(SDL3         CONFIG REQUIRED)
 find_package(Vulkan              REQUIRED)
-find_package(vk-bootstrap CONFIG REQUIRED)   # vk_swapchain.cpp: vkb::SwapchainBuilder
+find_package(VulkanMemoryAllocator CONFIG REQUIRED)
+find_package(vk-bootstrap CONFIG REQUIRED)   # Runtime context + swapchain creation
 find_package(imgui        CONFIG REQUIRED)   # overlay in-game (M4)
 
 add_executable(ayther_runtime
@@ -60,9 +61,9 @@ add_executable(ayther_runtime
     src/capture.cpp             # #300: synchronized comparison capture
     src/diagnostics.cpp         # #302: audiovisual diagnostics assistant
     src/pack_layers.cpp         # #561: pack overlay-layer stack
-    # audio_player + libretro_host + vk_context/vk_texture/vma live in the motor
-    # and arrive via Ayther::engine. The engine target keeps the window-side render:
-    # swapchain + present + the postprocess pass.
+    # Runtime owns the complete window-side Vulkan lifetime and presentation
+    # path. Engine receives only a borrowed VulkanContextView.
+    src/vulkan_backend/vk_context.cpp
     src/vulkan_backend/vk_swapchain.cpp
     src/vulkan_backend/vk_present.cpp
     src/vulkan_backend/vk_postprocess.cpp
@@ -81,9 +82,15 @@ target_link_libraries(ayther_runtime PRIVATE
     Ayther::engine
     SDL3::SDL3
     Vulkan::Vulkan
-    vk-bootstrap::vk-bootstrap   # vk_swapchain.cpp uses vkb::SwapchainBuilder
+    GPUOpen::VulkanMemoryAllocator
+    vk-bootstrap::vk-bootstrap   # Runtime context + swapchain creation
     imgui::imgui                 # Dear ImGui — SDL3+Vulkan backends (M4 overlay)
     ${CMAKE_DL_LIBS}             # -ldl on Linux (no-op on Windows)
+)
+
+target_compile_definitions(ayther_runtime PRIVATE
+    VMA_STATIC_VULKAN_FUNCTIONS=1
+    VMA_DYNAMIC_VULKAN_FUNCTIONS=0
 )
 
 set_target_properties(ayther_runtime PROPERTIES

@@ -190,11 +190,11 @@ dependency_matrix:
         format, extent, layout, readiness scopes, and exclusive graphics queue
         family; and transfers neither ownership nor synchronization objects.
     target_state: >-
-      Publish a narrow Vulkan interop structure and RenderImageView with explicit
-      handle ownership, image layout, and lifetime rules. Remove unused
-      vk_texture.h includes and keep Engine backend headers private.
+      Runtime owns the complete Vulkan context and presentation path. Engine
+      receives VulkanContextView, which contains no surface, present queue, or
+      swapchain, and publishes RenderImageView for its offscreen result.
     owner: "Shared: Runtime owns presentation; Engine owns renderer resources"
-    migration_status: "render_image_contract_complete; context facade pending"
+    migration_status: "complete"
 
   - runtime_files: ["src/main.cpp"]
     area: "Raw Core FFI and packs"
@@ -261,10 +261,10 @@ dependency_matrix:
       - "Runtime owns the ImGui context, render pass, and overlay framebuffers."
       - "Persist dirty settings when the panel closes, not after every change."
     target_state: >-
-      Keep narrow Session setters/getters, replace VkContext with public interop,
-      and retain PlayerOverlay in Runtime.
+      Keep narrow Session setters/getters and retain PlayerOverlay on Runtime's
+      private VkContext; no Engine backend type participates.
     owner: "Runtime, consuming Engine Session"
-    migration_status: "replace_public"
+    migration_status: "vulkan_ownership_complete; session_surface_pending"
 
   - runtime_files: ["src/vulkan_backend/vk_swapchain.cpp", "src/vulkan_backend/vk_swapchain.h"]
     area: "Swapchain"
@@ -284,7 +284,7 @@ dependency_matrix:
       shutdown: "Wait for device idle and destroy every object before VkDevice; shutdown is idempotent."
     target_state: "Move VkContext, swapchain, and presentation ownership to Runtime."
     owner: "Runtime"
-    migration_status: "move_to_runtime"
+    migration_status: "complete"
 
   - runtime_files: ["src/vulkan_backend/vk_present.cpp", "src/vulkan_backend/vk_present.h"]
     area: "Presentation and output profiles"
@@ -302,7 +302,7 @@ dependency_matrix:
       Keep present and output geometry in Runtime. Replace VkTexture with public
       RenderImageView and remove legacy blits when no callers remain.
     owner: "Runtime"
-    migration_status: "render_image_contract_complete; context facade pending"
+    migration_status: "complete"
 
   - runtime_files: ["src/vulkan_backend/vk_postprocess.cpp", "src/vulkan_backend/vk_postprocess.h"]
     area: "Post-processing"
@@ -321,15 +321,15 @@ dependency_matrix:
       Keep post-processing and shaders in Runtime, consume public interop and
       RenderImageView, and remove the unused vk_texture.h include.
     owner: "Runtime"
-    migration_status: "render_image_contract_complete; context facade pending"
+    migration_status: "complete"
 
   - runtime_files: ["CMakeLists.txt"]
     area: "Build contract"
     current_package: "Ayther engine component"
-    direct_packages: ["SDL3 with Vulkan", "Vulkan", "vk-bootstrap", "Dear ImGui SDL3/Vulkan", "stb"]
-    engine_vcpkg_closure: ["SDL3 with Vulkan", "Vulkan", "VulkanMemoryAllocator", "vk-bootstrap", "tomlplusplus", "zstd"]
-    runtime_owned_vcpkg_packages: ["Dear ImGui SDL3/Vulkan", "stb"]
-    direct_links: ["Ayther::engine", "SDL3::SDL3", "Vulkan::Vulkan", "vk-bootstrap::vk-bootstrap", "imgui::imgui", "CMAKE_DL_LIBS"]
+    direct_packages: ["SDL3 with Vulkan", "Vulkan", "VulkanMemoryAllocator", "vk-bootstrap", "Dear ImGui SDL3/Vulkan", "stb"]
+    engine_vcpkg_closure: ["SDL3 with Vulkan", "Vulkan", "VulkanMemoryAllocator", "tomlplusplus", "zstd"]
+    runtime_owned_vcpkg_packages: ["VulkanMemoryAllocator", "vk-bootstrap", "Dear ImGui SDL3/Vulkan", "stb"]
+    direct_links: ["Ayther::engine", "SDL3::SDL3", "Vulkan::Vulkan", "GPUOpen::VulkanMemoryAllocator", "vk-bootstrap::vk-bootstrap", "imgui::imgui", "CMAKE_DL_LIBS"]
     required_contract:
       - "Compile as C++20."
       - "Require AytherConfig.cmake to export a valid Ayther_SHADER_DIR."
@@ -472,8 +472,8 @@ transitive_dependencies:
     owner: "Shared"
     requirement: "Remove SDL types from Session headers so Runtime links SDL only for its own window/input/timing use."
   vk_bootstrap:
-    classification: "direct_and_transitive"
-    owner: "Runtime after VkContext/swapchain migration"
+    classification: "direct"
+    owner: "Runtime"
   imgui:
     classification: "third_party_direct"
     owner: "Runtime"
@@ -485,7 +485,7 @@ transitive_dependencies:
   engine_static_link_closure:
     classification: "transitive_only"
     owner: "Engine package"
-    libraries: ["ayther_core Rust static library and cxx bridge", "zstd", "VulkanMemoryAllocator", "vk-bootstrap", "ymfm", "optional libvpx", "Rust platform system libraries"]
+    libraries: ["ayther_core Rust static library and cxx bridge", "zstd", "VulkanMemoryAllocator", "ymfm", "optional libvpx", "Rust platform system libraries"]
     requirement: "Ayther imported targets propagate the complete link closure; Runtime does not enumerate internals."
   standard_library_header_self_containment:
     classification: "direct"
@@ -518,7 +518,7 @@ private_header_decisions:
   libretro_host/core_loader.h: "Removed; Runtime uses the public Engine CoreProbe."
   libretro_host/libretro.h: "Core probing is hidden; replace the remaining input constants with EngineInputButton."
   output_profile.h: "Removed as an Engine dependency; Runtime owns its local presentation policy."
-  vulkan_backend/vk_context.h: "Replace with public interop; move presentation ownership to Runtime."
+  vulkan_backend/vk_context.h: "Runtime owns its local implementation; Engine's private header and implementation were removed."
   vulkan_backend/vk_texture.h: "Removed from Runtime; presentation consumes public RenderImageView."
   ayther/ayther_core_ffi.h: "Hide raw operations behind Session, Pack, and EngineVersion APIs."
   ayther_renderer.h: "Promote a stable facade without exposing backend header closure."
@@ -533,6 +533,7 @@ acceptance:
   transitive_logging_identified: true
   transitive_filesystem_identified: true
   source_history_copied: false
+  mig_025_runtime_vulkan_ownership: true
   source_remote_references_copied: false
   issue_references_in_deliverable: false
   remaining_design_decisions:

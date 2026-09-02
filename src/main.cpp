@@ -552,9 +552,9 @@ int main(int argc, char* argv[]) {
     if (swap_ok) {
         const FitRect cfit = aspect_fit(4, 3, swapchain.extent().width,
                                               swapchain.extent().height);
-        renderer_ok = renderer.init(vulkan, static_cast<uint32_t>(cfit.w),
-                                            static_cast<uint32_t>(cfit.h),
-                                            AYTHER_SHADER_DIR);
+        renderer_ok = renderer.init(
+            vulkan.engine_view(), static_cast<uint32_t>(cfit.w),
+            static_cast<uint32_t>(cfit.h), AYTHER_SHADER_DIR);
         if (!renderer_ok)
             std::fprintf(stderr, "[main] AytherRenderer::init failed — no HD render.\n");
         // #140: activar el tier del pack para la ALTURA del canvas ANTES de la
@@ -870,8 +870,9 @@ int main(int argc, char* argv[]) {
                     if (swap_ok && renderer_ok) {
                         const FitRect cf = aspect_fit(4, 3, swapchain.extent().width,
                                                             swapchain.extent().height);
-                        renderer.resize(vulkan, static_cast<uint32_t>(cf.w),
-                                                static_cast<uint32_t>(cf.h));
+                        renderer.resize(
+                            vulkan.engine_view(), static_cast<uint32_t>(cf.w),
+                            static_cast<uint32_t>(cf.h));
                         if (postprocess_ok) {   // re-bind to the new offscreen view
                             postprocess.rebuild(vulkan, swapchain);
                             postprocess.set_source(vulkan, renderer.render_image());
@@ -900,7 +901,7 @@ int main(int argc, char* argv[]) {
 
             // Evict GPU texture caches so next frame re-fetches from new pack
             // (the renderer evicts both its tile cache and the sprite textures).
-            renderer.evict_pack_textures(vulkan);
+            renderer.evict_pack_textures(vulkan.engine_view());
 
             // The session re-opens the pack from disk and rewires the script +
             // substitutors (and reloads scripts/init.lua). The frontend only had
@@ -1050,11 +1051,13 @@ int main(int argc, char* argv[]) {
                 // cuando el modo está encendido.
                 bool split_ready = false;
                 if (split_on_ && hd_on_) {
-                    renderer.render(vulkan, cmd, fv, pack, /*hd=*/false,
-                                    layers_ptr);
-                    split_ready = renderer.capture_compare(vulkan, cmd);
+                    renderer.render(vulkan.engine_view(), cmd, fv, pack,
+                                    /*hd=*/false, layers_ptr);
+                    split_ready = renderer.capture_compare(
+                        vulkan.engine_view(), cmd);
                 }
-                renderer.render(vulkan, cmd, fv, pack, hd_on_, layers_ptr);
+                renderer.render(vulkan.engine_view(), cmd, fv, pack, hd_on_,
+                                layers_ptr);
 
                 // Present the offscreen HD frame: CRT post-process (samples it)
                 // when the shaders are present, else a plain blit. Both leave the
@@ -1210,16 +1213,18 @@ int main(int argc, char* argv[]) {
 
                 if (capture_req_) {
                     capture_req_ = false;
-                    if (renderer.readback_init(vulkan)) {
+                    if (renderer.readback_init(vulkan.engine_view())) {
                         const VkExtent2D ex = renderer.render_image().extent;
                         std::vector<uint8_t> orig;
                         if (const uint8_t* p0 =
-                                renderer.export_frame(vulkan, fv, pack, /*hd=*/false,
-                                                      layers_ptr))
+                                renderer.export_frame(
+                                    vulkan.engine_view(), fv, pack,
+                                    /*hd=*/false, layers_ptr))
                             orig.assign(p0, p0 + static_cast<size_t>(ex.width) * ex.height * 4);
                         const uint8_t* p1 =
-                            renderer.export_frame(vulkan, fv, pack, /*hd=*/true,
-                                                  layers_ptr);
+                            renderer.export_frame(
+                                vulkan.engine_view(), fv, pack,
+                                /*hd=*/true, layers_ptr);
                         if (!orig.empty() && p1) {
                             ayther::CaptureMeta m;
                             m.game_id  = sess->game_id();
@@ -1245,7 +1250,7 @@ int main(int argc, char* argv[]) {
                             std::fprintf(stdout, "[main] captura: %s\n",
                                          out.empty() ? "FALLO" : out.c_str());
                         }
-                        renderer.readback_shutdown(vulkan);
+                        renderer.readback_shutdown(vulkan.engine_view());
                     }
                 }
 
@@ -1274,8 +1279,9 @@ int main(int argc, char* argv[]) {
                     if (swap_ok && renderer_ok && w > 0 && h > 0) {
                         const FitRect cf = aspect_fit(4, 3, swapchain.extent().width,
                                                             swapchain.extent().height);
-                        renderer.resize(vulkan, static_cast<uint32_t>(cf.w),
-                                                static_cast<uint32_t>(cf.h));
+                        renderer.resize(
+                            vulkan.engine_view(), static_cast<uint32_t>(cf.w),
+                            static_cast<uint32_t>(cf.h));
                         if (postprocess_ok) {
                             postprocess.rebuild(vulkan, swapchain);
                             postprocess.set_source(vulkan, renderer.render_image());
@@ -1450,7 +1456,7 @@ int main(int argc, char* argv[]) {
         vkDeviceWaitIdle(vulkan.device());
         overlay.shutdown(vulkan);           // ImGui + overlay render pass + FBs (M4)
         postprocess.shutdown(vulkan);       // CRT presentation pass (frontend)
-        renderer.shutdown(vulkan);          // emu tex + tile cache + sprites + offscreen
+        renderer.shutdown(vulkan.engine_view()); // Engine offscreen resources
         swapchain.shutdown();
     }
     vulkan.shutdown();   // safe no-op if never initialized

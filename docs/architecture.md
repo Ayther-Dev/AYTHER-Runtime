@@ -74,9 +74,11 @@ with `AYTHER_STATUS `.
 4. **Single-threaded session driver.** The main emulation thread drives the
    session and renderer. Internally owned workers must stop and join before their
    resources are destroyed.
-5. **Explicit Vulkan ownership.** Runtime owns presentation resources; the engine
-   owns its offscreen renderer resources. Handles that cross the boundary are
-   borrowed and must not be destroyed by the receiver.
+5. **Explicit Vulkan ownership.** Runtime owns the instance, surface, physical
+   and logical devices, queues, VMA allocator, swapchain, presentation, and UI
+   resources. Engine owns only its offscreen renderer resources. The public
+   `VulkanContextView` and `RenderImageView` values borrow handles; neither side
+   destroys the other side's resources.
 6. **Single-purpose window.** The Runtime window contains gameplay and in-game
    controls only. Library management belongs to AYTHER Play.
 
@@ -91,6 +93,7 @@ with `AYTHER_STATUS `.
 | `src/capture.*` | Synchronized original/HD/comparison PNGs and non-content metadata. |
 | `src/diagnostics.*` | Pure diagnostic decision logic and Markdown report generation. |
 | `src/pack_layers.*` | Runtime-owned presentation stack derived from pack layers. |
+| `src/vulkan_backend/vk_context.*` | Runtime-owned Vulkan instance, device, queues, surface, and VMA allocator; exports a borrowed Engine view. |
 | `src/vulkan_backend/vk_swapchain.*` | Swapchain and two-frames-in-flight synchronization. |
 | `src/vulkan_backend/vk_present.*` | Aspect-correct blit, split presentation, and layout transitions. |
 | `src/vulkan_backend/vk_postprocess.*` | CRT/post-process pipeline and fallback behavior. |
@@ -128,7 +131,7 @@ session.set_input(input);
 session.set_hd_enabled(hd_enabled);
 FrameView frame = session.step();
 
-renderer.render(vulkan, command_buffer, frame, pack, layer_stack);
+renderer.render(vulkan.engine_view(), command_buffer, frame, pack, layer_stack);
 ayther::engine::RenderImageView image = renderer.render_image();
 postprocess_or_blit(image, swapchain.image());
 overlay.render(command_buffer, swapchain.image());

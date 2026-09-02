@@ -83,9 +83,9 @@ or cloud synchronization. Those responsibilities belong to AYTHER Play.
 - The AYTHER package bootstrapped below, containing the `engine` component and
   its shaders (`Ayther::engine` and `Ayther_SHADER_DIR`).
 - The `Ayther::engine` closure declared directly in `vcpkg.json`: SDL3, Vulkan,
-  Vulkan Memory Allocator, vk-bootstrap, toml++, and zstd.
-- Runtime-owned direct dependencies: Dear ImGui with SDL3/Vulkan backends and
-  stb.
+  Vulkan Memory Allocator, toml++, and zstd.
+- Runtime-owned direct dependencies: vk-bootstrap, Dear ImGui with SDL3/Vulkan
+  backends, and stb.
 - Ninja is recommended, but not required.
 
 The exact supported Engine release and its platform artifacts are recorded in

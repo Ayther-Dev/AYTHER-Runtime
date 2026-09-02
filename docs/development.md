@@ -34,8 +34,8 @@ Dependency ownership is explicit in the manifest:
 
 | Scope | Direct vcpkg entries |
 | --- | --- |
-| `Ayther::engine` native closure | `sdl3[vulkan]`, `vulkan`, `vulkan-memory-allocator`, `vk-bootstrap`, `tomlplusplus`, `zstd` |
-| Runtime-owned | `imgui[sdl3-binding,vulkan-binding]`, `stb` |
+| `Ayther::engine` native closure | `sdl3[vulkan]`, `vulkan`, `vulkan-memory-allocator`, `tomlplusplus`, `zstd` |
+| Runtime-owned | `vk-bootstrap`, `imgui[sdl3-binding,vulkan-binding]`, `stb` |
 
 All entries remain top-level because `AytherConfig.cmake` must resolve its
 native packages while configuring a clean consumer. ImGui and stb are not part

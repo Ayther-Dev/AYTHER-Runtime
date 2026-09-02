@@ -257,6 +257,79 @@ add_test(
 )
 
 # ------------------------------------------------------------------
+# vulkan_context_tests — MIG-025: Runtime owns Vulkan device lifetime.
+#
+# Its default mode needs no window or GPU. It compiles the real implementation,
+# checks the ownership type, and exercises empty/idempotent teardown. The
+# explicit `--gpu` mode also validates real SDL surface/device creation.
+# ------------------------------------------------------------------
+add_executable(vulkan_context_tests
+    vulkan_context_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_context.cpp
+)
+target_include_directories(vulkan_context_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+target_compile_definitions(vulkan_context_tests PRIVATE
+    VMA_STATIC_VULKAN_FUNCTIONS=1
+    VMA_DYNAMIC_VULKAN_FUNCTIONS=0
+)
+target_link_libraries(vulkan_context_tests PRIVATE
+    Ayther::engine
+    SDL3::SDL3
+    Vulkan::Vulkan
+    GPUOpen::VulkanMemoryAllocator
+    vk-bootstrap::vk-bootstrap
+)
+set_target_properties(vulkan_context_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    vulkan_context
+    COMMAND vulkan_context_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+# ------------------------------------------------------------------
+# vulkan_presentation_contract_tests — MIG-025 integration boundary.
+#
+# Compile and link Runtime's swapchain, present, postprocess, and ImGui overlay
+# without main.cpp or any Engine-private include path.
+# ------------------------------------------------------------------
+add_executable(vulkan_presentation_contract_tests
+    vulkan_presentation_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/player_overlay.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_context.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_swapchain.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_present.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_postprocess.cpp
+)
+target_include_directories(vulkan_presentation_contract_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend
+)
+target_compile_definitions(vulkan_presentation_contract_tests PRIVATE
+    VMA_STATIC_VULKAN_FUNCTIONS=1
+    VMA_DYNAMIC_VULKAN_FUNCTIONS=0
+)
+target_link_libraries(vulkan_presentation_contract_tests PRIVATE
+    Ayther::engine
+    SDL3::SDL3
+    Vulkan::Vulkan
+    GPUOpen::VulkanMemoryAllocator
+    vk-bootstrap::vk-bootstrap
+    imgui::imgui
+)
+set_target_properties(vulkan_presentation_contract_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    vulkan_presentation_contract
+    COMMAND vulkan_presentation_contract_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+# ------------------------------------------------------------------
 # probe_core — #589: el sondeo de cores que consume Play.
 #
 # Corre el binario del runtime en vez de compilar fuentes: lo que se

@@ -57,6 +57,12 @@ struct OutDestRect { int32_t x = 0, y = 0, w = 0, h = 0; };
 
 class VkPostProcess {
 public:
+    VkPostProcess() = default;
+    ~VkPostProcess() = default;
+
+    VkPostProcess(const VkPostProcess&) = delete;
+    VkPostProcess& operator=(const VkPostProcess&) = delete;
+
     // ---- Lifecycle -----------------------------------------------------------
 
     /// Initialise the render pass, pipeline, sampler, and descriptor (unbound).
