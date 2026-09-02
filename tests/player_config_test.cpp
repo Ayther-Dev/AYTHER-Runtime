@@ -16,103 +16,132 @@
 #include <string>
 #include <system_error>
 
-namespace {
-
-int g_pass = 0, g_fail = 0;
-void check(bool ok, const char* what) {
-    if (ok) ++g_pass; else ++g_fail;
-    std::printf("  [%s] %s\n", ok ? " OK " : "FAIL", what);
-}
-
-}  // namespace
-
 int main() {
     namespace fs = std::filesystem;
     std::printf("== player_config_test (#299) ==\n");
 
-    std::error_code ec;
-    const fs::path dir = fs::temp_directory_path() / "ayther_player_cfg_test";
-    fs::remove_all(dir, ec);
-    fs::create_directories(dir, ec);
+    int passed_checks{};
+    int failed_checks{};
+    const auto check = [&](bool condition, const char* description) {
+        if (condition) {
+            ++passed_checks;
+        } else {
+            ++failed_checks;
+        }
+        std::printf("  [%s] %s\n", condition ? " OK " : "FAIL", description);
+    };
+
+    std::error_code filesystem_error;
+    const fs::path test_directory =
+        fs::temp_directory_path() / "ayther_player_cfg_test";
+    fs::remove_all(test_directory, filesystem_error);
+    fs::create_directories(test_directory, filesystem_error);
 
     // -- 1. La clave -------------------------------------------------------
     std::printf("\n[1] una configuracion por juego Y pack\n");
-    const auto a = ayther::player_config_path(dir, "crc32:7b905383", "Golden Axe HD");
-    const auto b = ayther::player_config_path(dir, "crc32:7b905383", "Otro Pack");
-    const auto c = ayther::player_config_path(dir, "crc32:aaaaaaaa", "Golden Axe HD");
-    check(a != b, "el mismo juego con OTRO pack es otra configuracion");
-    check(a != c, "otro juego con el mismo pack, tambien");
+    const auto primary_path = ayther::player_config_path(
+        test_directory, "crc32:7b905383", "Golden Axe HD");
+    const auto alternate_pack_path = ayther::player_config_path(
+        test_directory, "crc32:7b905383", "Otro Pack");
+    const auto alternate_game_path = ayther::player_config_path(
+        test_directory, "crc32:aaaaaaaa", "Golden Axe HD");
+    check(primary_path != alternate_pack_path,
+          "el mismo juego con OTRO pack es otra configuracion");
+    check(primary_path != alternate_game_path,
+          "otro juego con el mismo pack, tambien");
     // Sin pack la clave es sólo el juego: una sesión sin remasterizar igual
     // guarda volumen y shaders.
-    check(ayther::player_config_path(dir, "crc32:7b905383", "") != a,
+    check(ayther::player_config_path(test_directory, "crc32:7b905383", "") !=
+              primary_path,
           "sin pack la clave es solo el juego");
 
     // Un nombre de pack con caracteres que Windows no acepta en una ruta no
     // puede hacer que la configuracion deje de guardarse EN SILENCIO — que es
     // lo peor que puede hacer una preferencia.
-    const auto raro = ayther::player_config_path(dir, "crc32:7b905383",
-                                                 "Golden Axe: HD/4K \"final\".");
-    ayther::PlayerConfig cr;
-    cr.profile = "enhanced";
-    check(ayther::player_config_save(raro, cr), "un nombre con : / \" y punto final se guarda igual");
-    check(ayther::player_config_load(raro).profile == "enhanced", "…y se vuelve a leer");
-    check(raro.filename().string().find('/') == std::string::npos
-              && raro.filename().string().find(':') == std::string::npos,
+    const auto sanitized_path = ayther::player_config_path(
+        test_directory,
+        "crc32:7b905383",
+        "Golden Axe: HD/4K \"final\".");
+    ayther::PlayerConfig sanitized_config;
+    sanitized_config.profile = "enhanced";
+    check(ayther::player_config_save(sanitized_path, sanitized_config),
+          "un nombre con : / \" y punto final se guarda igual");
+    check(ayther::player_config_load(sanitized_path).profile == "enhanced",
+          "…y se vuelve a leer");
+    check(sanitized_path.filename().string().find('/') == std::string::npos &&
+              sanitized_path.filename().string().find(':') == std::string::npos,
           "…porque la clave se sanea");
 
     // -- 2. Ida y vuelta ----------------------------------------------------
     std::printf("\n[2] va y vuelve entero\n");
-    ayther::PlayerConfig w;
-    w.profile         = "faithful";
-    w.subsystems      = 0b1011;
-    w.have_subsystems = true;
-    w.bus_gain[1]     = 0.35f;
-    w.bus_muted[2]    = true;
-    w.shaders_on      = false;
-    w.hd_on           = true;
-    check(ayther::player_config_save(a, w), "se escribe");
-    const auto r = ayther::player_config_load(a);
-    check(r.profile == "faithful",        "el perfil");
-    check(r.subsystems == 0b1011 && r.have_subsystems, "la mascara de subsistemas");
-    check(r.bus_gain[1] > 0.34f && r.bus_gain[1] < 0.36f, "el volumen por bus");
-    check(r.bus_muted[2] && !r.bus_muted[0], "el silencio por bus, sin contagiarse");
-    check(!r.shaders_on && r.hd_on,       "los dos toggles");
+    ayther::PlayerConfig written_config;
+    written_config.profile = "faithful";
+    written_config.subsystems = 0b1011;
+    written_config.have_subsystems = true;
+    written_config.bus_gain[1] = 0.35F;
+    written_config.bus_muted[2] = true;
+    written_config.shaders_on = false;
+    written_config.hd_on = true;
+    check(ayther::player_config_save(primary_path, written_config),
+          "se escribe");
+    const auto loaded_config = ayther::player_config_load(primary_path);
+    check(loaded_config.profile == "faithful", "el perfil");
+    check(loaded_config.subsystems == 0b1011 &&
+              loaded_config.have_subsystems,
+          "la mascara de subsistemas");
+    check(loaded_config.bus_gain[1] > 0.34F &&
+              loaded_config.bus_gain[1] < 0.36F,
+          "el volumen por bus");
+    check(loaded_config.bus_muted[2] && !loaded_config.bus_muted[0],
+          "el silencio por bus, sin contagiarse");
+    check(!loaded_config.shaders_on && loaded_config.hd_on,
+          "los dos toggles");
 
     // -- 3. La distincion que decide si el juego arranca remasterizado ------
     std::printf("\n[3] «apago todo» no es «nunca toco nada»\n");
     // Sin archivo: los defaults, y `have_subsystems` en falso — el runtime no
     // tiene que aplicar ninguna mascara.
-    const auto virgen = ayther::player_config_load(dir / "no-existe.toml");
-    check(!virgen.have_subsystems,
+    const auto missing_config =
+        ayther::player_config_load(test_directory / "no-existe.toml");
+    check(!missing_config.have_subsystems,
           "sin archivo: NO hay mascara guardada (el pack manda)");
-    check(virgen.hd_on && virgen.shaders_on && virgen.profile.empty(),
+    check(missing_config.hd_on && missing_config.shaders_on &&
+              missing_config.profile.empty(),
           "…y los defaults son los del pack, no apagado");
 
     // Con archivo y mascara 0: el jugador apago todo A PROPOSITO, y eso hay que
     // respetarlo. Si esto se leyera como «nunca toco nada», el juego volveria a
     // arrancar remasterizado en cada partida y el ajuste no serviria.
-    ayther::PlayerConfig off;
-    off.subsystems = 0;
-    off.have_subsystems = true;
-    const auto pOff = dir / "todo_apagado.toml";
-    ayther::player_config_save(pOff, off);
-    const auto rOff = ayther::player_config_load(pOff);
-    check(rOff.have_subsystems && rOff.subsystems == 0,
+    ayther::PlayerConfig disabled_config;
+    disabled_config.subsystems = 0;
+    disabled_config.have_subsystems = true;
+    const auto disabled_config_path = test_directory / "todo_apagado.toml";
+    ayther::player_config_save(disabled_config_path, disabled_config);
+    const auto loaded_disabled_config =
+        ayther::player_config_load(disabled_config_path);
+    check(loaded_disabled_config.have_subsystems &&
+              loaded_disabled_config.subsystems == 0,
           "guardar 0 se relee como «apagado a proposito», no como ausente");
 
     // -- 4. Robustez --------------------------------------------------------
     std::printf("\n[4] un archivo roto no tira nada\n");
     {
-        const auto rota = dir / "rota.toml";
-        std::FILE* f = std::fopen(rota.string().c_str(), "wb");
-        if (f) { std::fputs("esto no es toml\nsubsystems = pepe\n[[[\n", f); std::fclose(f); }
-        const auto rr = ayther::player_config_load(rota);
+        const auto malformed_config_path = test_directory / "rota.toml";
+        std::FILE* config_file =
+            std::fopen(malformed_config_path.string().c_str(), "wb");
+        if (config_file != nullptr) {
+            std::fputs("esto no es toml\nsubsystems = pepe\n[[[\n", config_file);
+            std::fclose(config_file);
+        }
+        const auto recovered_config =
+            ayther::player_config_load(malformed_config_path);
         // Lo que importa no es qué valor sale sino que SALGA uno usable: una
         // preferencia corrupta no puede impedir jugar.
-        check(rr.bus_gain[0] >= 0.0f, "una configuracion ilegible da valores usables");
+        check(recovered_config.bus_gain[0] >= 0.0F,
+              "una configuracion ilegible da valores usables");
     }
 
-    fs::remove_all(dir, ec);
-    std::printf("\n%d passed, %d failed\n", g_pass, g_fail);
-    return g_fail == 0 ? 0 : 1;
+    fs::remove_all(test_directory, filesystem_error);
+    std::printf("\n%d passed, %d failed\n", passed_checks, failed_checks);
+    return failed_checks == 0 ? 0 : 1;
 }
