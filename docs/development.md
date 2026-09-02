@@ -27,6 +27,18 @@ Vulkan DLLs are expected to resolve from the operating system.
 The bootstrap also requires GitHub CLI (`gh`) authenticated for access to the
 public artifact-attestation API. It does not require an Engine source checkout.
 
+Dependency ownership is explicit in the manifest:
+
+| Scope | Direct vcpkg entries |
+| --- | --- |
+| `Ayther::engine` native closure | `sdl3[vulkan]`, `vulkan`, `vulkan-memory-allocator`, `vk-bootstrap`, `tomlplusplus`, `zstd` |
+| Runtime-owned | `imgui[sdl3-binding,vulkan-binding]`, `stb` |
+
+All entries remain top-level because `AytherConfig.cmake` must resolve its
+native packages while configuring a clean consumer. ImGui and stb are not part
+of Engine's exported contract and must not be removed or made accidental
+transitive dependencies.
+
 ## Pinned AYTHER Engine artifact
 
 [`dependencies/ayther-engine.lock.json`](../dependencies/ayther-engine.lock.json)
@@ -74,8 +86,17 @@ cmake --build build
 
 `CMAKE_PREFIX_PATH` must expose both the AYTHER package and any dependency
 prefixes not supplied by the vcpkg toolchain. Configuration is expected to fail
-when `Ayther::engine`, SDL3, Vulkan, vk-bootstrap, ImGui, or stb cannot be
-resolved; do not work around that failure by adding private engine source paths.
+when `Ayther::engine`, SDL3, Vulkan, Vulkan Memory Allocator, vk-bootstrap,
+toml++, zstd, ImGui, or stb cannot be resolved; do not work around that failure
+by adding private engine source paths.
+
+After bootstrapping Engine, verify that the manifest still covers the package's
+declared closure without accessing the network:
+
+```powershell
+& ./tools/verify_vcpkg_manifest.ps1 `
+  -AytherConfig "$enginePrefix/lib/cmake/Ayther/AytherConfig.cmake"
+```
 
 ## Tests
 
@@ -88,6 +109,7 @@ Current CTest coverage includes:
 | Test | Contract covered |
 | --- | --- |
 | `ayther_engine_lock` | offline validation of release identity, checksum manifest, attestation policy, and supported artifact matrix |
+| `vcpkg_manifest` | Engine package closure, pinned baseline, SDL3/ImGui features, and direct Runtime ownership of ImGui/stb |
 | `player_config` | key generation, defaults, persistence distinctions, and tolerant parsing |
 | `split_geometry` | comparison geometry and zero-width edge cases without a GPU |
 | `capture` | image-source selection and metadata that excludes protected content |

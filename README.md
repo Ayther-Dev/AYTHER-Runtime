@@ -82,8 +82,10 @@ or cloud synchronization. Those responsibilities belong to AYTHER Play.
 - A Vulkan-capable GPU, loader, and driver for interactive execution.
 - The AYTHER package bootstrapped below, containing the `engine` component and
   its shaders (`Ayther::engine` and `Ayther_SHADER_DIR`).
-- The dependencies declared in `vcpkg.json`: SDL3, Vulkan, Vulkan Memory
-  Allocator, vk-bootstrap, toml++, zstd, Dear ImGui, and stb.
+- The `Ayther::engine` closure declared directly in `vcpkg.json`: SDL3, Vulkan,
+  Vulkan Memory Allocator, vk-bootstrap, toml++, and zstd.
+- Runtime-owned direct dependencies: Dear ImGui with SDL3/Vulkan backends and
+  stb.
 - Ninja is recommended, but not required.
 
 The exact supported Engine release and its platform artifacts are recorded in
@@ -114,6 +116,11 @@ cmake -S . -B build -G Ninja `
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
+
+During configuration, the vcpkg toolchain installs both Engine's native package
+closure and Runtime's direct ImGui/stb dependencies from the pinned baseline.
+`AytherConfig.cmake` remains responsible for resolving the imported Engine
+targets; Runtime does not duplicate their `find_package` calls.
 
 For a multi-configuration generator, omit `CMAKE_BUILD_TYPE` and pass
 `--config RelWithDebInfo` to the build and test commands. The executable and

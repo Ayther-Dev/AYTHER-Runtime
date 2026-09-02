@@ -24,6 +24,10 @@ core-probe process contract. The standalone smoke bootstraps the pinned,
 attested Engine release and proves that Runtime can consume its CMake package
 without an Engine or monorepo checkout.
 
+A clean vcpkg manifest installation resolves the complete native dependency
+closure advertised by `AytherConfig.cmake`; the manifest oracle also preserves
+Runtime's direct ImGui and stb dependencies and their required backends.
+
 These checks do not prove broad GPU, driver, operating-system, core, or game
 compatibility.
 

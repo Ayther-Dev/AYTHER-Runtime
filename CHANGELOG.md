@@ -28,6 +28,9 @@ once stable compatibility guarantees are defined.
   returns its CMake prefix without requiring an Engine or monorepo checkout.
 - Offline CTest coverage for the Engine lock schema and supported artifact
   matrix.
+- vcpkg manifest validation against the installed Engine package closure,
+  including the pinned toml++ dependency and direct Runtime ownership of ImGui
+  and stb.
 - Initial standalone Runtime repository structure for the C++20 game-session
   host consumed by AYTHER Play.
 - CMake package consumption through

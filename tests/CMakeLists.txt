@@ -17,8 +17,16 @@ if(AYTHER_PWSH_EXECUTABLE)
                 -File ${CMAKE_CURRENT_SOURCE_DIR}/../tools/bootstrap_ayther_engine.ps1
                 -ValidateOnly
     )
+    add_test(
+        NAME vcpkg_manifest
+        COMMAND ${AYTHER_PWSH_EXECUTABLE}
+                -NoProfile
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/../tools/verify_vcpkg_manifest.ps1
+                -Manifest ${CMAKE_CURRENT_SOURCE_DIR}/../vcpkg.json
+                -AytherConfig ${Ayther_DIR}/AytherConfig.cmake
+    )
 else()
-    message(STATUS "pwsh not found; AYTHER Engine lock test disabled")
+    message(STATUS "pwsh not found; dependency manifest tests disabled")
 endif()
 
 # stb_image_write.h (capture_tests): header-only. Se busca el ARCHIVO y no el

@@ -321,12 +321,16 @@ dependency_matrix:
     area: "Build contract"
     current_package: "Ayther engine component"
     direct_packages: ["SDL3 with Vulkan", "Vulkan", "vk-bootstrap", "Dear ImGui SDL3/Vulkan", "stb"]
+    engine_vcpkg_closure: ["SDL3 with Vulkan", "Vulkan", "VulkanMemoryAllocator", "vk-bootstrap", "tomlplusplus", "zstd"]
+    runtime_owned_vcpkg_packages: ["Dear ImGui SDL3/Vulkan", "stb"]
     direct_links: ["Ayther::engine", "SDL3::SDL3", "Vulkan::Vulkan", "vk-bootstrap::vk-bootstrap", "imgui::imgui", "CMAKE_DL_LIBS"]
     required_contract:
       - "Compile as C++20."
       - "Stage Engine SPIR-V from Ayther_SHADER_DIR and Runtime SPIR-V from its source tree."
       - "Stage imported runtime DLLs beside ayther_runtime."
       - "AYTHER_SHADER_DIR compile definition points to the staged shader directory."
+      - "vcpkg manifest mode supplies every find_dependency emitted by AytherConfig.cmake."
+      - "Dear ImGui and stb remain direct Runtime dependencies."
     known_gap: >-
       Runtime manually stages tomlplusplus although Engine declares header-only
       usage. Verify the executable import table and remove this staging if stale.
