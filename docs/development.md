@@ -42,6 +42,12 @@ native packages while configuring a clean consumer. ImGui and stb are not part
 of Engine's exported contract and must not be removed or made accidental
 transitive dependencies.
 
+Packages containing the `engine` component must export the absolute,
+relocatable `Ayther_SHADER_DIR` from `AytherConfig.cmake`. Runtime validates
+that contract during configuration and copies Engine SPIR-V only from that
+installed directory; it never derives an Engine checkout or package-layout
+path.
+
 ## Pinned AYTHER Engine artifact
 
 [`dependencies/ayther-engine.lock.json`](../dependencies/ayther-engine.lock.json)

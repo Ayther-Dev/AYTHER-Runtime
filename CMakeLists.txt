@@ -35,6 +35,17 @@ configure_file(
 # Request the first-party `engine` surface because Runtime needs the renderer,
 # Vulkan backend, RetroRunner, and configuration API, not only ADR-003's SDK API.
 find_package(Ayther 0.1.0 CONFIG REQUIRED COMPONENTS engine)
+if(NOT DEFINED Ayther_SHADER_DIR OR Ayther_SHADER_DIR STREQUAL "")
+    message(FATAL_ERROR
+        "The installed Ayther engine package does not export "
+        "Ayther_SHADER_DIR")
+endif()
+if(NOT IS_DIRECTORY "${Ayther_SHADER_DIR}")
+    message(FATAL_ERROR
+        "Ayther_SHADER_DIR does not name an installed shader directory: "
+        "${Ayther_SHADER_DIR}")
+endif()
+
 find_package(SDL3         CONFIG REQUIRED)
 find_package(Vulkan              REQUIRED)
 find_package(vk-bootstrap CONFIG REQUIRED)   # vk_swapchain.cpp: vkb::SwapchainBuilder
@@ -122,9 +133,9 @@ endif()
 #
 # Only the runtime's OWN shaders live here (postprocess: CRT + present). The
 # ones AytherRenderer loads (sprite*, indexed_plane, video) belong to the motor
-# and come from the package — `Ayther_SHADER_DIR`, wherever the package keeps
-# them — into the same bin/shaders/. The runtime never reaches into engine/
-# for them (ADR-004 E8).
+# and come from the installed package through its public `Ayther_SHADER_DIR`
+# contract. The runtime never derives a source-tree or package-layout path for
+# them (ADR-004 E8).
 #
 # After editing a .vert/.frag, regenerate its .spv (any glslc / glslangValidator):
 #   glslc src/vulkan_backend/shaders/<name> -o src/vulkan_backend/shaders/<name>.spv
@@ -132,16 +143,17 @@ endif()
 set(SHADER_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/vulkan_backend/shaders)
 set(SHADER_BIN_DIR ${CMAKE_BINARY_DIR}/bin/shaders)
 
-add_custom_command(TARGET ayther_runtime POST_BUILD
+add_custom_target(ayther_stage_shaders ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADER_BIN_DIR}
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
-        ${Ayther_SHADER_DIR} ${SHADER_BIN_DIR}
+        "${Ayther_SHADER_DIR}" "${SHADER_BIN_DIR}"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${SHADER_SRC_DIR}/postprocess.vert.spv
-        ${SHADER_SRC_DIR}/postprocess.frag.spv
-        ${SHADER_BIN_DIR}/
+        "${SHADER_SRC_DIR}/postprocess.vert.spv"
+        "${SHADER_SRC_DIR}/postprocess.frag.spv"
+        "${SHADER_BIN_DIR}/"
     COMMENT "Staging SPIR-V shaders (motor + runtime) to bin/shaders/"
 )
+add_dependencies(ayther_runtime ayther_stage_shaders)
 
 target_compile_definitions(ayther_runtime PRIVATE
     AYTHER_SHADER_DIR="${SHADER_BIN_DIR}/"

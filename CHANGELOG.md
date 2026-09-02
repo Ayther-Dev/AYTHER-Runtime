@@ -16,6 +16,8 @@ once stable compatibility guarantees are defined.
 
 ### Fixed
 
+- Engine shaders are now staged exclusively through the relocatable
+  `Ayther_SHADER_DIR` package contract, which is validated during configure.
 - Engine public headers now use their package-root `ayther/` paths, so Runtime
   builds with only the include directory exported by `Ayther::engine`.
 - Runtime UI and startup logs now derive the Runtime version from CMake and the
