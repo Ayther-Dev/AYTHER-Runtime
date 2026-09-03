@@ -31,6 +31,8 @@
 #include "player_overlay.h"         // in-game pause menu + HD↔Original toggle (M4)
 #include "player_config.h"          // #299: lo que el panel ajusta y se recuerda
 #include "capture.h"                // #300: captura comparativa sincronizada
+#include "capture_service.h"
+#include "save_state_store.h"
 #include <ayther/engine/core_probe.hpp>  // MIG-022: sondeo RAII publico del Engine
 #include "output_profile.h"         // #296: perfiles de salida (CRT/LCD/pixel)
 #include "diagnostics.h"            // #302: asistente de diagnostico
@@ -158,6 +160,8 @@ int main(int argc, char* argv[]) {
     const bool hd_compose = options.hd_compose;
     const ayther::runtime::RuntimeConfig runtime_config(
         runtime_paths, std::filesystem::path{saves_dir_arg});
+    const ayther::runtime::SaveStateStore save_state_store;
+    const ayther::runtime::CaptureService capture_service;
     // #230 EM-7.4: el parche del usuario. Deja de ser un `(void)`: se aplica
     // al buffer de la ROM en `RetroRunner::load_rom`, nunca al archivo.
 
@@ -652,7 +656,18 @@ int main(int argc, char* argv[]) {
     }
     const std::filesystem::path cfg_file =
         ayther::player_config_path(cfg_dir, sess->game_id(), cfg_pack_name);
-    ayther::PlayerConfig player_cfg = ayther::player_config_load(cfg_file);
+    static_assert(ayther::player_config_audio_bus_count ==
+                  ayther::kAudioBusCount);
+    auto player_cfg_result = ayther::player_config_load_checked(cfg_file);
+    if (player_cfg_result.status == ayther::PlayerConfigLoadStatus::invalid ||
+        player_cfg_result.status ==
+            ayther::PlayerConfigLoadStatus::unsupported_version ||
+        player_cfg_result.status == ayther::PlayerConfigLoadStatus::io_error) {
+        emit_status(ayther::runtime::WarningStatus{
+            ayther::runtime::RuntimeErrorCode::config_invalid,
+            player_cfg_result.diagnostic});
+    }
+    ayther::PlayerConfig player_cfg = std::move(player_cfg_result.config);
     {
         // Orden: primero el PERFIL y después la máscara guardada. El perfil
         // pisa la máscara, así que aplicarlo después borraría los ajustes
@@ -718,26 +733,12 @@ int main(int argc, char* argv[]) {
     // negarse a arrancar convertiria un guardado ilegible en un juego que no se
     // puede jugar.
     if (!load_state_arg.empty()) {
-        std::vector<std::uint8_t> loaded_state;
-        bool state_read_successfully = false;
-        if (std::FILE* state_file =
-                std::fopen(load_state_arg.c_str(), "rb")) {
-            std::fseek(state_file, 0, SEEK_END);
-            const long state_size = std::ftell(state_file);
-            std::fseek(state_file, 0, SEEK_SET);
-            if (state_size > 0) {
-                loaded_state.resize(static_cast<std::size_t>(state_size));
-                state_read_successfully =
-                    std::fread(loaded_state.data(), 1, loaded_state.size(),
-                               state_file) == loaded_state.size();
-            }
-            std::fclose(state_file);
-        }
-        const bool state_restored =
-            state_read_successfully && sess && sess->unserialize(loaded_state);
+        auto loaded_state = save_state_store.load(load_state_arg);
+        const bool state_restored = loaded_state.loaded() && sess &&
+                                    sess->unserialize(loaded_state.bytes);
         if (state_restored) {
             std::fprintf(stdout, "[main] reanudado desde %s (%zu bytes)\n",
-                         load_state_arg.c_str(), loaded_state.size());
+                         load_state_arg.c_str(), loaded_state.bytes.size());
         } else {
             emit_status(ayther::runtime::WarningStatus{
                 ayther::runtime::RuntimeErrorCode::state_restore_failed,
@@ -1156,11 +1157,15 @@ int main(int argc, char* argv[]) {
                     if (renderer.readback_init(vulkan.engine_view())) {
                         const VkExtent2D ex = renderer.render_image().extent;
                         std::vector<uint8_t> orig;
-                        if (const uint8_t* p0 =
-                                renderer.export_frame(
+                        const auto capture_bytes =
+                            ayther::capture_pixel_bytes(ex.width, ex.height);
+                        if (capture_bytes.has_value()) {
+                            if (const uint8_t* p0 = renderer.export_frame(
                                     vulkan.engine_view(), fv, pack,
-                                    /*hd=*/false, active_layer_stack))
-                            orig.assign(p0, p0 + static_cast<size_t>(ex.width) * ex.height * 4);
+                                    /*hd=*/false, active_layer_stack)) {
+                                orig.assign(p0, p0 + *capture_bytes);
+                            }
+                        }
                         const uint8_t* p1 =
                             renderer.export_frame(
                                 vulkan.engine_view(), fv, pack,
@@ -1175,20 +1180,41 @@ int main(int argc, char* argv[]) {
                             m.profile = sess->active_profile();
                             char ts[32];
                             const std::time_t now = std::time(nullptr);
-                            std::strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%S",
-                                          std::gmtime(&now));
+                            std::tm utc{};
+#ifdef _WIN32
+                            const bool has_utc = gmtime_s(&utc, &now) == 0;
+#else
+                            const bool has_utc = gmtime_r(&now, &utc) != nullptr;
+#endif
+                            if (!has_utc || std::strftime(
+                                    ts, sizeof(ts), "%Y-%m-%dT%H:%M:%S",
+                                    &utc) == 0) {
+                                std::snprintf(ts, sizeof(ts), "unknown-time");
+                            }
                             m.timestamp = ts;
                             m.width  = ex.width;
                             m.height = ex.height;
                             std::string base = "captura-";
                             base += ts;
                             for (char& c : base) if (c == ':') c = '-';
-                            const std::string out = ayther::capture_write(
+                            const auto capture_result = capture_service.write(
                                 runtime_config.paths().captures_directory(),
-                                base, orig.data(), p1,
-                                ex.width, ex.height, split_pos_, split_vertical_, m);
+                                base, ex.width, ex.height, orig,
+                                std::span<const std::uint8_t>{p1, *capture_bytes},
+                                split_pos_, split_vertical_, m);
                             std::fprintf(stdout, "[main] captura: %s\n",
-                                         out.empty() ? "FALLO" : out.c_str());
+                                         capture_result
+                                             ? capture_result.prefix.c_str()
+                                             : "FALLO");
+                            if (!capture_result) {
+                                emit_status(ayther::runtime::WarningStatus{
+                                    ayther::runtime::RuntimeErrorCode::capture_failed,
+                                    "no se pudo publicar el conjunto completo de captura"});
+                            }
+                        } else if (!capture_bytes.has_value()) {
+                            emit_status(ayther::runtime::WarningStatus{
+                                ayther::runtime::RuntimeErrorCode::capture_failed,
+                                "las dimensiones de captura exceden el rango admitido"});
                         }
                         renderer.readback_shutdown(vulkan.engine_view());
                     }
@@ -1285,109 +1311,20 @@ int main(int argc, char* argv[]) {
     // if serialization fails, the game still exits cleanly (no data loss,
     // just no cloud upload this session).
     std::string savestate_path;
-    {
-        std::vector<uint8_t> state_data;
-        if (sess && sess->serialize(state_data)) {
-            // #603: el layout es <saves>/<game_id>/<perfil>/estado-<cuando>-<crc>.bin
-            //
-            // Antes era UN archivo por juego con nombre fijo, en el arbol del
-            // Runtime. Eso dejaba tres agujeros: guardar pisaba la partida
-            // anterior sin vuelta atras; el estado de una partida en HD y el de
-            // la misma en original compartian archivo (y un savestate es una
-            // foto de la memoria, asi que mezclarlos da un juego que se
-            // comporta raro media hora despues); y Play, que guarda en OTRA
-            // carpeta, no lo encontraba.
-            //
-            // La revision de la ROM va en el NOMBRE para que sobreviva a copiar
-            // la carpeta, que es lo que la gente hace con sus guardados.
-            const auto& saves_root = runtime_config.saves_directory();
-
-            const auto sanitize_path_component = [](const std::string& value) {
-                std::string sanitized;
-                for (const char character : value) {
-                    sanitized +=
-                        (std::isalnum(
-                             static_cast<unsigned char>(character)) ||
-                         character == '-' || character == '_')
-                            ? character
-                            : '_';
-                }
-                return sanitized.empty() ? std::string("sin_nombre") : sanitized;
-            };
-            const std::string game_id = sess->game_id();
-            const std::string game_component =
-                game_id.empty() ? "unknown" : game_id;
-            std::string active_profile = sess->active_profile();
-            if (active_profile.empty()) {
-                active_profile = "original";
-            }
-
-            const auto save_directory =
-                saves_root / sanitize_path_component(game_component) /
-                sanitize_path_component(active_profile);
-            std::error_code directory_error;
-            std::filesystem::create_directories(save_directory,
-                                                directory_error);
-
-            char timestamp[32];
-            const std::time_t now = std::time(nullptr);
-            std::strftime(timestamp, sizeof(timestamp), "%Y%m%dT%H%M%SZ",
-                          std::gmtime(&now));
-            std::string rom_revision =
-                rom_crc32_arg.empty()
-                    ? "sinrev"
-                    : sanitize_path_component(rom_crc32_arg);
-            for (char& character : rom_revision) {
-                character = static_cast<char>(std::tolower(
-                    static_cast<unsigned char>(character)));
-            }
-
-            const auto destination_path =
-                save_directory /
-                ("estado-" + std::string(timestamp) + "-" + rom_revision +
-                 ".bin");
-            const auto temporary_path = destination_path.string() + ".tmp";
-
-            // ATOMICO: temporal y rename. Escribir encima del guardado bueno
-            // significa que entre el primer byte y el ultimo no hay partida, y
-            // ese es justo el momento en que la consola se apaga.
-            bool save_succeeded = false;
-            if (std::FILE* state_file =
-                    std::fopen(temporary_path.c_str(), "wb")) {
-                save_succeeded =
-                    std::fwrite(state_data.data(), 1, state_data.size(),
-                                state_file) == state_data.size();
-                // El fflush ANTES del fclose: sin el, un fclose que falle deja
-                // un temporal a medias que el rename convertiria en el
-                // guardado bueno.
-                if (save_succeeded) {
-                    save_succeeded = std::fflush(state_file) == 0;
-                }
-                if (std::fclose(state_file) != 0) {
-                    save_succeeded = false;
-                }
-            }
-            if (save_succeeded) {
-                std::error_code rename_error;
-                std::filesystem::rename(temporary_path, destination_path,
-                                        rename_error);
-                save_succeeded = !rename_error;
-                if (!save_succeeded) {
-                    std::filesystem::remove(temporary_path, rename_error);
-                }
-            } else {
-                std::error_code remove_error;
-                std::filesystem::remove(temporary_path, remove_error);
-            }
-
-            if (save_succeeded) {
-                savestate_path = destination_path.string();
-                std::fprintf(stdout, "[main] guardado: %zu bytes -> %s\n",
-                             state_data.size(), savestate_path.c_str());
-            } else {
-                std::fprintf(stderr, "[main] no se pudo escribir el guardado: %s\n",
-                             destination_path.string().c_str());
-            }
+    std::vector<std::uint8_t> state_data;
+    if (sess && sess->serialize(state_data)) {
+        const auto saved = save_state_store.save(
+            runtime_config.saves_directory(), sess->game_id(),
+            sess->active_profile(), rom_crc32_arg, state_data);
+        if (saved) {
+            savestate_path = saved.path.string();
+            std::fprintf(stdout, "[main] guardado: %zu bytes -> %s\n",
+                         state_data.size(), savestate_path.c_str());
+        } else {
+            std::fprintf(stderr, "[main] no se pudo escribir el guardado: %s\n",
+                         saved.diagnostic.c_str());
+            emit_status(ayther::runtime::WarningStatus{
+                saved.error, saved.diagnostic});
         }
     }
 

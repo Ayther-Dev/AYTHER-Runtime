@@ -234,6 +234,7 @@ add_test(
 add_executable(capture_tests
     capture_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/capture.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/capture_service.cpp
 )
 target_include_directories(capture_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
@@ -245,6 +246,22 @@ set_target_properties(capture_tests PROPERTIES
 add_test(
     NAME    capture
     COMMAND capture_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+add_executable(save_state_store_tests
+    save_state_store_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/save_state_store.cpp
+)
+target_include_directories(save_state_store_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+set_target_properties(save_state_store_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    save_state_store
+    COMMAND save_state_store_tests
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 

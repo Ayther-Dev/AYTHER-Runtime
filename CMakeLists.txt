@@ -90,6 +90,8 @@ add_executable(ayther_runtime
     src/player_overlay.cpp      # in-game pause menu + HD toggle (M4)
     src/player_config.cpp       # #299: per-game-and-pack player preferences
     src/capture.cpp             # #300: synchronized comparison capture
+    src/capture_service.cpp     # MAD-041: transactional capture boundary
+    src/save_state_store.cpp    # MAD-039: transactional persistence boundary
     src/diagnostics.cpp         # #302: audiovisual diagnostics assistant
     src/pack_layers.cpp         # #561: pack overlay-layer stack
     src/sonic_telemetry.cpp     # Runtime-only game RAM diagnostics
