@@ -68,6 +68,41 @@ add_test(
 )
 
 # ------------------------------------------------------------------
+# status_emitter_tests — MAD-007: one typed JSON protocol boundary.
+#
+# The C++ oracle fixes event shape and byte escaping. A second CMake test feeds
+# every fixture record through CMake's real JSON parser, while the source
+# contract prevents protocol framing from leaking back into another source.
+# ------------------------------------------------------------------
+add_executable(status_emitter_tests
+    status_emitter_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/status_emitter.cpp
+)
+target_include_directories(status_emitter_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+set_target_properties(status_emitter_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    status_emitter
+    COMMAND status_emitter_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    status_emitter_json
+    COMMAND ${CMAKE_COMMAND}
+            -DSTATUS_EMITTER_TEST_EXE=$<TARGET_FILE:status_emitter_tests>
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/status_emitter_json_test.cmake
+)
+add_test(
+    NAME    status_emitter_source_contract
+    COMMAND ${CMAKE_COMMAND}
+            -DRUNTIME_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/../src
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/status_emitter_source_contract_test.cmake
+)
+
+# ------------------------------------------------------------------
 # output_profile_tests — MIG-021: Runtime-owned presentation policy.
 #
 # Profiles, scaling geometry, filtering, and shader mixing are pure window

@@ -21,6 +21,7 @@
 #include <cinttypes>
 #include <ctime>
 #include "runtime_config.h"
+#include "status_emitter.h"
 #include <ayther/ayther_session.h>    // the motor facade (R2.3) — replaces direct host/audio
 #include <ayther/engine/capabilities.hpp>
 #include <ayther/engine/pack.hpp>
@@ -53,6 +54,14 @@
 int main(int argc, char* argv[]) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     std::setvbuf(stderr, nullptr, _IONBF, 0);
+
+    ayther::runtime::StatusEmitter status_emitter{*stdout};
+    const auto emit_status = [&status_emitter](
+                                 const ayther::runtime::StatusEvent& event) {
+        if (!status_emitter.emit(event)) {
+            std::fprintf(stderr, "[status] no se pudo emitir el evento\n");
+        }
+    };
 
     const std::string version_report = ayther::runtime::version_report();
     std::fprintf(stdout, "[main] %s\n", version_report.c_str());
@@ -216,7 +225,7 @@ int main(int argc, char* argv[]) {
     // Play no puede hacerlo por su cuenta: cargar un core libretro es cargar
     // codigo GPL en su proceso, que es justo la frontera que el ecosistema no
     // cruza (spec de producto de Play, §7). Asi que lo carga QUIEN ya lo carga
-    // —este proceso—, publica el resultado por el mismo canal AYTHER_STATUS que
+    // —este proceso—, publica el resultado por el mismo canal de estado que
     // el resto del ciclo de vida, y se va. Si el archivo no es un core o es de
     // otra arquitectura, el que muere es este proceso desechable y Play se
     // entera por el codigo de salida, en vez de llevarse el launcher puesto.
@@ -228,20 +237,22 @@ int main(int argc, char* argv[]) {
                 probed.error.code == ayther::ErrorCode::BadFormat;
             std::fprintf(stderr, "[core-probe] %s\n",
                          probed.error.message.c_str());
-            std::fprintf(stdout,
-                "AYTHER_STATUS {\"event\":\"probe\",\"ok\":false,\"reason\":\"%s\"}\n",
-                invalid_core ? "no_es_libretro" : "no_carga");
-            std::fflush(stdout);
+            emit_status(ayther::runtime::ProbeFailedStatus{
+                invalid_core ? "no_es_libretro" : "no_carga"});
             return invalid_core ? 3 : 2;
         }
 
-        // Engine serializa todos los valores que entrega el core. Runtime solo
-        // agrega el framing de proceso que consume Play; no interpreta ni
-        // conserva punteros Libretro prestados.
-        std::string payload = probed->serialize();
-        payload.insert(1, "\"event\":\"probe\",\"ok\":true,");
-        std::fprintf(stdout, "AYTHER_STATUS %s\n", payload.c_str());
-        std::fflush(stdout);
+        // Runtime copia el modelo publico del Engine a su evento tipado; no
+        // interpreta ni conserva punteros Libretro prestados.
+        const ayther::engine::CoreInfo& info = probed->info();
+        emit_status(ayther::runtime::ProbeSucceededStatus{
+            info.api_version,
+            info.library_name,
+            info.library_version,
+            info.valid_extensions,
+            info.need_fullpath,
+            info.block_extract,
+        });
         return 0;
     }
 
@@ -257,7 +268,7 @@ int main(int argc, char* argv[]) {
             "         [--frames N] [--capture-at N[,M...]] [--crash-test]\n"
             "         [--hd-compose]  (retirado en #345: se acepta y avisa)\n"
             "       ayther_runtime --probe-core <libretro.dll>\n"
-            "         Sondea el core y emite AYTHER_STATUS probe. Sin ROM.\n");
+            "         Sondea el core y emite un evento probe. Sin ROM.\n");
         return 1;
     }
 
@@ -494,41 +505,35 @@ int main(int argc, char* argv[]) {
 
     // Coarse lifecycle IPC (M2): emit a machine-readable status line on stdout at
     // key transitions so the spawning Ayther Play launcher can track this session.
-    // Protocol = line-delimited "AYTHER_STATUS <json>"; all other stdout is human
-    // logs the launcher forwards verbatim. (serde-side parsing arrives with the UI.)
+    // El emisor central construye cada registro JSON completo; el resto de
+    // stdout son logs humanos que el launcher reenvia sin interpretar.
     // #596: el `ready` lleva el manifest de la sesion. Es el hilo entre el
     // proceso vivo y su `launch.toml`: sin el, Play tiene un archivo en el disco
     // y un proceso corriendo sin manera de saber que son la misma partida — que
     // es justo lo que hace falta para detectar sesiones huerfanas (#601).
-    std::fprintf(stdout,
-                 "AYTHER_STATUS {\"event\":\"ready\",\"game_id\":\"%s\","
-                 "\"has_pack\":%d,\"manifest\":\"%s\"}\n",
-                 sess->game_id(), static_cast<int>(sess->has_pack()),
-                 manifest_path.c_str());
+    emit_status(ayther::runtime::ReadyStatus{
+        sess->game_id(), sess->has_pack(), manifest_path});
     // #600: «que se esta jugando», para el overlay de Play. Va aparte del
     // `ready` porque responden preguntas distintas: `ready` dice que la sesion
     // arranco —el overlay se cierra— y este dice QUE arranco, que es lo que se
     // muestra. Juntarlos obligaria a Play a mirar el mismo evento dos veces con
     // dos intenciones.
-    std::fprintf(stdout,
-                 "AYTHER_STATUS {\"event\":\"now-playing\",\"game_id\":\"%s\","
-                 "\"title\":\"%s\"}\n",
-                 sess->game_id(), sess->game_id());
+    emit_status(ayther::runtime::NowPlayingStatus{
+        sess->game_id(), sess->game_id()});
 
     // #600: un AVISO no corta la sesion. Un pack cargado con todos los
     // subsistemas apagados anda igual —se ve el original— y tratarlo como error
     // cerraria una partida que estaba por empezar bien. Es ademas el estado
     // NORMAL del modo Original (#598), asi que avisar es lo unico correcto:
     // decirlo, y seguir.
-    if (sess->has_pack() && sess->subsystems_enabled_mask() == 0)
-        std::fprintf(stdout,
-                     "AYTHER_STATUS {\"event\":\"warning\",\"reason\":"
-                     "\"el pack esta cargado pero ningun subsistema esta activo: "
-                     "se ve el juego original\"}\n");
+    if (sess->has_pack() && sess->subsystems_enabled_mask() == 0) {
+        emit_status(ayther::runtime::WarningStatus{
+            "el pack esta cargado pero ningun subsistema esta activo: "
+            "se ve el juego original"});
+    }
 
     if (crash_test) {
-        std::fprintf(stdout, "AYTHER_STATUS {\"event\":\"crash-test\"}\n");
-        std::fflush(stdout);
+        emit_status(ayther::runtime::CrashTestStatus{});
         std::abort();   // prove the launcher survives an abnormal child exit
     }
 
@@ -783,10 +788,9 @@ int main(int argc, char* argv[]) {
             std::fprintf(stdout, "[main] reanudado desde %s (%zu bytes)\n",
                          load_state_arg.c_str(), loaded_state.size());
         } else {
-            std::fprintf(stdout,
-                         "AYTHER_STATUS {\"event\":\"warning\",\"reason\":"
-                         "\"no se pudo reanudar desde el guardado: se empieza de "
-                         "cero y el guardado sigue donde estaba\"}\n");
+            emit_status(ayther::runtime::WarningStatus{
+                "no se pudo reanudar desde el guardado: se empieza de "
+                "cero y el guardado sigue donde estaba"});
         }
     }
 
@@ -1429,18 +1433,10 @@ int main(int argc, char* argv[]) {
 
     // Coarse lifecycle IPC (M2 / M7): emit exit event with optional savestate
     // path so the launcher can upload the cloud save.
-    if (savestate_path.empty()) {
-        std::fprintf(stdout, "AYTHER_STATUS {\"event\":\"exit\"}\n");
-    } else {
-        // Escape backslashes in path for valid JSON (Windows paths).
-        std::string escaped;
-        for (char c : savestate_path) {
-            escaped += (c == '\\') ? '/' : c;  // use forward slashes — cross-platform
-        }
-        std::fprintf(stdout,
-                     "AYTHER_STATUS {\"event\":\"exit\",\"savestate\":\"%s\"}\n",
-                     escaped.c_str());
-    }
+    emit_status(ayther::runtime::ExitStatus{
+        savestate_path.empty()
+            ? std::optional<std::string>{}
+            : std::optional<std::string>{savestate_path}});
 
     // Stop the file watcher before any Rust/Vulkan teardown.
     pack_watcher.reset();

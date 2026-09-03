@@ -83,7 +83,10 @@ with `AYTHER_STATUS `.
    resources. Engine owns only its offscreen renderer resources. The public
    `VulkanContextView` and `RenderImageView` values borrow handles; neither side
    destroys the other side's resources.
-7. **Single-purpose window.** The Runtime window contains gameplay and in-game
+7. **Single status boundary.** Only `StatusEmitter` frames process events. Every
+   event uses its typed model and the same JSON serializer, complete-line write,
+   and immediate flush path.
+8. **Single-purpose window.** The Runtime window contains gameplay and in-game
    controls only. Library management belongs to AYTHER Play.
 
 ## 4. Component map

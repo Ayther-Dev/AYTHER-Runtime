@@ -167,6 +167,9 @@ Current CTest coverage includes:
 | `vcpkg_manifest` | Engine package closure, pinned baseline, SDL3/ImGui features, and direct Runtime ownership of ImGui/stb |
 | `ci_workflow_contract` | PR triggers, least-privilege permissions, SHA-pinned actions, locked Engine bootstrap, retained diagnostics, and CI preset invariants |
 | `runtime_config` | SDL/Engine-independent data paths and launcher save-root precedence |
+| `status_emitter` | typed event shapes, byte-exact JSON escaping, single-record writes, and flush behavior |
+| `status_emitter_json` | all event fixtures parsed by CMake's real JSON parser, including hostile text and UTF-8 round trips |
+| `status_emitter_source_contract` | rejects protocol framing anywhere below `src/` except `status_emitter.cpp` |
 | `output_profile` | Runtime-owned presets, selection precedence, scaling geometry, filtering, and shader mixing |
 | `player_config` | key generation, defaults, persistence distinctions, and tolerant parsing |
 | `split_geometry` | comparison geometry and zero-width edge cases without a GPU |

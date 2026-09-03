@@ -58,6 +58,12 @@ Machine-readable events are emitted as one unbuffered stdout line:
 AYTHER_STATUS <JSON object>\n
 ```
 
+`StatusEmitter` is the only component allowed to frame these records. It builds
+the complete line in memory, encodes every event through one JSON serializer,
+writes it with one `fwrite` call, and immediately flushes stdout. Quotes,
+backslashes, JSON control characters, and line breaks are escaped; valid UTF-8
+is preserved.
+
 Consumers MUST:
 
 - parse only complete lines beginning with the exact `AYTHER_STATUS ` prefix;
@@ -82,14 +88,15 @@ Failure reasons currently include `no_carga` (library load failure) and
 `no_es_libretro` (required Libretro symbols missing). These reason tokens are
 legacy wire values and MUST be treated as opaque identifiers.
 
-Engine owns the temporary dynamic-library handle, copies the Libretro metadata,
-and serializes it with JSON control-character escaping. Runtime adds only the
-launcher-facing `event` and `ok` fields plus the `AYTHER_STATUS` framing.
+Engine owns the temporary dynamic-library handle and copies the Libretro
+metadata. Runtime transfers those owned values into `ProbeSucceededStatus`; the
+same Runtime serializer used by every other event performs JSON encoding and
+protocol framing.
 
 ### `ready`
 
 ```json
-{"event":"ready","game_id":"...","has_pack":0,"manifest":"..."}
+{"event":"ready","game_id":"...","has_pack":false,"manifest":"..."}
 ```
 
 Indicates that the session exists. It does not guarantee that Vulkan
