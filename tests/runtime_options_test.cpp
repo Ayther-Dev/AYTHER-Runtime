@@ -166,7 +166,7 @@ int main() {
     expect_error({"ayther_runtime", "--frames", "18446744073709551616"},
                  RuntimeOptionErrorCode::integer_overflow, "--frames",
                  "--frames rejects uint64_t overflow");
-    expect_error({"ayther_runtime", "--frames", "20fps"},
+    expect_error({"ayther_runtime", "--frames", "12foo"},
                  RuntimeOptionErrorCode::trailing_characters, "--frames",
                  "--frames rejects trailing text");
 
