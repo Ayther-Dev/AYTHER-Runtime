@@ -111,7 +111,7 @@ dependency_matrix:
     current_headers: ["ayther/engine/core_probe.hpp"]
     current_symbols:
       - "ayther::engine::probe_core"
-      - "ayther::engine::CoreProbe::serialize"
+      - "ayther::engine::CoreProbe::info"
       - "ayther::engine::CoreProbe::~CoreProbe"
     required_contract:
       - "Load a user-selected library, resolve two information symbols, copy the result, and unload it."
@@ -121,8 +121,9 @@ dependency_matrix:
       - "Use LoadLibrary/GetProcAddress/FreeLibrary on Windows and dlopen/dlsym/dlclose on POSIX."
     target_state: >-
       Engine publishes probe_core(path) -> Result<CoreProbe>. The move-only
-      probe owns the temporary library, CoreInfo owns every copied value, and
-      Engine serializes untrusted metadata with complete JSON control escaping.
+      probe owns the temporary library and CoreInfo owns every copied value.
+      Runtime transfers that metadata into ProbeSucceededStatus and its sole
+      StatusEmitter serializes the process event.
     owner: "Engine"
     migration_status: "complete"
 
@@ -359,6 +360,8 @@ dependency_matrix:
     required_contract:
       - "Test pure Runtime logic without a GPU."
       - "Test core probing through the real executable, exit code, and one-line protocol."
+      - "Parse every typed status fixture with a real JSON parser."
+      - "Reject status framing anywhere in Runtime sources except StatusEmitter."
       - "Never include engine/src."
     target_state: >-
       capture.cpp owns a translation-unit-local STB_IMAGE_WRITE_IMPLEMENTATION,
@@ -452,8 +455,10 @@ transitive_dependencies:
     classification: "transitive_only"
     owner: "Shared"
     requirement: >-
-      Runtime owns process status events. Events remain one line and flush
-      immediately. Launcher ignores every line without the AYTHER_STATUS prefix.
+      Runtime owns process status events through typed StatusEvent alternatives.
+      StatusEmitter is the sole JSON serializer and framing site; it constructs
+      one complete line, writes it once, and flushes immediately. Launcher
+      ignores every line without the AYTHER_STATUS prefix.
       Engine should eventually expose a log sink instead of writing uncontrolled
       protocol-adjacent output.
   filesystem:
@@ -507,6 +512,8 @@ runtime_files_without_engine_dependency:
   - files: ["src/output_profile.h", "tests/output_profile_test.cpp"]
     dependencies: ["C++ standard library"]
   - files: ["src/runtime_config.h", "src/runtime_config.cpp", "tests/runtime_config_test.cpp"]
+    dependencies: ["C++ standard library"]
+  - files: ["src/status_emitter.h", "src/status_emitter.cpp", "tests/status_emitter_test.cpp"]
     dependencies: ["C++ standard library"]
   - files: ["src/capture.h", "src/capture.cpp"]
     dependencies: ["C++ filesystem/streams", "ayther_runtime_stb"]

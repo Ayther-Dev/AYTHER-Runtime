@@ -32,6 +32,15 @@ if(AYTHER_PWSH_EXECUTABLE)
                 -File ${CMAKE_CURRENT_SOURCE_DIR}/runtime_oot_smoke_contract_test.ps1
                 -SmokeScript ${CMAKE_CURRENT_SOURCE_DIR}/../tools/runtime_oot_smoke.ps1
     )
+    add_test(
+        NAME ci_workflow_contract
+        COMMAND ${AYTHER_PWSH_EXECUTABLE}
+                -NoProfile
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/ci_workflow_contract_test.ps1
+                -Workflow ${CMAKE_CURRENT_SOURCE_DIR}/../.github/workflows/ci.yml
+                -Presets ${CMAKE_CURRENT_SOURCE_DIR}/../CMakePresets.json
+                -EngineLock ${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/ayther-engine.lock.json
+    )
 else()
     message(STATUS "pwsh not found; dependency manifest tests disabled")
 endif()
@@ -56,6 +65,41 @@ add_test(
     NAME    runtime_config
     COMMAND runtime_config_tests
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+# ------------------------------------------------------------------
+# status_emitter_tests — MAD-007: one typed JSON protocol boundary.
+#
+# The C++ oracle fixes event shape and byte escaping. A second CMake test feeds
+# every fixture record through CMake's real JSON parser, while the source
+# contract prevents protocol framing from leaking back into another source.
+# ------------------------------------------------------------------
+add_executable(status_emitter_tests
+    status_emitter_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/status_emitter.cpp
+)
+target_include_directories(status_emitter_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+set_target_properties(status_emitter_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    status_emitter
+    COMMAND status_emitter_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    status_emitter_json
+    COMMAND ${CMAKE_COMMAND}
+            -DSTATUS_EMITTER_TEST_EXE=$<TARGET_FILE:status_emitter_tests>
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/status_emitter_json_test.cmake
+)
+add_test(
+    NAME    status_emitter_source_contract
+    COMMAND ${CMAKE_COMMAND}
+            -DRUNTIME_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/../src
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/status_emitter_source_contract_test.cmake
 )
 
 # ------------------------------------------------------------------
@@ -395,22 +439,25 @@ add_test(
 # linea AYTHER_STATUS), que es exactamente lo que Play ve. Un test que
 # llamara a CoreProbe directo pasaria en verde con el contrato roto.
 #
-# El nombre de la DLL sale de core.lock para no repetirlo: el dia que
-# el fork cambie de version, cambia en un solo lugar.
+# Both shared-library fixtures are built locally and are portable across the
+# Windows and Linux CI jobs. The positive fixture exports exactly the two C ABI
+# symbols required by CoreProbe; the negative fixture is loadable but exports
+# neither of them.
 # ------------------------------------------------------------------
-set(_core_dll "")
-set(_lock "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/cores/core.lock")
-if(EXISTS "${_lock}")
-    file(READ "${_lock}" _lock_txt)
-    if(_lock_txt MATCHES "vram_file[ \t]*=[ \t]*([^\n\r]+)")
-        string(STRIP "${CMAKE_MATCH_1}" _core_name)
-        set(_core_dll "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/cores/${_core_name}")
-    endif()
-endif()
+add_library(synthetic_libretro_core SHARED synthetic_libretro_core.cpp)
+add_library(non_libretro_library SHARED non_libretro_library.cpp)
+set_target_properties(
+    synthetic_libretro_core
+    non_libretro_library
+    PROPERTIES
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN YES
+)
 add_test(
     NAME    probe_core
     COMMAND ${CMAKE_COMMAND}
-            -DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>
-            -DCORE_DLL=${_core_dll}
+            "-DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>"
+            "-DCORE_DLL=$<TARGET_FILE:synthetic_libretro_core>"
+            "-DNON_CORE_DLL=$<TARGET_FILE:non_libretro_library>"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/probe_core_test.cmake
 )

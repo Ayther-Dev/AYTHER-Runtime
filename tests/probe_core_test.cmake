@@ -1,97 +1,108 @@
 # ---------------------------------------------------------------------------
-# probe_core — el sondeo de cores del runtime (#589, PLAY-EP01.2).
+# probe_core — launcher-facing core metadata and failure contract.
 #
-# `--probe-core <dll>` existe para que Play pueda validar un core que el jugador
-# eligió SIN cargarlo: cargar un core libretro es meter código GPL en el proceso
-# del launcher, y esa es justo la frontera que el ecosistema no cruza. El
-# runtime, que ya es GPL y es desechable, lo carga por él y se muere.
-#
-# Lo que este oráculo fija es el CONTRATO que Play consume, no la carga en sí:
-#   · el código de salida distingue los tres desenlaces (0 / 2 / 3);
-#   · la línea `AYTHER_STATUS` es un JSON de una sola línea con `event=probe`.
-# Si alguien cambia un código o parte el JSON en dos líneas, Play no se rompe
-# ruidosamente: muestra «no se pudo validar el core» para un core que anda, y
-# el jugador queda sin manera de saber qué pasó.
-#
-# El caso bueno necesita la DLL del fork, que NO está versionada (ver
-# `third_party/cores/core.lock`): en una máquina sin ella se saltea, y por eso
-# los dos casos negativos —que no necesitan nada— son obligatorios. Un test que
-# se saltea entero pasa en verde sin haber mirado nada.
+# The positive fixture is built in this repository and exposes only the two
+# Libretro symbols consumed by Engine rc.6's CoreProbe. The negative library is
+# loadable but deliberately exports neither symbol. No downloaded core or
+# external lock participates in this test.
 # ---------------------------------------------------------------------------
 
-if(NOT EXISTS "${RUNTIME_EXE}")
-    message(FATAL_ERROR "no existe el binario del runtime: ${RUNTIME_EXE}")
-endif()
+foreach(required IN ITEMS RUNTIME_EXE CORE_DLL NON_CORE_DLL)
+    if(NOT DEFINED ${required} OR "${${required}}" STREQUAL "")
+        message(FATAL_ERROR "falta el argumento requerido ${required}")
+    endif()
+    if(NOT EXISTS "${${required}}")
+        message(FATAL_ERROR "no existe ${required}: ${${required}}")
+    endif()
+endforeach()
 
 set(CASOS_CORRIDOS 0)
 
-# Corre el sondeo y verifica salida + código. `esperado_texto` vacío = no mira.
-function(sondear etiqueta objetivo esperado_codigo esperado_texto)
+function(sondear etiqueta objetivo esperado_codigo salida_json)
     execute_process(
         COMMAND "${RUNTIME_EXE}" --probe-core "${objetivo}"
         OUTPUT_VARIABLE salida
-        ERROR_VARIABLE  err
+        ERROR_VARIABLE err
         RESULT_VARIABLE codigo
         TIMEOUT 60
     )
     if(NOT codigo EQUAL esperado_codigo)
         message(FATAL_ERROR
             "[${etiqueta}] el sondeo devolvió ${codigo}, se esperaba ${esperado_codigo}.\n"
-            "Play decide con este número qué le dice al jugador.\n"
             "--- stdout ---\n${salida}\n--- stderr ---\n${err}")
     endif()
-    # La línea del contrato: una sola, y con las comillas donde van.
-    string(REGEX MATCH "AYTHER_STATUS \\{[^\n\r]*\\}" linea "${salida}")
-    if(NOT linea)
+
+    string(REGEX MATCHALL "AYTHER_STATUS [^\n\r]*" lineas "${salida}")
+    list(LENGTH lineas cantidad_lineas)
+    if(NOT cantidad_lineas EQUAL 1)
         message(FATAL_ERROR
-            "[${etiqueta}] no salió una línea AYTHER_STATUS completa (¿el JSON quedó partido en dos?).\n"
-            "--- stdout ---\n${salida}")
+            "[${etiqueta}] se esperó una línea AYTHER_STATUS completa y salieron "
+            "${cantidad_lineas}.\n--- stdout ---\n${salida}")
     endif()
-    if(NOT linea MATCHES "\"event\":\"probe\"")
-        message(FATAL_ERROR "[${etiqueta}] el evento no es `probe`: ${linea}")
+    list(GET lineas 0 linea)
+    string(REGEX REPLACE "^AYTHER_STATUS " "" json "${linea}")
+    string(JSON event ERROR_VARIABLE json_error GET "${json}" event)
+    if(NOT json_error STREQUAL "NOTFOUND")
+        message(FATAL_ERROR
+            "[${etiqueta}] AYTHER_STATUS no contiene JSON válido: ${json_error}\n${linea}")
     endif()
-    if(esperado_texto AND NOT linea MATCHES "${esperado_texto}")
-        message(FATAL_ERROR "[${etiqueta}] falta `${esperado_texto}` en: ${linea}")
+    if(NOT event STREQUAL "probe")
+        message(FATAL_ERROR "[${etiqueta}] el evento no es `probe`: ${json}")
     endif()
+
     math(EXPR n "${CASOS_CORRIDOS} + 1")
     set(CASOS_CORRIDOS ${n} PARENT_SCOPE)
+    set(${salida_json} "${json}" PARENT_SCOPE)
     message(STATUS "[probe_core] ${etiqueta}: ${linea}")
 endfunction()
 
-# 1. No está. Play lo ve al reabrir con un core que el jugador movió de carpeta.
-sondear("archivo ausente" "${CMAKE_CURRENT_BINARY_DIR}/no-existe-este-core.dll"
-        2 "\"reason\":\"no_carga\"")
+function(exigir_campo etiqueta json campo tipo_esperado valor_esperado)
+    string(JSON tipo ERROR_VARIABLE tipo_error TYPE "${json}" "${campo}")
+    if(NOT tipo_error STREQUAL "NOTFOUND")
+        message(FATAL_ERROR
+            "[${etiqueta}] falta el campo JSON `${campo}`: ${tipo_error}\n${json}")
+    endif()
+    if(NOT tipo STREQUAL tipo_esperado)
+        message(FATAL_ERROR
+            "[${etiqueta}] `${campo}` tiene tipo ${tipo}; se esperaba ${tipo_esperado}")
+    endif()
 
-# 2. Es una DLL de verdad, pero no es un core. El caso del jugador que apunta a
-#    cualquier .dll del sistema; cargar sin mirar los símbolos lo dejaría pasar.
-get_filename_component(BIN_DIR "${RUNTIME_EXE}" DIRECTORY)
-set(NO_CORE "${BIN_DIR}/SDL3.dll")
-if(EXISTS "${NO_CORE}")
-    sondear("no es un core" "${NO_CORE}" 3 "\"reason\":\"no_es_libretro\"")
-else()
-    message(FATAL_ERROR "no se encontró SDL3.dll junto al runtime (${BIN_DIR}): "
-                        "sin ella el caso negativo del sondeo no se prueba")
+    string(JSON valor ERROR_VARIABLE valor_error GET "${json}" "${campo}")
+    if(NOT valor_error STREQUAL "NOTFOUND")
+        message(FATAL_ERROR
+            "[${etiqueta}] no se pudo leer `${campo}`: ${valor_error}\n${json}")
+    endif()
+    if(NOT "${valor}" STREQUAL "${valor_esperado}")
+        message(FATAL_ERROR
+            "[${etiqueta}] `${campo}` vale `${valor}`; se esperaba `${valor_esperado}`")
+    endif()
+endfunction()
+
+# 1. Missing file: launcher maps this to a load failure (exit 2).
+set(archivo_ausente "${CORE_DLL}.missing")
+if(EXISTS "${archivo_ausente}")
+    message(FATAL_ERROR "el fixture de archivo ausente existe: ${archivo_ausente}")
 endif()
+sondear("archivo ausente" "${archivo_ausente}" 2 json_ausente)
+exigir_campo("archivo ausente" "${json_ausente}" "ok" "BOOLEAN" "OFF")
+exigir_campo("archivo ausente" "${json_ausente}" "reason" "STRING" "no_carga")
 
-# 3. El core del fork, si esta máquina lo bajó. Es el único que comprueba que el
-#    JSON bueno lleve los datos que Play muestra en la pantalla de core.
-if(CORE_DLL AND EXISTS "${CORE_DLL}")
-    sondear("core del fork" "${CORE_DLL}" 0 "\"ok\":true")
-    # `api` y `library_name` son los campos que Play lee; que exista el JSON no
-    # alcanza si vienen vacíos.
-    execute_process(COMMAND "${RUNTIME_EXE}" --probe-core "${CORE_DLL}"
-                    OUTPUT_VARIABLE salida TIMEOUT 60)
-    foreach(campo "\"api\":1" "\"library_name\":\"[^\"]+\"" "\"valid_extensions\":\"[^\"]*md[^\"]*\"")
-        if(NOT salida MATCHES "${campo}")
-            message(FATAL_ERROR "el sondeo del core no informa ${campo}:\n${salida}")
-        endif()
-    endforeach()
-else()
-    message(STATUS "[probe_core] sin la DLL del fork (${CORE_DLL}): "
-                   "el caso positivo se saltea — ver third_party/cores/core.lock")
-endif()
+# 2. Loadable shared library without the required Libretro symbols (exit 3).
+sondear("no es un core" "${NON_CORE_DLL}" 3 json_no_core)
+exigir_campo("no es un core" "${json_no_core}" "ok" "BOOLEAN" "OFF")
+exigir_campo("no es un core" "${json_no_core}" "reason" "STRING" "no_es_libretro")
 
-if(CASOS_CORRIDOS LESS 2)
-    message(FATAL_ERROR "el oráculo corrió ${CASOS_CORRIDOS} casos: no probó nada")
+# 3. Deterministic synthetic Libretro core (exit 0 and complete metadata).
+sondear("core sintético" "${CORE_DLL}" 0 json_core)
+exigir_campo("core sintético" "${json_core}" "ok" "BOOLEAN" "ON")
+exigir_campo("core sintético" "${json_core}" "api" "NUMBER" "1")
+exigir_campo("core sintético" "${json_core}" "library_name" "STRING" "AYTHER Synthetic Core")
+exigir_campo("core sintético" "${json_core}" "library_version" "STRING" "1.0-test")
+exigir_campo("core sintético" "${json_core}" "valid_extensions" "STRING" "aytest|rom")
+exigir_campo("core sintético" "${json_core}" "need_fullpath" "BOOLEAN" "OFF")
+exigir_campo("core sintético" "${json_core}" "block_extract" "BOOLEAN" "OFF")
+
+if(NOT CASOS_CORRIDOS EQUAL 3)
+    message(FATAL_ERROR "el oráculo corrió ${CASOS_CORRIDOS} casos; se esperaban 3")
 endif()
 message(STATUS "[probe_core] ${CASOS_CORRIDOS} casos verificados")

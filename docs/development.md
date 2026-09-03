@@ -112,6 +112,47 @@ declared closure without accessing the network:
   -AytherConfig "$enginePrefix/lib/cmake/Ayther/AytherConfig.cmake"
 ```
 
+## Pull request CI presets
+
+`CMakePresets.json` provides the two RelWithDebInfo presets used by pull request
+CI: `windows-ci` selects Visual Studio 2026 with the v145 toolset, while
+`linux-ci` selects Ninja. They require CMake 3.25+, PowerShell 7, `VCPKG_ROOT`,
+and an Engine prefix produced from the locked `v0.1.0-rc.6` artifact:
+
+```powershell
+$env:AYTHER_ENGINE_PREFIX = & ./tools/bootstrap_ayther_engine.ps1 `
+  -Variant engine `
+  -DestinationDirectory .deps/ayther-engine
+$env:VCPKG_ROOT = "C:/dev/vcpkg"
+
+cmake --preset windows-ci
+cmake --build --preset windows-ci
+ctest --preset windows-ci --output-junit "$PWD/out/windows-ci-junit.xml"
+```
+
+On Linux, export the same two environment variables and substitute `linux-ci`
+in all three commands. The presets disable the CMake user and system package
+registries so `Ayther::engine` is resolved from the bootstrapped prefix rather
+than an undeclared local installation.
+
+`.github/workflows/ci.yml` runs those commands for pull requests targeting
+`main` on Windows and Linux. Each job uploads its bootstrap, configure, build,
+and test logs together with CTest's `LastTest.log` and JUnit report, including
+when an earlier step fails. External actions are pinned to full commit SHAs and
+the workflow token has only `contents: read` and `attestations: read`.
+
+After two successful pull request executions on the same proposed CI setup,
+configure the `main` branch protection or ruleset to require both stable check
+names:
+
+- `Windows / RelWithDebInfo`
+- `Linux / RelWithDebInfo`
+
+Do not enable those required checks before GitHub has observed both contexts;
+otherwise every pull request will be blocked by checks that cannot yet be
+selected or satisfied. Debug and analysis presets remain part of MAD-004 and
+are intentionally outside this CI-only change.
+
 ## Tests
 
 ```powershell
@@ -124,7 +165,11 @@ Current CTest coverage includes:
 | --- | --- |
 | `ayther_engine_lock` | offline validation of release identity, checksum manifest, attestation policy, and supported artifact matrix |
 | `vcpkg_manifest` | Engine package closure, pinned baseline, SDL3/ImGui features, and direct Runtime ownership of ImGui/stb |
+| `ci_workflow_contract` | PR triggers, least-privilege permissions, SHA-pinned actions, locked Engine bootstrap, retained diagnostics, and CI preset invariants |
 | `runtime_config` | SDL/Engine-independent data paths and launcher save-root precedence |
+| `status_emitter` | typed event shapes, byte-exact JSON escaping, single-record writes, and flush behavior |
+| `status_emitter_json` | all event fixtures parsed by CMake's real JSON parser, including hostile text and UTF-8 round trips |
+| `status_emitter_source_contract` | rejects protocol framing anywhere below `src/` except `status_emitter.cpp` |
 | `output_profile` | Runtime-owned presets, selection precedence, scaling geometry, filtering, and shader mixing |
 | `player_config` | key generation, defaults, persistence distinctions, and tolerant parsing |
 | `split_geometry` | comparison geometry and zero-width edge cases without a GPU |
@@ -132,7 +177,7 @@ Current CTest coverage includes:
 | `pack_layers` | default/custom layer composition and deterministic ordering |
 | `diagnostics` | pure recommendation rules without SDL or Vulkan |
 | `core_probe_api` | installed `CoreProbe` ownership, JSON, and loader-error contract |
-| `probe_core` | real process exit codes and one-line `AYTHER_STATUS` core-probe output |
+| `probe_core` | codes 0/2/3 and parsed `AYTHER_STATUS` JSON using a deterministic synthetic Libretro core, a missing path, and a loadable non-core library |
 | `runtime_oot_smoke_contract` | standalone source-root discovery, explicit Engine package inputs, and mutual exclusion |
 
 The test suite does not establish full GPU-driver compatibility, frame-perfect

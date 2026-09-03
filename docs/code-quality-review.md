@@ -33,6 +33,10 @@ types whose destructors cannot enforce cleanup.
   `ayther_config.h` with Runtime-owned `RuntimePaths`/`RuntimeConfig`. Path
   discovery now occurs once before SDL initialization, so the SDL-owned string
   leak described by the original first high-priority finding no longer exists.
+- MAD-007 introduced the typed `StatusEvent` model and its sole
+  `StatusEmitter`. Every process event now shares one JSON serializer and one
+  complete-write-plus-flush path, covered by a real JSON parser and a source
+  exclusivity contract.
 
 ## Prioritized corrections
 
@@ -66,14 +70,12 @@ types whose destructors cannot enforce cleanup.
    and result code. Apply the same policy to waits, resets, and acquire/submit
    calls throughout the backend (E.5, E.19).
 
-4. **Use one JSON serializer for every `AYTHER_STATUS` message.**
-   The exit event at `src/main.cpp:1422-1429` replaces backslashes but does not
-   escape quotes or control characters in a path. Other protocol fields are also
-   formatted manually. A valid Windows path can therefore produce invalid
-   line-delimited JSON. Centralize protocol encoding behind a small event model
-   and the already-needed escaping policy; test quotes, newlines, non-ASCII text,
-   and path separators. This is an interface invariant (I.1) and should not be
-   duplicated at individual emission sites.
+4. **Resolved: use one JSON serializer for every status message.**
+   `StatusEmitter` accepts only typed event alternatives and escapes quotes,
+   backslashes, controls, and line breaks while preserving UTF-8. It constructs
+   a complete line before its sole write and flush. Tests parse all event forms
+   with CMake's JSON parser and reject framing literals elsewhere in `src/`
+   (I.1).
 
 ### Medium — address during the next structural iteration
 
@@ -219,7 +221,7 @@ candidates, not benchmark conclusions:
 
 ## Recommended execution order
 
-1. Fix SDL ownership, protocol escaping, numeric parsing, and unchecked reads.
+1. Fix SDL ownership, numeric parsing, and unchecked reads.
 2. Add focused tests for invalid CLI/config data and partial initialization.
 3. Split `main` at protocol, persistence, and presentation boundaries.
 4. Introduce transactional Vulkan construction and enforce acquired-frame state.

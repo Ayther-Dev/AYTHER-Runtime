@@ -23,6 +23,9 @@ once stable compatibility guarantees are defined.
 
 ### Fixed
 
+- All process-status fields now pass through one typed JSON serializer, so
+  quotes, backslashes, controls, line breaks, UTF-8, and save-state paths cannot
+  corrupt or split a launcher protocol record.
 - The standalone package smoke test now accepts either `-AytherPrefix` or
   `-EngineArchive` and derives the Runtime root from its own script directory,
   allowing it to run from an independent Runtime clone and any working
@@ -30,9 +33,9 @@ once stable compatibility guarantees are defined.
 - Runtime sources and tests now include the standard-library headers for every
   directly used type or facility instead of inheriting them from Engine, SDL,
   Vulkan, or another project header.
-- Core probing now uses the installed Engine `CoreProbe` RAII facade and its
-  JSON serialization; Runtime no longer includes Engine's unpublished dynamic
-  loader or Libretro metadata types.
+- Core probing now uses the installed Engine `CoreProbe` RAII facade and owned
+  metadata; Runtime no longer includes Engine's unpublished dynamic loader or
+  Libretro metadata types.
 - SDL input mapping now produces the public Engine `InputState`/`JoypadButton`
   contract instead of including Engine's Libretro implementation header.
 - Pack overlays and the renderer now compile through the installed Engine
@@ -54,6 +57,16 @@ once stable compatibility guarantees are defined.
 
 ### Added
 
+- Pull request CI for Windows and Linux using reproducible RelWithDebInfo CMake
+  presets, the locked Engine `v0.1.0-rc.6` bootstrap, SHA-pinned GitHub Actions,
+  least-privilege token permissions, and always-retained logs plus JUnit output.
+- A CTest contract that guards the CI trigger, platform jobs, Engine lock,
+  action pins, artifact retention, and CMake preset invariants.
+- Typed `StatusEmitter` models for probe, ready, now-playing, warning,
+  crash-test, and exit events, with real-parser and source-exclusivity tests.
+- Deterministic shared-library fixtures for the successful and missing-symbol
+  `probe_core` paths, replacing the optional external-core lock and validating
+  exit codes plus complete metadata with CMake's JSON parser on every run.
 - Reproducible AYTHER Engine artifact lock for Linux and Windows
   x86_64, including standard and VPX variants, plus a bootstrap that verifies
   locked/published checksums and SLSA provenance, extracts the package, and

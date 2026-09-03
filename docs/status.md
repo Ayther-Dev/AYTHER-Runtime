@@ -69,7 +69,7 @@ A stable release should not be declared until maintainers have:
   every distributed artifact;
 - narrowed and versioned the Runtime/Engine package contract;
 - versioned the launcher process protocol and defined compatibility behavior;
-- completed strict CLI and JSON serialization validation;
+- completed strict CLI validation;
 - defined supported platforms, compilers, Vulkan requirements, and test cores;
 - established clean build, test, security-scanning, and packaging automation;
 - documented save/config migration and compatibility policies; and

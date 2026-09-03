@@ -1,0 +1,219 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  attestations: read
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows / RelWithDebInfo
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 45
+    env:
+      CI_PRESET: windows-ci
+      ENGINE_PLATFORM: windows
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out Runtime
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Initialize CI logs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Set-Content artifacts/configure.log "CMake configure did not run."
+          Set-Content artifacts/build.log "CMake build did not run."
+          Set-Content artifacts/test.log "CTest did not run."
+          Set-Content artifacts/LastTest.log "CTest did not produce LastTest.log."
+          Set-Content artifacts/junit.xml '<?xml version="1.0" encoding="UTF-8"?><testsuites name="CTest did not run" tests="0" failures="0" />'
+
+          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+          if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) {
+              $vcpkgRoot = Split-Path -Parent (Get-Command vcpkg -ErrorAction Stop).Source
+          }
+          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Bootstrap locked Engine rc.6
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $lock = Get-Content dependencies/ayther-engine.lock.json -Raw | ConvertFrom-Json
+          if ($lock.release.tag -cne "v0.1.0-rc.6") {
+              throw "MAD-005 only accepts Engine v0.1.0-rc.6; lock contains '$($lock.release.tag)'."
+          }
+
+          Start-Transcript -Path artifacts/bootstrap.log
+          try {
+              $enginePrefix = & ./tools/bootstrap_ayther_engine.ps1 `
+                  -Platform $env:ENGINE_PLATFORM `
+                  -Architecture x86_64 `
+                  -Variant engine `
+                  -DestinationDirectory .deps/ayther-engine
+              if (-not $enginePrefix -or @($enginePrefix).Count -ne 1) {
+                  throw "Engine bootstrap did not return exactly one package prefix."
+              }
+              "AYTHER_ENGINE_PREFIX=$([IO.Path]::GetFullPath([string]$enginePrefix))" |
+                  Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          } finally {
+              Stop-Transcript
+          }
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          & cmake --preset $env:CI_PRESET 2>&1 |
+              Tee-Object -FilePath artifacts/configure.log
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { exit $exitCode }
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          & cmake --build --preset $env:CI_PRESET 2>&1 |
+              Tee-Object -FilePath artifacts/build.log
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { exit $exitCode }
+
+      - name: Test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          & ctest --preset $env:CI_PRESET `
+              --output-junit "$($PWD.Path)/artifacts/junit.xml" 2>&1 |
+              Tee-Object -FilePath artifacts/test.log
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { exit $exitCode }
+
+      - name: Collect CTest diagnostics
+        if: ${{ always() }}
+        shell: pwsh
+        run: |
+          $lastTest = "out/build/$env:CI_PRESET/Testing/Temporary/LastTest.log"
+          if (Test-Path -LiteralPath $lastTest -PathType Leaf) {
+              Copy-Item -LiteralPath $lastTest -Destination artifacts/LastTest.log -Force
+          }
+
+      - name: Upload Windows CI logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-windows-${{ github.run_attempt }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14
+
+  linux:
+    name: Linux / RelWithDebInfo
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CI_PRESET: linux-ci
+      ENGINE_PLATFORM: linux
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out Runtime
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Initialize CI logs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Set-Content artifacts/configure.log "CMake configure did not run."
+          Set-Content artifacts/build.log "CMake build did not run."
+          Set-Content artifacts/test.log "CTest did not run."
+          Set-Content artifacts/LastTest.log "CTest did not produce LastTest.log."
+          Set-Content artifacts/junit.xml '<?xml version="1.0" encoding="UTF-8"?><testsuites name="CTest did not run" tests="0" failures="0" />'
+
+          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+          if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) {
+              $vcpkgRoot = Split-Path -Parent (Get-Command vcpkg -ErrorAction Stop).Source
+          }
+          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Bootstrap locked Engine rc.6
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $lock = Get-Content dependencies/ayther-engine.lock.json -Raw | ConvertFrom-Json
+          if ($lock.release.tag -cne "v0.1.0-rc.6") {
+              throw "MAD-005 only accepts Engine v0.1.0-rc.6; lock contains '$($lock.release.tag)'."
+          }
+
+          Start-Transcript -Path artifacts/bootstrap.log
+          try {
+              $enginePrefix = & ./tools/bootstrap_ayther_engine.ps1 `
+                  -Platform $env:ENGINE_PLATFORM `
+                  -Architecture x86_64 `
+                  -Variant engine `
+                  -DestinationDirectory .deps/ayther-engine
+              if (-not $enginePrefix -or @($enginePrefix).Count -ne 1) {
+                  throw "Engine bootstrap did not return exactly one package prefix."
+              }
+              "AYTHER_ENGINE_PREFIX=$([IO.Path]::GetFullPath([string]$enginePrefix))" |
+                  Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          } finally {
+              Stop-Transcript
+          }
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          & cmake --preset $env:CI_PRESET 2>&1 |
+              Tee-Object -FilePath artifacts/configure.log
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { exit $exitCode }
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          & cmake --build --preset $env:CI_PRESET 2>&1 |
+              Tee-Object -FilePath artifacts/build.log
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { exit $exitCode }
+
+      - name: Test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          & ctest --preset $env:CI_PRESET `
+              --output-junit "$($PWD.Path)/artifacts/junit.xml" 2>&1 |
+              Tee-Object -FilePath artifacts/test.log
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { exit $exitCode }
+
+      - name: Collect CTest diagnostics
+        if: ${{ always() }}
+        shell: pwsh
+        run: |
+          $lastTest = "out/build/$env:CI_PRESET/Testing/Temporary/LastTest.log"
+          if (Test-Path -LiteralPath $lastTest -PathType Leaf) {
+              Copy-Item -LiteralPath $lastTest -Destination artifacts/LastTest.log -Force
+          }
+
+      - name: Upload Linux CI logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-linux-${{ github.run_attempt }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14
