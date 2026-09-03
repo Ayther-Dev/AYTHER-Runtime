@@ -120,12 +120,14 @@ set_target_properties(ayther_runtime PROPERTIES
 # rot when a soname bumps.  System DLLs (vulkan-1.dll) are not listed; they
 # resolve from System32 on a real machine.
 # ---------------------------------------------------------------------------
-add_custom_command(TARGET ayther_runtime POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_RUNTIME_DLLS:ayther_runtime> $<TARGET_FILE_DIR:ayther_runtime>
-    COMMAND_EXPAND_LISTS
-    COMMENT "Staging runtime DLLs (SDL3, nfd, ...) next to ayther_runtime"
-)
+if(WIN32)
+    add_custom_command(TARGET ayther_runtime POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_RUNTIME_DLLS:ayther_runtime> $<TARGET_FILE_DIR:ayther_runtime>
+        COMMAND_EXPAND_LISTS
+        COMMENT "Staging runtime DLLs (SDL3, nfd, ...) next to ayther_runtime"
+    )
+endif()
 
 # tomlplusplus is a *compiled* vcpkg port (tomlplusplus-3.dll) pulled in PRIVATEly
 # through the ayther_engine static lib, so TARGET_RUNTIME_DLLS does not see it —
