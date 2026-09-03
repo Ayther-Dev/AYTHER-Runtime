@@ -81,6 +81,10 @@ try {
         "CMake -S must point to the independent Runtime clone root."
     Assert-Condition ($arguments -contains "-DCMAKE_PREFIX_PATH=$prefix") `
         "Prefix mode must pass the supplied Engine prefix to CMake."
+    Assert-Condition ($arguments -contains "-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF") `
+        "Standalone configure must disable the user CMake package registry."
+    Assert-Condition ($arguments -contains "-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF") `
+        "Standalone configure must disable the system CMake package registry."
 
     $standaloneRoot = Join-Path $testRoot "standalone-runtime"
     $standaloneTools = Join-Path $standaloneRoot "tools"

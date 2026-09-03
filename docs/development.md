@@ -19,6 +19,9 @@ Required:
 
 - CMake 3.21 or newer;
 - a C++20 compiler;
+- on Windows, MSVC v145 14.51+ from Visual Studio 2026 and a matching or newer
+  Visual C++ Redistributable; the published Engine archive was compiled with
+  LLVM `clang-cl` 20.1.8 over that STL/toolset;
 - Vulkan headers, loader, and a working driver for interactive runs;
 - an installed AYTHER package with the `engine` component; and
 - the vcpkg dependencies pinned by `vcpkg.json`.
@@ -53,7 +56,7 @@ path.
 ## Pinned AYTHER Engine artifact
 
 [`dependencies/ayther-engine.lock.json`](../dependencies/ayther-engine.lock.json)
-pins AYTHER Engine `v0.1.0-rc.4` for Linux and Windows x86_64, with and without
+pins AYTHER Engine `v0.1.0-rc.6` for Linux and Windows x86_64, with and without
 VPX. URLs and SHA-256 values are pinned from the official GitHub release assets.
 
 Validate the complete lock without network access:
@@ -77,7 +80,7 @@ An existing archive can be checked without downloading it:
 ```powershell
 $enginePrefix = & ./tools/bootstrap_ayther_engine.ps1 `
   -Platform windows `
-  -ArchivePath C:/downloads/ayther-engine-v0.1.0-rc.4-windows-x86_64.zip
+  -ArchivePath C:/downloads/ayther-engine-v0.1.0-rc.6-windows-x86_64.zip
 ```
 
 The bootstrap fails if the filename, locked SHA-256, published release checksum,
@@ -150,7 +153,7 @@ verification followed by extraction:
 
 ```powershell
 & ./tools/runtime_oot_smoke.ps1 `
-  -EngineArchive C:/downloads/ayther-engine-v0.1.0-rc.4-windows-x86_64.zip `
+  -EngineArchive C:/downloads/ayther-engine-v0.1.0-rc.6-windows-x86_64.zip `
   -ToolchainFile "$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 ```
 

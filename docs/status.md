@@ -22,9 +22,10 @@ The source tree contains focused tests for Runtime path resolution, output
 profiles, player configuration, split geometry, capture metadata, pack-layer
 assembly, typed pack/watcher APIs, bounded game telemetry, diagnostic decisions,
 and the real core-probe process contract. The
-standalone smoke bootstraps the pinned, attested Engine release and proves that
-Runtime can consume its CMake package
-without an Engine or monorepo checkout.
+standalone smoke bootstraps the pinned, attested Engine release and proves its
+CMake configuration and public-header contract without an Engine or monorepo
+checkout. The pinned `v0.1.0-rc.6` package configures successfully and Runtime
+sources compile against its installed public surface.
 
 A clean vcpkg manifest installation resolves the complete native dependency
 closure advertised by `AytherConfig.cmake`; the manifest oracle also preserves
@@ -38,10 +39,12 @@ compatibility.
 1. `Ayther::engine` remains provisional, although Runtime now consumes its
    typed pack, input, renderer, core-probe, and Vulkan-interoperability
    contracts exclusively through installed public headers.
-2. The pinned `v0.1.0-rc.4` Engine artifact predates the public input and
-   renderer headers now consumed by Runtime. The dependency lock must advance
-   when a matching Engine release is published; the current Engine package
-   contract is already build-tested locally.
+2. The Windows `v0.1.0-rc.6` static library was produced on the
+   `windows-2025-vs2026` runner with MSVC v145 14.51, newer than the locally
+   installed v143 14.43 toolset. Its public surface configures and compiles
+   here, but the final link requires v145 14.51+ (or a repackaged Engine built
+   against the declared minimum toolset) before the complete standalone CTest
+   gate can pass.
 3. Numeric CLI parsing does not consistently detect malformed values or
    overflow.
 4. Manual staging of `tomlplusplus` should be verified against the actual link

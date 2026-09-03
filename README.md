@@ -76,7 +76,10 @@ or cloud synchronization. Those responsibilities belong to AYTHER Play.
 
 ### Prerequisites
 
-- CMake 3.21 or newer and a C++20 compiler.
+- CMake 3.21 or newer and a C++20 compiler. On Windows, the published
+  `v0.1.0-rc.6` archive requires a linker and Visual C++ runtime at least as
+  new as those used to build it: MSVC v145 14.51+ from Visual Studio 2026.
+  The published archive itself was compiled with LLVM `clang-cl` 20.1.8.
 - PowerShell 7 and an authenticated GitHub CLI (`gh`) for Engine provenance
   verification.
 - A Vulkan-capable GPU, loader, and driver for interactive execution.
@@ -100,7 +103,7 @@ $enginePrefix = & ./tools/bootstrap_ayther_engine.ps1
 Pass `-Variant engine-vpx` only when VP9 decoding is required. The downloader
 never overwrites an existing archive or prefix. It validates the locked and
 published checksums, verifies SLSA provenance against Engine's release workflow
-and exact `rc.4` tag, extracts the package below `.deps/`, and returns its
+and exact `rc.6` tag, extracts the package below `.deps/`, and returns its
 absolute CMake prefix.
 
 ### Configure, build, and test
@@ -141,7 +144,7 @@ any working directory in an independent Runtime clone:
   -ToolchainFile "$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 
 & ./tools/runtime_oot_smoke.ps1 `
-  -EngineArchive C:/downloads/ayther-engine-v0.1.0-rc.4-windows-x86_64.zip `
+  -EngineArchive C:/downloads/ayther-engine-v0.1.0-rc.6-windows-x86_64.zip `
   -ToolchainFile "$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 ```
 

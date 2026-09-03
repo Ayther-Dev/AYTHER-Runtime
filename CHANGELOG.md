@@ -14,6 +14,13 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+### Changed
+
+- Advanced the verified AYTHER Engine dependency lock from `v0.1.0-rc.4` to
+  `v0.1.0-rc.6`, pinning the official standard and VPX archives for Windows
+  and Linux together with the published checksum manifest and release
+  provenance.
+
 ### Fixed
 
 - The standalone package smoke test now accepts either `-AytherPrefix` or
@@ -47,7 +54,7 @@ once stable compatibility guarantees are defined.
 
 ### Added
 
-- Reproducible AYTHER Engine `v0.1.0-rc.4` artifact lock for Linux and Windows
+- Reproducible AYTHER Engine artifact lock for Linux and Windows
   x86_64, including standard and VPX variants, plus a bootstrap that verifies
   locked/published checksums and SLSA provenance, extracts the package, and
   returns its CMake prefix without requiring an Engine or monorepo checkout.
