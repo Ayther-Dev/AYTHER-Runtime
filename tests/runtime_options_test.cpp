@@ -76,6 +76,8 @@ int main() {
             "0",
             "--capture-at",
             "1,42,18446744073709551615",
+            "--play-protocol-version",
+            "1",
         });
         const auto* options = parsed.options();
         check(options != nullptr, "all numeric options accept valid values");
@@ -88,6 +90,8 @@ int main() {
             check(options->capture_at ==
                       std::vector<std::uint64_t>{1u, 42u, UINT64_MAX},
                   "--capture-at parses a non-empty positive list");
+            check(options->play_protocol_version == 1u,
+                  "Play can negotiate the status protocol before startup");
         }
     }
 

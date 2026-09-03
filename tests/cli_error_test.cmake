@@ -22,6 +22,12 @@ function(assert_cli_error case_name expected_diagnostic)
             "${case_name}: stderr does not identify '${expected_diagnostic}'\n"
             "stderr:\n${actual_stderr}")
     endif()
+    string(FIND "${actual_stdout}" "\"reason\":\"cli.invalid_argument\"" reason_at)
+    if(reason_at EQUAL -1)
+        message(FATAL_ERROR
+            "${case_name}: stdout lacks stable cli.invalid_argument reason\n"
+            "stdout:\n${actual_stdout}")
+    endif()
 
     # Argument failures must return before the first lifecycle milestone. This
     # keeps malformed launcher input from touching SDL video/audio/gamepad or

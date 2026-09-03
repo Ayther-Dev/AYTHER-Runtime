@@ -111,10 +111,29 @@ int main(int argc, char* argv[]) {
     if (const auto* error = parsed_options.error()) {
         const std::string diagnostic = ayther::runtime::describe(*error);
         std::fprintf(stderr, "[ayther_runtime] %s\n", diagnostic.c_str());
+        emit_status(ayther::runtime::WarningStatus{
+            ayther::runtime::RuntimeErrorCode::cli_invalid_argument,
+            diagnostic});
         return ayther::runtime::runtime_cli_error_exit_code;
     }
     ayther::runtime::RuntimeOptions options =
         std::move(*parsed_options.options());
+
+    if (options.play_protocol_version &&
+        ayther::runtime::status_protocol_compatibility(
+            *options.play_protocol_version) !=
+            ayther::runtime::StatusProtocolCompatibility::compatible) {
+        const bool play_is_newer =
+            *options.play_protocol_version >
+            ayther::runtime::status_protocol_version;
+        emit_status(ayther::runtime::WarningStatus{
+            ayther::runtime::RuntimeErrorCode::protocol_incompatible,
+            play_is_newer
+                ? "Play requiere una version de protocolo mas nueva"
+                : "Play anuncio una version de protocolo no soportada"});
+        return ayther::runtime::exit_code(
+            ayther::runtime::RuntimeExitCode::protocol_incompatible);
+    }
 
     // Keep the established names below while the CLI contract and conversion
     // live in the independently testable RuntimeOptions boundary.
@@ -161,8 +180,12 @@ int main(int argc, char* argv[]) {
             std::fprintf(stderr, "[core-probe] %s\n",
                          probed.error.message.c_str());
             emit_status(ayther::runtime::ProbeFailedStatus{
-                invalid_core ? "no_es_libretro" : "no_carga"});
-            return invalid_core ? 3 : 2;
+                invalid_core ? ayther::runtime::RuntimeErrorCode::core_invalid
+                             : ayther::runtime::RuntimeErrorCode::core_load_failed,
+                probed.error.message});
+            return ayther::runtime::exit_code(
+                invalid_core ? ayther::runtime::RuntimeExitCode::invalid_core
+                             : ayther::runtime::RuntimeExitCode::core_load_failed);
         }
 
         // Runtime copia el modelo publico del Engine a su evento tipado; no
@@ -180,6 +203,9 @@ int main(int argc, char* argv[]) {
     }
 
     if (core_path_str.empty() || rom_path_str.empty()) {
+        emit_status(ayther::runtime::WarningStatus{
+            ayther::runtime::RuntimeErrorCode::cli_invalid_argument,
+            "faltan --core y/o --rom"});
         std::fprintf(stderr,
             "ayther_runtime — the Ayther game-session host (spawned by Ayther Play).\n"
             "Usage: ayther_runtime --core <libretro.dll> --rom <rom>\n"
@@ -189,6 +215,7 @@ int main(int argc, char* argv[]) {
             "         [--manifest <launch.toml>] [--saves-dir <dir>]\n"
             "         [--rom-crc32 <hex>] [--load-state <estado.bin>]\n"
             "         [--frames N] [--capture-at N[,M...]] [--crash-test]\n"
+            "         [--play-protocol-version N]\n"
             "         [--hd-compose]  (retirado en #345: se acepta y avisa)\n"
             "       ayther_runtime --probe-core <libretro.dll>\n"
             "         Sondea el core y emite un evento probe. Sin ROM.\n");
@@ -451,6 +478,7 @@ int main(int argc, char* argv[]) {
     // decirlo, y seguir.
     if (sess->has_pack() && sess->subsystems_enabled_mask() == 0) {
         emit_status(ayther::runtime::WarningStatus{
+            ayther::runtime::RuntimeErrorCode::pack_no_active_subsystems,
             "el pack esta cargado pero ningun subsistema esta activo: "
             "se ve el juego original"});
     }
@@ -712,6 +740,7 @@ int main(int argc, char* argv[]) {
                          load_state_arg.c_str(), loaded_state.size());
         } else {
             emit_status(ayther::runtime::WarningStatus{
+                ayther::runtime::RuntimeErrorCode::state_restore_failed,
                 "no se pudo reanudar desde el guardado: se empieza de "
                 "cero y el guardado sigue donde estaba"});
         }

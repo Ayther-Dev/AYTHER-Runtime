@@ -28,7 +28,19 @@ set(event_names "")
 foreach(status_line IN LISTS status_lines)
     string(REGEX REPLACE "^AYTHER_STATUS " "" json "${status_line}")
     string(JSON event_name GET "${json}" event)
+    string(JSON protocol_version GET "${json}" protocol_version)
+    if(NOT protocol_version EQUAL 1)
+        message(FATAL_ERROR "unexpected protocol version: ${json}")
+    endif()
     list(APPEND event_names "${event_name}")
+
+    # Model the compatibility rule used by old consumers: add a field they do
+    # not know, then read only the stable field they need.
+    string(JSON extended_json SET "${json}" future_field "\"ignored\"")
+    string(JSON legacy_event GET "${extended_json}" event)
+    if(NOT legacy_event STREQUAL event_name)
+        message(FATAL_ERROR "unknown JSON field changed legacy event parsing")
+    endif()
 
     if(event_name STREQUAL "ready")
         string(JSON has_pack_type TYPE "${json}" has_pack)

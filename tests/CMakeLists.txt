@@ -109,6 +109,19 @@ add_test(
             -P ${CMAKE_CURRENT_SOURCE_DIR}/status_emitter_source_contract_test.cmake
 )
 
+add_executable(runtime_error_tests runtime_error_test.cpp)
+target_include_directories(runtime_error_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+set_target_properties(runtime_error_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    runtime_error
+    COMMAND runtime_error_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
 # ------------------------------------------------------------------
 # runtime_options_tests — MAD-006: strict, typed CLI conversion.
 #
@@ -135,6 +148,12 @@ add_test(
     COMMAND ${CMAKE_COMMAND}
             -DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cli_error_test.cmake
+)
+add_test(
+    NAME    protocol_negotiation
+    COMMAND ${CMAKE_COMMAND}
+            -DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/protocol_negotiation_test.cmake
 )
 
 # ------------------------------------------------------------------

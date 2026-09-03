@@ -1,5 +1,7 @@
 #pragma once
 
+#include "runtime_error.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -10,7 +12,8 @@
 
 namespace ayther::runtime {
 
-inline constexpr int runtime_cli_error_exit_code = 64;
+inline constexpr int runtime_cli_error_exit_code =
+    exit_code(RuntimeExitCode::cli_usage);
 
 enum class RuntimeOptionErrorCode {
     missing_value,
@@ -53,6 +56,7 @@ struct RuntimeOptions {
     std::string probe_core;
     std::string manifest_path;
     bool hd_compose{};
+    std::optional<std::uint32_t> play_protocol_version;
 
     [[nodiscard]] static RuntimeOptionsParseResult parse(int argc, char* const argv[]);
 };
