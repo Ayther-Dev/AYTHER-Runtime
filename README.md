@@ -77,9 +77,11 @@ or cloud synchronization. Those responsibilities belong to AYTHER Play.
 ### Prerequisites
 
 - CMake 3.21 or newer and a C++20 compiler. On Windows, the published
-  `v0.1.0-rc.6` archive requires a linker and Visual C++ runtime at least as
-  new as those used to build it: MSVC v145 14.51+ from Visual Studio 2026.
-  The published archive itself was compiled with LLVM `clang-cl` 20.1.8.
+  `v0.1.0-rc.6` archive supports either Microsoft `cl` or LLVM `clang-cl` as
+  the compiler frontend, but both must use the MSVC ABI, STL and linker from
+  toolset v145 14.51 or newer (Visual Studio 2026). The archive was produced
+  with `clang-cl` 20.1.8 over that toolset. MinGW/GNU is not compatible with
+  the current Windows artifact.
 - PowerShell 7 and an authenticated GitHub CLI (`gh`) for Engine provenance
   verification.
 - A Vulkan-capable GPU, loader, and driver for interactive execution.
@@ -124,6 +126,12 @@ During configuration, the vcpkg toolchain installs both Engine's native package
 closure and Runtime's direct ImGui/stb dependencies from the pinned baseline.
 `AytherConfig.cmake` remains responsible for resolving the imported Engine
 targets; Runtime does not duplicate their `find_package` calls.
+
+On Windows, configuration detects the compiler frontend and the underlying
+Visual C++ toolset separately. It then compiles and links a small executable
+against `Ayther::engine`; an unsupported frontend, a toolset older than 14.51,
+or an ABI/link failure stops configuration with the detected values, the rc.6
+requirement, and remediation guidance.
 
 Runtime resolves stb directly through `find_package(Stb)` and links its local
 header-only interface target. `capture.cpp` owns the PNG-writer implementation;
