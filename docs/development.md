@@ -162,10 +162,13 @@ registries so `Ayther::engine` is resolved from the bootstrapped prefix rather
 than an undeclared local installation.
 
 `.github/workflows/ci.yml` runs those commands for pull requests targeting
-`main` on Windows and Linux. Each job uploads its bootstrap, configure, build,
-and test logs together with CTest's `LastTest.log` and JUnit report, including
-when an earlier step fails. External actions are pinned to full commit SHAs and
-the workflow token has only `contents: read` and `attestations: read`.
+`main` on Windows and Linux. After the full build, each job runs the same build
+preset again and retains `incremental-build.log`; Ninja and MSBuild must report
+an already up-to-date tree before CTest starts. Each job uploads its bootstrap,
+configure, full-build, incremental-build, and test logs together with CTest's
+`LastTest.log` and JUnit report, including when an earlier step fails. External
+actions are pinned to full commit SHAs and the workflow token has only
+`contents: read` and `attestations: read`.
 
 After two successful pull request executions on the same proposed CI setup,
 configure the `main` branch protection or ruleset to require both stable check

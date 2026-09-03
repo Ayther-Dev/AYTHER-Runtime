@@ -67,12 +67,25 @@ Assert-Condition ($workflowText -match 'cmake --preset') `
     "CI configuration must use CMake presets."
 Assert-Condition ($workflowText -match 'cmake --build --preset') `
     "CI builds must use CMake build presets."
+$incrementalSteps = [regex]::Matches(
+    $workflowText,
+    '(?m)^\s+- name: Verify build is up to date\s*$')
+Assert-Condition ($incrementalSteps.Count -eq 2) `
+    "Both platform jobs must verify that a second build has no pending work."
+$buildInvocations = [regex]::Matches($workflowText, 'cmake --build --preset')
+Assert-Condition ($buildInvocations.Count -eq 4) `
+    "Each platform must run one full build and one incremental no-op build."
 Assert-Condition ($workflowText -match 'ctest --preset') `
     "CI tests must use CTest presets."
 Assert-Condition ($workflowText -match '--output-junit') `
     "CTest must produce JUnit output."
 
-foreach ($artifact in @('configure.log', 'build.log', 'LastTest.log', 'junit.xml')) {
+foreach ($artifact in @(
+        'configure.log',
+        'build.log',
+        'incremental-build.log',
+        'LastTest.log',
+        'junit.xml')) {
     Assert-Condition ($workflowText.Contains($artifact)) `
         "Workflow must retain '$artifact'."
 }
