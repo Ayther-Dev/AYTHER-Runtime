@@ -1,10 +1,15 @@
 #pragma once
 
+#include "vulkan_backend/vk_result.h"
+#include "vulkan_backend/vulkan_calls.h"
+
 #include <ayther/engine/vulkan_interop.hpp>
 #include <vulkan/vulkan.h>
 
 #include <cstdint>
+#include <optional>
 #include <string>
+#include <string_view>
 
 struct SDL_Window;
 
@@ -15,7 +20,9 @@ struct SDL_Window;
 /// borrowed and exclude all presentation state.
 class VkContext final {
 public:
-    VkContext() = default;
+    explicit VkContext(
+        const ayther::runtime::vulkan::VulkanCalls& calls =
+            ayther::runtime::vulkan::default_vulkan_calls()) noexcept;
     ~VkContext();
 
     VkContext(const VkContext&) = delete;
@@ -64,6 +71,15 @@ public:
     [[nodiscard]] const std::string& gpu_name() const noexcept {
         return gpu_name_;
     }
+    [[nodiscard]] const ayther::runtime::vulkan::VulkanCalls&
+    calls() const noexcept {
+        return calls_;
+    }
+
+    /// A null device is already idle. Otherwise the injected call produces a
+    /// typed result so callers can abort or continue best-effort explicitly.
+    [[nodiscard]] std::optional<ayther::runtime::vulkan::VkFailure>
+    wait_idle(std::string_view operation) const noexcept;
 
     /// Public Engine interop value. Its handles remain owned by this context.
     [[nodiscard]] ayther::engine::VulkanContextView& engine_view() noexcept {
@@ -75,6 +91,7 @@ public:
     }
 
 private:
+    ayther::runtime::vulkan::VulkanCalls calls_;
     ayther::engine::VulkanContextView engine_view_{};
     VkDebugUtilsMessengerEXT debug_messenger_{VK_NULL_HANDLE};
     VkSurfaceKHR surface_{VK_NULL_HANDLE};

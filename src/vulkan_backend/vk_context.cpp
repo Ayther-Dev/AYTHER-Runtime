@@ -6,7 +6,9 @@
 #include <vk_mem_alloc.h>
 
 #include <cstdio>
+#include <optional>
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -25,6 +27,19 @@ void log_failure(const char* operation, const char* detail) {
 
 VkContext::~VkContext() {
     shutdown();
+}
+
+VkContext::VkContext(
+    const ayther::runtime::vulkan::VulkanCalls& calls) noexcept
+    : calls_(calls) {}
+
+std::optional<ayther::runtime::vulkan::VkFailure> VkContext::wait_idle(
+    const std::string_view operation) const noexcept {
+    if (device() == VK_NULL_HANDLE) {
+        return std::nullopt;
+    }
+    return ayther::runtime::vulkan::vk_failure(
+        operation, calls_.device_wait_idle(device()));
 }
 
 bool VkContext::init(SDL_Window* window) {
@@ -118,9 +133,10 @@ bool VkContext::init(SDL_Window* window) {
     allocator_info.device = device();
     allocator_info.instance = instance();
     allocator_info.vulkanApiVersion = VK_API_VERSION_1_1;
-    if (vmaCreateAllocator(&allocator_info,
-                           &engine_view_.allocator_handle) != VK_SUCCESS) {
-        log_failure("VMA allocator creation failed", "vmaCreateAllocator");
+    const VkResult allocator_result = calls_.create_allocator(
+        &allocator_info, &engine_view_.allocator_handle);
+    if (!ayther::runtime::vulkan::require_vk_success(
+            "vmaCreateAllocator", allocator_result)) {
         shutdown();
         return false;
     }
@@ -145,17 +161,18 @@ bool VkContext::init(SDL_Window* window) {
 }
 
 void VkContext::shutdown() noexcept {
-    if (device() != VK_NULL_HANDLE) {
-        vkDeviceWaitIdle(device());
+    if (const auto failure =
+            wait_idle("vkDeviceWaitIdle [VkContext::shutdown]")) {
+        ayther::runtime::vulkan::log_vk_failure(*failure);
     }
 
     if (engine_view_.allocator_handle != nullptr) {
-        vmaDestroyAllocator(engine_view_.allocator_handle);
+        calls_.destroy_allocator(engine_view_.allocator_handle);
         engine_view_.allocator_handle = nullptr;
     }
 
     if (device() != VK_NULL_HANDLE) {
-        vkDestroyDevice(device(), nullptr);
+        calls_.destroy_device(device(), nullptr);
         engine_view_.device_handle = VK_NULL_HANDLE;
     }
     engine_view_.graphics_queue_handle = VK_NULL_HANDLE;
@@ -164,7 +181,7 @@ void VkContext::shutdown() noexcept {
     present_family_ = VK_QUEUE_FAMILY_IGNORED;
 
     if (surface_ != VK_NULL_HANDLE && instance() != VK_NULL_HANDLE) {
-        vkDestroySurfaceKHR(instance(), surface_, nullptr);
+        calls_.destroy_surface(instance(), surface_, nullptr);
         surface_ = VK_NULL_HANDLE;
     }
 
@@ -172,8 +189,8 @@ void VkContext::shutdown() noexcept {
         instance() != VK_NULL_HANDLE) {
         const auto destroy_debug_messenger =
             reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
-                vkGetInstanceProcAddr(instance(),
-                                      "vkDestroyDebugUtilsMessengerEXT"));
+                calls_.get_instance_proc_addr(
+                    instance(), "vkDestroyDebugUtilsMessengerEXT"));
         if (destroy_debug_messenger != nullptr) {
             destroy_debug_messenger(instance(), debug_messenger_, nullptr);
         }
@@ -181,7 +198,7 @@ void VkContext::shutdown() noexcept {
     }
 
     if (instance() != VK_NULL_HANDLE) {
-        vkDestroyInstance(instance(), nullptr);
+        calls_.destroy_instance(instance(), nullptr);
         engine_view_.instance_handle = VK_NULL_HANDLE;
     }
     engine_view_.physical_device_handle = VK_NULL_HANDLE;

@@ -834,8 +834,14 @@ int main(int argc, char* argv[]) {
                          pack_path.c_str());
 
             // GPU must be idle before freeing textures that may be in flight.
-            if (vulkan.is_ready())
-                vkDeviceWaitIdle(vulkan.device());
+            if (vulkan.is_ready()) {
+                if (const auto failure = vulkan.wait_idle(
+                        "vkDeviceWaitIdle [pack hot reload]")) {
+                    ayther::runtime::vulkan::log_vk_failure(*failure);
+                    running = false;
+                    continue;
+                }
+            }
 
             // Evict GPU texture caches so next frame re-fetches from new pack
             // (the renderer evicts both its tile cache and the sprite textures).
@@ -1376,7 +1382,10 @@ int main(int argc, char* argv[]) {
     // Destroy Vulkan objects in reverse creation order.
     // vkDeviceWaitIdle before any teardown.
     if (vulkan.is_ready()) {
-        vkDeviceWaitIdle(vulkan.device());
+        if (const auto failure =
+                vulkan.wait_idle("vkDeviceWaitIdle [main teardown]")) {
+            ayther::runtime::vulkan::log_vk_failure(*failure);
+        }
         overlay.shutdown(vulkan);           // ImGui + overlay render pass + FBs (M4)
         postprocess.shutdown(vulkan);       // CRT presentation pass (frontend)
         renderer.shutdown(vulkan.engine_view()); // Engine offscreen resources

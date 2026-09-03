@@ -394,6 +394,48 @@ add_test(
 )
 
 # ------------------------------------------------------------------
+# vulkan_result_tests — MAD-008: checked and injectable Vulkan calls.
+# ------------------------------------------------------------------
+add_executable(vulkan_result_tests
+    vulkan_result_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_result.cpp
+)
+target_include_directories(vulkan_result_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+target_link_libraries(vulkan_result_tests PRIVATE Vulkan::Vulkan)
+set_target_properties(vulkan_result_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    vulkan_result
+    COMMAND vulkan_result_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    vulkan_result_source_contract
+    COMMAND ${CMAKE_COMMAND}
+            -DRUNTIME_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/../src
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/vulkan_result_source_contract_test.cmake
+)
+
+add_executable(spirv_file_tests
+    spirv_file_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/spirv_file.cpp
+)
+target_include_directories(spirv_file_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+set_target_properties(spirv_file_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    spirv_file
+    COMMAND spirv_file_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+# ------------------------------------------------------------------
 # vulkan_context_tests — MIG-025: Runtime owns Vulkan device lifetime.
 #
 # Its default mode needs no window or GPU. It compiles the real implementation,
@@ -402,6 +444,8 @@ add_test(
 # ------------------------------------------------------------------
 add_executable(vulkan_context_tests
     vulkan_context_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_result.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vulkan_calls.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_context.cpp
 )
 target_include_directories(vulkan_context_tests PRIVATE
@@ -436,6 +480,9 @@ add_test(
 add_executable(vulkan_presentation_contract_tests
     vulkan_presentation_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/player_overlay.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/spirv_file.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_result.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vulkan_calls.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_context.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_swapchain.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_present.cpp

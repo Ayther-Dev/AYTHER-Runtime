@@ -29,6 +29,12 @@ once stable compatibility guarantees are defined.
 - Numeric CLI options now use strict, typed `std::from_chars` parsing with
   explicit range/domain validation and process exit code `64` for malformed
   command lines.
+- Runtime now checks every result-returning Vulkan/VMA operation across
+  creation, synchronization, command recording, submission, presentation, and
+  teardown while preserving the operation and symbolic/integer `VkResult` in
+  diagnostics.
+- Post-process shader loading now closes `FILE*` through RAII, rejects invalid
+  sizes, and verifies that `fread` consumed the complete SPIR-V file.
 - The standalone package smoke test now accepts either `-AytherPrefix` or
   `-EngineArchive` and derives the Runtime root from its own script directory,
   allowing it to run from an independent Runtime clone and any working
@@ -74,6 +80,8 @@ once stable compatibility guarantees are defined.
   accepts `cl` or `clang-cl` over MSVC v145 14.51+, rejects MinGW/GNU and
   older toolsets with actionable diagnostics, and verifies a real executable
   link against `Ayther::engine`.
+- Injectable `VulkanCalls` dispatch and typed `VkFailure` results as the
+  failure-testing seam for transactional Vulkan initialization.
 - Reproducible AYTHER Engine artifact lock for Linux and Windows
   x86_64, including standard and VPX variants, plus a bootstrap that verifies
   locked/published checksums and SLSA provenance, extracts the package, and

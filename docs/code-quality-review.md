@@ -23,7 +23,7 @@ testable policy.
 
 The largest risk is concentration of lifecycle, protocol, persistence, input,
 and rendering policy in a single `main` function. The most urgent remaining
-concrete defects are unchecked Vulkan and file-read results. The Vulkan frontend
+concrete defect is non-transactional Vulkan initialization. The Vulkan frontend
 also relies on manual shutdown in types whose destructors cannot enforce cleanup.
 
 ## Resolved since the review
@@ -39,6 +39,10 @@ also relies on manual shutdown in types whose destructors cannot enforce cleanup
 - MAD-006 extracted `RuntimeOptions`, replaced every `std::atoi` conversion with
   typed `std::from_chars` parsing, validates complete values and option domains,
   and fixes process exit code `64` for malformed command lines.
+- MAD-008 routes every Runtime-owned `VkResult` call through an injectable
+  dispatch and a typed `VkFailure` checker that retains the operation, symbolic
+  result, and integer code. SPIR-V loading now owns `FILE*` with RAII and rejects
+  partial reads before shader creation.
 
 ## Prioritized corrections
 
@@ -60,14 +64,12 @@ also relies on manual shutdown in types whose destructors cannot enforce cleanup
    after full initialization. Keep `shutdown` idempotent for controlled teardown.
    This implements R.1 and C.30 instead of relying on call-site discipline.
 
-3. **Check complete SPIR-V reads and every Vulkan result.**
-   `src/vulkan_backend/vk_postprocess.cpp:40-69` ignores the return from
-   `std::fread` and from `vkCreateShaderModule`. A truncated read can pass a
-   partially zero-filled module to Vulkan, and module creation failure loses the
-   actionable `VkResult`. Use an RAII file handle, reject short reads, and route
-   all Vulkan results through one typed checker that retains the operation name
-   and result code. Apply the same policy to waits, resets, and acquire/submit
-   calls throughout the backend (E.5, E.19).
+3. **Resolved: check complete SPIR-V reads and every Vulkan result.**
+   `SpirvBinary` rejects open, seek, size, and short-read failures while an RAII
+   deleter closes its `FILE*`. `VkFailure` and `VulkanCalls` now cover creation,
+   waits, resets, acquire, command-buffer allocation/recording, submission,
+   presentation, and device-idle operations. A source-contract test prevents
+   result-returning Vulkan calls from bypassing this boundary (E.5, E.19).
 
 4. **Resolved: use one JSON serializer for every status message.**
    `StatusEmitter` accepts only typed event alternatives and escapes quotes,
@@ -169,8 +171,7 @@ distinction intended by ES.45.
 
 ## Patterns to introduce
 
-- **RAII handle wrappers:** SDL strings, `FILE*`, and Vulkan handles with explicit
-  device-aware deleters.
+- **RAII handle wrappers:** Vulkan handles with explicit device-aware deleters.
 - **Transactional builder/guard:** construct a complete swapchain, overlay, or
   post-process state and publish it only after every stage succeeds.
 - **Command model plus validator:** parse CLI text into `RuntimeOptions`, then
@@ -220,12 +221,11 @@ candidates, not benchmark conclusions:
 
 ## Recommended execution order
 
-1. Fix unchecked Vulkan results and file reads.
-2. Add focused tests for invalid CLI/config data and partial initialization.
-3. Split `main` at protocol, persistence, and presentation boundaries.
-4. Introduce transactional Vulkan construction and enforce acquired-frame state.
-5. Establish repeatable CPU/GPU performance baselines.
-6. Optimize only regressions that exceed the agreed frame or interaction budget.
+1. Add focused tests for partial Vulkan initialization.
+2. Split `main` at protocol, persistence, and presentation boundaries.
+3. Introduce transactional Vulkan construction and enforce acquired-frame state.
+4. Establish repeatable CPU/GPU performance baselines.
+5. Optimize only regressions that exceed the agreed frame or interaction budget.
 
 ## Verification limits
 

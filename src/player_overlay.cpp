@@ -9,6 +9,7 @@
 #include "player_overlay.h"
 #include "vulkan_backend/vk_swapchain.h"
 #include "vulkan_backend/vk_context.h"
+#include "vulkan_backend/vk_result.h"
 
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
@@ -92,17 +93,16 @@ bool PlayerOverlay::create_render_pass(VkContext& ctx, VkFormat fmt) {
     rp_info.dependencyCount = 2;
     rp_info.pDependencies   = deps;
 
-    if (vkCreateRenderPass(ctx.device(), &rp_info, nullptr, &render_pass_) != VK_SUCCESS) {
-        std::fprintf(stderr, "[PlayerOverlay] vkCreateRenderPass failed\n");
-        return false;
-    }
-    return true;
+    return ayther::runtime::vulkan::require_vk_success(
+        "vkCreateRenderPass [PlayerOverlay]",
+        ctx.calls().create_render_pass(
+            ctx.device(), &rp_info, nullptr, &render_pass_));
 }
 
 // ---------------------------------------------------------------------------
 // Framebuffers — one per swapchain image, over the swapchain image views
 // ---------------------------------------------------------------------------
-void PlayerOverlay::create_framebuffers(VkContext& ctx, VkSwapchain& swap) {
+bool PlayerOverlay::create_framebuffers(VkContext& ctx, VkSwapchain& swap) {
     fb_w_ = swap.extent().width;
     fb_h_ = swap.extent().height;
 
@@ -118,14 +118,20 @@ void PlayerOverlay::create_framebuffers(VkContext& ctx, VkSwapchain& swap) {
         fi.width           = fb_w_;
         fi.height          = fb_h_;
         fi.layers          = 1;
-        if (vkCreateFramebuffer(ctx.device(), &fi, nullptr, &framebuffers_[i]) != VK_SUCCESS)
-            std::fprintf(stderr, "[PlayerOverlay] vkCreateFramebuffer %u failed\n", i);
+        if (!ayther::runtime::vulkan::require_vk_success(
+                "vkCreateFramebuffer [PlayerOverlay]",
+                ctx.calls().create_framebuffer(
+                    ctx.device(), &fi, nullptr, &framebuffers_[i]))) {
+            return false;
+        }
     }
+    return true;
 }
 
 void PlayerOverlay::destroy_framebuffers(VkContext& ctx) {
     for (auto fb : framebuffers_)
-        if (fb != VK_NULL_HANDLE) vkDestroyFramebuffer(ctx.device(), fb, nullptr);
+        if (fb != VK_NULL_HANDLE)
+            ctx.calls().destroy_framebuffer(ctx.device(), fb, nullptr);
     framebuffers_.clear();
     fb_w_ = fb_h_ = 0;
 }
@@ -137,7 +143,7 @@ bool PlayerOverlay::init(VkContext& ctx, VkSwapchain& swap, SDL_Window* window) 
     if (!ctx.is_ready() || !swap.is_ready()) return false;
 
     if (!create_render_pass(ctx, swap.format())) return false;
-    create_framebuffers(ctx, swap);
+    if (!create_framebuffers(ctx, swap)) return false;
 
     // ---- ImGui core context (independent — multi-context safe) ---------------
     overlay_ctx_ = ImGui::CreateContext();
@@ -202,9 +208,13 @@ bool PlayerOverlay::init(VkContext& ctx, VkSwapchain& swap, SDL_Window* window) 
 // ---------------------------------------------------------------------------
 void PlayerOverlay::rebuild(VkContext& ctx, VkSwapchain& swap) {
     if (!render_pass_) return;
-    vkDeviceWaitIdle(ctx.device());
+    if (const auto failure =
+            ctx.wait_idle("vkDeviceWaitIdle [PlayerOverlay::rebuild]")) {
+        ayther::runtime::vulkan::log_vk_failure(*failure);
+        return;
+    }
     destroy_framebuffers(ctx);
-    create_framebuffers(ctx, swap);
+    if (!create_framebuffers(ctx, swap)) return;
     std::fprintf(stdout, "[PlayerOverlay] rebuilt (%ux%u)\n", fb_w_, fb_h_);
 }
 
@@ -498,7 +508,10 @@ void PlayerOverlay::render(VkContext& ctx, VkCommandBuffer cmd, VkSwapchain& swa
 // ---------------------------------------------------------------------------
 void PlayerOverlay::shutdown(VkContext& ctx) {
     if (!ctx.is_ready()) return;
-    vkDeviceWaitIdle(ctx.device());
+    if (const auto failure =
+            ctx.wait_idle("vkDeviceWaitIdle [PlayerOverlay::shutdown]")) {
+        ayther::runtime::vulkan::log_vk_failure(*failure);
+    }
 
     if (imgui_ready_) {
         ImGui::SetCurrentContext(overlay_ctx_);
@@ -511,7 +524,7 @@ void PlayerOverlay::shutdown(VkContext& ctx) {
 
     destroy_framebuffers(ctx);
     if (render_pass_ != VK_NULL_HANDLE) {
-        vkDestroyRenderPass(ctx.device(), render_pass_, nullptr);
+        ctx.calls().destroy_render_pass(ctx.device(), render_pass_, nullptr);
         render_pass_ = VK_NULL_HANDLE;
     }
 }

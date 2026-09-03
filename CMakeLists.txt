@@ -95,6 +95,9 @@ add_executable(ayther_runtime
     src/sonic_telemetry.cpp     # Runtime-only game RAM diagnostics
     # Runtime owns the complete window-side Vulkan lifetime and presentation
     # path. Engine receives only a borrowed VulkanContextView.
+    src/vulkan_backend/spirv_file.cpp
+    src/vulkan_backend/vk_result.cpp
+    src/vulkan_backend/vulkan_calls.cpp
     src/vulkan_backend/vk_context.cpp
     src/vulkan_backend/vk_swapchain.cpp
     src/vulkan_backend/vk_present.cpp

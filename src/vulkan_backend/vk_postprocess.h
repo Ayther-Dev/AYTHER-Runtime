@@ -146,6 +146,6 @@ private:
                              const char* frag_spv_path);
     bool create_samplers    (VkContext& ctx);
     bool create_desc        (VkContext& ctx);   // pool + set (unbound; see set_source)
-    void create_framebuffers(VkContext& ctx, VkSwapchain& swap);
+    [[nodiscard]] bool create_framebuffers(VkContext& ctx, VkSwapchain& swap);
     void destroy_framebuffers(VkContext& ctx);
 };

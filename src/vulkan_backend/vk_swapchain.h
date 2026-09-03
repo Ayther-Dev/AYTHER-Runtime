@@ -1,4 +1,5 @@
 #pragma once
+#include "vulkan_backend/vulkan_calls.h"
 // ---------------------------------------------------------------------------
 // VkSwapchain — double-buffered swapchain + per-frame sync primitives.
 //
@@ -89,6 +90,7 @@ private:
     /// Borrowed device handle cached solely to release owned Vulkan objects.
     /// It must outlive this instance or an explicit shutdown() call.
     VkDevice                    device_       = VK_NULL_HANDLE;
+    ayther::runtime::vulkan::VulkanCalls calls_{};
     VkSwapchainKHR              swapchain_    = VK_NULL_HANDLE;
     VkFormat                    format_       = VK_FORMAT_UNDEFINED;
     VkColorSpaceKHR             color_space_  = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
