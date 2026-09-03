@@ -120,6 +120,8 @@ try {
         "-B", $BuildDirectory,
         "-G", "Ninja",
         "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF",
+        "-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF",
         "-DCMAKE_PREFIX_PATH=$cmakePrefixPath"
     )
     if ($ToolchainFile) {
