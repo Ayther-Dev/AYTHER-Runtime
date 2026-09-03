@@ -26,6 +26,9 @@ once stable compatibility guarantees are defined.
 - All process-status fields now pass through one typed JSON serializer, so
   quotes, backslashes, controls, line breaks, UTF-8, and save-state paths cannot
   corrupt or split a launcher protocol record.
+- Numeric CLI options now use strict, typed `std::from_chars` parsing with
+  explicit range/domain validation and process exit code `64` for malformed
+  command lines.
 - The standalone package smoke test now accepts either `-AytherPrefix` or
   `-EngineArchive` and derives the Runtime root from its own script directory,
   allowing it to run from an independent Runtime clone and any working

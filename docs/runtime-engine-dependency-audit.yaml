@@ -438,9 +438,13 @@ configuration_inventory:
       - "--capture-at"
       - "--crash-test"
       - "--probe-core"
-    validation_gaps:
-      - "Numeric masks, --frames, and --capture-at use atoi without strict error or overflow detection."
-      - "--manifest is correlation metadata and is not parsed by Runtime."
+    validation:
+      numeric: >-
+        RuntimeOptions uses from_chars with complete-input and overflow checks;
+        masks are uint32_t, frames are non-negative uint64_t values, and every
+        --capture-at element is a strictly positive uint64_t.
+      malformed_cli_exit_code: 64
+      manifest: "Correlation metadata only; Runtime intentionally does not parse it."
 
 transitive_dependencies:
   threads:
@@ -514,6 +518,8 @@ runtime_files_without_engine_dependency:
   - files: ["src/runtime_config.h", "src/runtime_config.cpp", "tests/runtime_config_test.cpp"]
     dependencies: ["C++ standard library"]
   - files: ["src/status_emitter.h", "src/status_emitter.cpp", "tests/status_emitter_test.cpp"]
+    dependencies: ["C++ standard library"]
+  - files: ["src/runtime_options.h", "src/runtime_options.cpp", "tests/runtime_options_test.cpp"]
     dependencies: ["C++ standard library"]
   - files: ["src/capture.h", "src/capture.cpp"]
     dependencies: ["C++ filesystem/streams", "ayther_runtime_stb"]

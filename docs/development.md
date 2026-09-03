@@ -197,6 +197,8 @@ Current CTest coverage includes:
 | `status_emitter` | typed event shapes, byte-exact JSON escaping, single-record writes, and flush behavior |
 | `status_emitter_json` | all event fixtures parsed by CMake's real JSON parser, including hostile text and UTF-8 round trips |
 | `status_emitter_source_contract` | rejects protocol framing anywhere below `src/` except `status_emitter.cpp` |
+| `runtime_options` | strict typed parsing and positive/negative domain cases for all numeric CLI options |
+| `cli_errors` | real-process exit code `64` and option-specific stderr diagnostics for malformed CLI input |
 | `output_profile` | Runtime-owned presets, selection precedence, scaling geometry, filtering, and shader mixing |
 | `player_config` | key generation, defaults, persistence distinctions, and tolerant parsing |
 | `split_geometry` | comparison geometry and zero-width edge cases without a GPU |
