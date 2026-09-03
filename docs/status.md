@@ -51,8 +51,12 @@ compatibility.
 1. `Ayther::engine` remains provisional, although Runtime now consumes its
    typed pack, input, renderer, core-probe, and Vulkan-interoperability
    contracts exclusively through installed public headers.
-2. Numeric CLI parsing does not consistently detect malformed values or
-   overflow.
+2. The Windows `v0.1.0-rc.6` static library was produced on the
+   `windows-2025-vs2026` runner with MSVC v145 14.51, newer than the locally
+   installed v143 14.43 toolset. Its public surface configures and compiles
+   here, but the final link requires v145 14.51+ (or a repackaged Engine built
+   against the declared minimum toolset) before the complete standalone CTest
+   gate can pass.
 3. Manual staging of `tomlplusplus` should be verified against the actual link
    closure and removed if the executable no longer imports it.
 4. GPU-dependent integration coverage, compatibility matrices, packaging, and
@@ -69,7 +73,6 @@ A stable release should not be declared until maintainers have:
   every distributed artifact;
 - narrowed and versioned the Runtime/Engine package contract;
 - versioned the launcher process protocol and defined compatibility behavior;
-- completed strict CLI validation;
 - defined supported platforms, compilers, Vulkan requirements, and test cores;
 - established clean build, test, security-scanning, and packaging automation;
 - documented save/config migration and compatibility policies; and

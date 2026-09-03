@@ -17,11 +17,12 @@
 #include <span>
 #include <system_error>
 #include <utility>
-#include <cstdlib>                   // std::atoi (--frames), std::abort (--crash-test)
+#include <cstdlib>                   // std::abort (--crash-test)
 #include <cinttypes>
 #include <ctime>
 #include "runtime_config.h"
 #include "status_emitter.h"
+#include "runtime_options.h"
 #include <ayther/ayther_session.h>    // the motor facade (R2.3) — replaces direct host/audio
 #include <ayther/engine/capabilities.hpp>
 #include <ayther/engine/pack.hpp>
@@ -106,114 +107,36 @@ int main(int argc, char* argv[]) {
     //                  [--profile <id>]
     // Back-compat: `ayther_runtime <core> <rom>` (positional) still works.
     // -----------------------------------------------------------------------
-    std::string core_path_str, rom_path_str, pack_path_arg, patch_path_arg;
-    // #293: perfil pedido al arrancar. Vacio = el predeterminado del pack.
-    // Es lo que satisface «Play puede seleccionar el perfil antes de iniciar»:
-    // Play spawnea este proceso, asi que su selector termina siendo esta flag.
-    std::string profile_arg;
-    // #603: donde viven los guardados, y con que ROM se hizo esta partida.
-    //
-    // La raiz la manda PLAY y no se deduce del arbol del Runtime: eran dos
-    // carpetas distintas —el Runtime escribia en la suya— asi que Play no veia
-    // los guardados que el juego generaba, ni podia contarlos ni sincronizarlos.
-    // Un guardado que el jugador tiene y su launcher no encuentra es un
-    // guardado perdido.
-    std::string saves_dir_arg;
-    std::string rom_crc32_arg;
-    // #604: desde que guardado reanudar. Vacio = partida limpia.
-    //
-    // Es una RUTA y no una bandera «reanuda si podes»: quien elige cual de las
-    // versiones se carga es Play, que es el unico que las tiene listadas y el
-    // unico que le pregunto al jugador. El Runtime carga la que le dan o
-    // ninguna.
-    std::string load_state_arg;
-    /// EM-7.1: opciones del core que pidio el llamador (Play, o la linea de
-    /// comandos). Se aplican al crear la sesion — el core las lee una vez.
-    std::vector<std::pair<std::string, std::string>> core_opts_arg;
-    int  subsystems_arg = 0; bool have_subsystems_arg = false;
-    int  mute_buses_arg = 0; bool have_mute_arg = false;
-    int  shaders_arg    = -1;   // -1 = no se pidio nada
-    std::string output_arg;   // #296: perfil de SALIDA pedido
-    int  frames_limit = 0;       // --frames N: run N frames then exit cleanly (0 = unlimited)
-    std::vector<int> capture_at; // --capture-at N[,M…]: captura A/B (como F12) al llegar a esos frames (dev/CI)
-    bool crash_test   = false;   // --crash-test: std::abort() right after "ready" (IPC test)
-    std::string probe_core;      // --probe-core <dll>: sondea un core y sale (PLAY-EP01.2, #589)
-    std::string manifest_path;   // --manifest <toml>: el launch.toml de la sesion (PLAY-EP03.2, #596)
-    bool hd_compose   = false;   // --hd-compose: retirado en #345, se acepta y avisa.
-                                 // Opt-in: cuesta un 2º render/frame (perf de Play).
-    {
-        std::vector<std::string> pos;
-        for (int i = 1; i < argc; ++i) {
-            const std::string a = argv[i];
-            auto value = [&](const char* flag) -> std::string {
-                if (i + 1 >= argc) {
-                    std::fprintf(stderr, "[ayther_runtime] %s needs a value\n", flag);
-                    return std::string();
-                }
-                return argv[++i];
-            };
-            if      (a == "--core")  core_path_str  = value("--core");
-            else if (a == "--rom")   rom_path_str   = value("--rom");
-            else if (a == "--pack")  pack_path_arg  = value("--pack");
-            else if (a == "--patch") patch_path_arg = value("--patch");
-            else if (a == "--profile") profile_arg  = value("--profile");
-            else if (a == "--saves-dir") saves_dir_arg = value("--saves-dir");
-            else if (a == "--load-state") load_state_arg = value("--load-state");
-            else if (a == "--rom-crc32") rom_crc32_arg = value("--rom-crc32");
-            // #311: lo que Play decide ANTES de lanzar. Se aplican DESPUES de
-            // la configuracion guardada (#299) porque son mas especificos:
-            // el jugador acaba de elegirlos en la pantalla previa.
-            else if (a == "--subsystems") { subsystems_arg = std::atoi(value("--subsystems").c_str()); have_subsystems_arg = true; }
-            else if (a == "--mute-buses") { mute_buses_arg = std::atoi(value("--mute-buses").c_str()); have_mute_arg = true; }
-            else if (a == "--output")  output_arg = value("--output");
-            // EM-7.1 (#230): opciones del CORE, `clave=valor`. Repetible.
-            // Son las que dan «sin limite de sprites» —el anti-flicker— y el
-            // overclock donde el core los ofrezca. Que exista cada una depende
-            // del core (BYOC), asi que el runtime no valida la clave: la pasa
-            // y el core decide. Una clave que el core no conoce simplemente no
-            // se pregunta nunca.
-            else if (a == "--core-option") {
-                const std::string v = value("--core-option");
-                const size_t eq = v.find('=');
-                // Sin `=` no es una opcion: se avisa en vez de guardar una
-                // clave con valor vacio, que el core leeria como una eleccion.
-                if (eq == std::string::npos || eq == 0)
-                    std::fprintf(stderr,
-                        "[main] --core-option espera clave=valor, no '%s'\n", v.c_str());
-                else
-                    core_opts_arg.emplace_back(v.substr(0, eq), v.substr(eq + 1));
-            }
-            // #596: el manifest de la sesion. El runtime NO lo parsea: los
-            // valores llegan igual como argumentos, derivados de ESE mismo
-            // archivo por Play. Se recibe y se ANOTA porque quien investiga un
-            // crash necesita el hilo entre el proceso y su sesion — sin esto,
-            // un `launch.toml` en el disco y un runtime que se colgo son dos
-            // cosas que nadie puede unir.
-            //
-            // Leerlo aca seria duplicar el derivador de argumentos en C++ y en
-            // Rust, y esas dos copias se separan: la que se olvide de una
-            // opcion la ignora en silencio. Una sola fuente, un solo traductor.
-            else if (a == "--manifest") manifest_path = value("--manifest");
-            else if (a == "--no-shaders")   shaders_arg = 0;
-            else if (a == "--shaders")      shaders_arg = 1;
-            // dev/CI hooks (used by the launcher slice + headless tests):
-            else if (a == "--frames")     frames_limit = std::atoi(value("--frames").c_str());
-            else if (a == "--capture-at") {
-                const std::string v = value("--capture-at");
-                for (size_t p = 0; p < v.size();) {
-                    size_t q = v.find(',', p); if (q == std::string::npos) q = v.size();
-                    capture_at.push_back(std::atoi(v.substr(p, q - p).c_str()));
-                    p = q + 1;
-                }
-            }
-            else if (a == "--crash-test") crash_test   = true;
-            else if (a == "--probe-core") probe_core   = value("--probe-core");
-            else if (a == "--hd-compose") hd_compose   = true;
-            else                     pos.push_back(a);
-        }
-        if (core_path_str.empty() && pos.size() >= 1) core_path_str = pos[0];
-        if (rom_path_str.empty()  && pos.size() >= 2) rom_path_str  = pos[1];
+    auto parsed_options = ayther::runtime::RuntimeOptions::parse(argc, argv);
+    if (const auto* error = parsed_options.error()) {
+        const std::string diagnostic = ayther::runtime::describe(*error);
+        std::fprintf(stderr, "[ayther_runtime] %s\n", diagnostic.c_str());
+        return ayther::runtime::runtime_cli_error_exit_code;
     }
+    ayther::runtime::RuntimeOptions options =
+        std::move(*parsed_options.options());
+
+    // Keep the established names below while the CLI contract and conversion
+    // live in the independently testable RuntimeOptions boundary.
+    const auto& core_path_str = options.core_path;
+    const auto& rom_path_str = options.rom_path;
+    const auto& pack_path_arg = options.pack_path;
+    const auto& patch_path_arg = options.patch_path;
+    const auto& profile_arg = options.profile;
+    const auto& saves_dir_arg = options.saves_directory;
+    const auto& rom_crc32_arg = options.rom_crc32;
+    const auto& load_state_arg = options.load_state;
+    const auto& core_opts_arg = options.core_options;
+    const auto& subsystems_arg = options.subsystems;
+    const auto& mute_buses_arg = options.mute_buses;
+    const auto& shaders_arg = options.shaders;
+    const auto& output_arg = options.output;
+    const std::uint64_t frames_limit = options.frames_limit;
+    const auto& capture_at = options.capture_at;
+    const bool crash_test = options.crash_test;
+    const auto& probe_core = options.probe_core;
+    const auto& manifest_path = options.manifest_path;
+    const bool hd_compose = options.hd_compose;
     const ayther::runtime::RuntimeConfig runtime_config(
         runtime_paths, std::filesystem::path{saves_dir_arg});
     // #230 EM-7.4: el parche del usuario. Deja de ser un `(void)`: se aplica
@@ -269,7 +192,7 @@ int main(int argc, char* argv[]) {
             "         [--hd-compose]  (retirado en #345: se acepta y avisa)\n"
             "       ayther_runtime --probe-core <libretro.dll>\n"
             "         Sondea el core y emite un evento probe. Sin ROM.\n");
-        return 1;
+        return ayther::runtime::runtime_cli_error_exit_code;
     }
 
     const char* core_path = core_path_str.c_str();
@@ -728,13 +651,13 @@ int main(int argc, char* argv[]) {
         // #311: lo que Play pidio pisa lo guardado. Es mas especifico —el
         // jugador acaba de elegirlo— y ademas es la unica forma de que la
         // pantalla previa signifique algo cuando ya hay config guardada.
-        if (have_subsystems_arg)
-            sess->set_subsystems_enabled_mask(static_cast<uint32_t>(subsystems_arg));
-        if (have_mute_arg)
+        if (subsystems_arg.has_value())
+            sess->set_subsystems_enabled_mask(*subsystems_arg);
+        if (mute_buses_arg.has_value())
             for (uint32_t i = 0; i < ayther::kAudioBusCount; ++i)
                 sess->set_bus_muted(static_cast<ayther::AudioBus>(i),
-                                    (mute_buses_arg & (1 << i)) != 0);
-        if (shaders_arg >= 0) shaders_on_ = shaders_arg != 0;
+                                    (*mute_buses_arg & (uint32_t{1} << i)) != 0);
+        if (shaders_arg.has_value()) shaders_on_ = *shaders_arg;
         // #296: el perfil de SALIDA. La precedencia la decide
         // `output_profile_resolve` y no este bloque: lo que el usuario
         // eligio gana sobre lo que el pack recomienda, y si no ganara,
@@ -990,10 +913,12 @@ int main(int argc, char* argv[]) {
         // launcher slice + headless tests get a deterministic, self-terminating run.
         // #502: captura programada (mismo camino que F12) — el e2e del pack sin
         // teclado: SDL no recibe teclas sintéticas.
-        for (int cf : capture_at)
-            if (cf > 0 && fv.frame_index == static_cast<uint64_t>(cf)) capture_req_ = true;
-        if (frames_limit > 0 && fv.frame_index >= static_cast<uint64_t>(frames_limit)) {
-            std::fprintf(stdout, "[main] --frames %d reached; exiting cleanly.\n", frames_limit);
+        for (const std::uint64_t capture_frame : capture_at)
+            if (fv.frame_index == capture_frame) capture_req_ = true;
+        if (frames_limit > 0 && fv.frame_index >= frames_limit) {
+            std::fprintf(stdout,
+                         "[main] --frames %" PRIu64 " reached; exiting cleanly.\n",
+                         frames_limit);
             running = false;   // the authoritative exit status is emitted post-loop
         }
 

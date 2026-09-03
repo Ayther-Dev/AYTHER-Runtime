@@ -110,6 +110,34 @@ add_test(
 )
 
 # ------------------------------------------------------------------
+# runtime_options_tests — MAD-006: strict, typed CLI conversion.
+#
+# This target is intentionally independent of SDL and Engine. It fixes the
+# accepted integer domains and every malformed-input category before startup.
+# ------------------------------------------------------------------
+add_executable(runtime_options_tests
+    runtime_options_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime_options.cpp
+)
+target_include_directories(runtime_options_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+set_target_properties(runtime_options_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    runtime_options
+    COMMAND runtime_options_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    cli_errors
+    COMMAND ${CMAKE_COMMAND}
+            -DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cli_error_test.cmake
+)
+
+# ------------------------------------------------------------------
 # output_profile_tests — MIG-021: Runtime-owned presentation policy.
 #
 # Profiles, scaling geometry, filtering, and shader mixing are pure window

@@ -22,10 +22,9 @@ with the Guidelines' emphasis on explicit interfaces, resource safety, and
 testable policy.
 
 The largest risk is concentration of lifecycle, protocol, persistence, input,
-and rendering policy in a single 1,450-line `main` function. The most urgent
-remaining concrete defects are permissive numeric parsing and unchecked Vulkan
-and file-read results. The Vulkan frontend also relies on manual shutdown in
-types whose destructors cannot enforce cleanup.
+and rendering policy in a single `main` function. The most urgent remaining
+concrete defects are unchecked Vulkan and file-read results. The Vulkan frontend
+also relies on manual shutdown in types whose destructors cannot enforce cleanup.
 
 ## Resolved since the review
 
@@ -37,19 +36,19 @@ types whose destructors cannot enforce cleanup.
   `StatusEmitter`. Every process event now shares one JSON serializer and one
   complete-write-plus-flush path, covered by a real JSON parser and a source
   exclusivity contract.
+- MAD-006 extracted `RuntimeOptions`, replaced every `std::atoi` conversion with
+  typed `std::from_chars` parsing, validates complete values and option domains,
+  and fixes process exit code `64` for malformed command lines.
 
 ## Prioritized corrections
 
 ### High — fix before treating Runtime as integration-stable
 
-1. **Replace `std::atoi` with validated, bounded parsing.**
-   `src/main.cpp:138-139`, `:172`, and `:177` silently map malformed text to
-   zero, accept trailing garbage, and provide no overflow signal. Negative masks
-   are later converted to unsigned values. Introduce one `parse_integer` helper
-   based on `std::from_chars`, return a structured error, validate each option's
-   domain, and exit with a documented nonzero code on invalid input. Also make a
-   missing option value terminate parsing instead of returning an empty string
-   and continuing. This follows I.1, I.4, and ES.46.
+1. **Resolved: replace `std::atoi` with validated, bounded parsing.**
+   `RuntimeOptions` now uses `std::from_chars`, returns a typed error, validates
+   each numeric domain, rejects incomplete input, and maps malformed CLI input
+   to documented exit code `64`. Focused tests cover positive and negative cases
+   for every numeric option (I.1, I.4, and ES.46).
 
 2. **Make Vulkan failure paths transactional.**
    `VkPostProcess::init` (`src/vulkan_backend/vk_postprocess.cpp:410-417`) returns
@@ -221,7 +220,7 @@ candidates, not benchmark conclusions:
 
 ## Recommended execution order
 
-1. Fix SDL ownership, numeric parsing, and unchecked reads.
+1. Fix unchecked Vulkan results and file reads.
 2. Add focused tests for invalid CLI/config data and partial initialization.
 3. Split `main` at protocol, persistence, and presentation boundaries.
 4. Introduce transactional Vulkan construction and enforce acquired-frame state.

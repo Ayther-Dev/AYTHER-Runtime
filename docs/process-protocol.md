@@ -31,8 +31,8 @@ backward compatibility. New callers SHOULD use named options.
 | `--patch` | path | Optional IPS/BPS patch applied to the in-memory ROM buffer. |
 | `--profile` | id | Engine content profile selected before the first frame. |
 | `--output` | id | Runtime presentation profile: `lcd`, `crt`, `pixel`, `smooth`, `cinema`, or `ntsc`. |
-| `--subsystems` | integer mask | Explicit subsystem mask applied after persisted settings. |
-| `--mute-buses` | integer mask | Explicit audio-bus mute mask. |
+| `--subsystems` | unsigned decimal `uint32_t` | Explicit subsystem mask applied after persisted settings; range `0..4294967295`. |
+| `--mute-buses` | unsigned decimal `uint32_t` | Explicit audio-bus mute mask; range `0..4294967295`. |
 | `--core-option` | `key=value` | Repeatable core option applied during session creation. |
 | `--shaders` | none | Explicitly enables shaders. |
 | `--no-shaders` | none | Explicitly disables shaders. |
@@ -40,15 +40,16 @@ backward compatibility. New callers SHOULD use named options.
 | `--saves-dir` | path | Save-state root chosen by AYTHER Play. |
 | `--load-state` | path | Exact save state to resume; failure starts fresh and preserves the file. |
 | `--rom-crc32` | hexadecimal text | ROM identity metadata included in save naming. |
-| `--frames` | integer | Development/CI frame limit; `0` means unlimited. |
-| `--capture-at` | comma-separated integers | Requests synchronized captures at logical frame numbers. |
+| `--frames` | unsigned decimal `uint64_t` | Development/CI frame limit; `0` means unlimited. |
+| `--capture-at` | comma-separated positive `uint64_t` values | Non-empty list of logical frame numbers; every element must be greater than zero. |
 | `--crash-test` | none | Emits `crash-test` and aborts; test-only launcher isolation hook. |
 | `--probe-core` | path | Probes a core and exits without loading a ROM or initializing SDL. |
 | `--hd-compose` | none | Deprecated compatibility option; accepted but no longer enables the removed path. |
 
-Missing option values, unknown positional input, and numeric conversion are not
-yet validated consistently. Callers MUST provide well-formed values and SHOULD
-not treat permissive parsing as part of the stable contract.
+Numeric values are parsed with complete-input and range validation. Empty or
+missing values, signs, overflow, trailing text, zero capture frames, and
+leading, trailing, or repeated commas are rejected before SDL initialization.
+`--core-option` likewise requires `key=value` with a non-empty key.
 
 ## Status framing
 
@@ -141,16 +142,18 @@ or, after a save state is written successfully:
 Only the `savestate` path from a clean `exit` is eligible for launcher-side
 upload or synchronization.
 
-## Core-probe exit codes
+## Process exit codes
 
 | Code | Meaning |
 | ---: | --- |
 | `0` | Core loaded and required Libretro information symbols were read. |
 | `2` | Dynamic library could not be loaded. |
 | `3` | Required Libretro symbols were not found. |
+| `64` | Invalid command line: a required session argument or option value is missing, malformed, out of range, or outside its documented domain. |
 
-Other startup and runtime failures currently use general nonzero process codes.
-Do not infer a stable taxonomy beyond the probe path.
+Code `64` is emitted before SDL initialization and is accompanied by a
+human-readable stderr diagnostic. Other startup and runtime failures currently
+use general nonzero process codes; do not infer a stable taxonomy for them.
 
 ## Security and trust
 

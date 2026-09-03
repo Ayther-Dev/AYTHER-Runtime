@@ -84,6 +84,7 @@ target_include_directories(ayther_runtime_stb SYSTEM INTERFACE
 add_executable(ayther_runtime
     src/main.cpp
     src/status_emitter.cpp     # MAD-007: typed line-delimited JSON events
+    src/runtime_options.cpp     # MAD-006: typed, strict command-line parsing
     src/runtime_config.cpp      # MIG-020: Runtime-owned data/save/capture paths
     src/game_input.cpp          # SDL keyboard/gamepad → RetroPad bitfield (M3)
     src/player_overlay.cpp      # in-game pause menu + HD toggle (M4)
