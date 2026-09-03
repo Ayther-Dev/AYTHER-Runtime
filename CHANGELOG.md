@@ -64,6 +64,9 @@ once stable compatibility guarantees are defined.
   action pins, artifact retention, and CMake preset invariants.
 - Typed `StatusEmitter` models for probe, ready, now-playing, warning,
   crash-test, and exit events, with real-parser and source-exclusivity tests.
+- Deterministic shared-library fixtures for the successful and missing-symbol
+  `probe_core` paths, replacing the optional external-core lock and validating
+  exit codes plus complete metadata with CMake's JSON parser on every run.
 - Reproducible AYTHER Engine artifact lock for Linux and Windows
   x86_64, including standard and VPX variants, plus a bootstrap that verifies
   locked/published checksums and SLSA provenance, extracts the package, and

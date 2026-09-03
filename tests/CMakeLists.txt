@@ -439,22 +439,25 @@ add_test(
 # linea AYTHER_STATUS), que es exactamente lo que Play ve. Un test que
 # llamara a CoreProbe directo pasaria en verde con el contrato roto.
 #
-# El nombre de la DLL sale de core.lock para no repetirlo: el dia que
-# el fork cambie de version, cambia en un solo lugar.
+# Both shared-library fixtures are built locally and are portable across the
+# Windows and Linux CI jobs. The positive fixture exports exactly the two C ABI
+# symbols required by CoreProbe; the negative fixture is loadable but exports
+# neither of them.
 # ------------------------------------------------------------------
-set(_core_dll "")
-set(_lock "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/cores/core.lock")
-if(EXISTS "${_lock}")
-    file(READ "${_lock}" _lock_txt)
-    if(_lock_txt MATCHES "vram_file[ \t]*=[ \t]*([^\n\r]+)")
-        string(STRIP "${CMAKE_MATCH_1}" _core_name)
-        set(_core_dll "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/cores/${_core_name}")
-    endif()
-endif()
+add_library(synthetic_libretro_core SHARED synthetic_libretro_core.cpp)
+add_library(non_libretro_library SHARED non_libretro_library.cpp)
+set_target_properties(
+    synthetic_libretro_core
+    non_libretro_library
+    PROPERTIES
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN YES
+)
 add_test(
     NAME    probe_core
     COMMAND ${CMAKE_COMMAND}
-            -DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>
-            -DCORE_DLL=${_core_dll}
+            "-DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>"
+            "-DCORE_DLL=$<TARGET_FILE:synthetic_libretro_core>"
+            "-DNON_CORE_DLL=$<TARGET_FILE:non_libretro_library>"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/probe_core_test.cmake
 )

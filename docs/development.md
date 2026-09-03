@@ -177,7 +177,7 @@ Current CTest coverage includes:
 | `pack_layers` | default/custom layer composition and deterministic ordering |
 | `diagnostics` | pure recommendation rules without SDL or Vulkan |
 | `core_probe_api` | installed `CoreProbe` ownership, JSON, and loader-error contract |
-| `probe_core` | real process exit codes and one-line `AYTHER_STATUS` core-probe output |
+| `probe_core` | codes 0/2/3 and parsed `AYTHER_STATUS` JSON using a deterministic synthetic Libretro core, a missing path, and a loadable non-core library |
 | `runtime_oot_smoke_contract` | standalone source-root discovery, explicit Engine package inputs, and mutual exclusion |
 
 The test suite does not establish full GPU-driver compatibility, frame-perfect
