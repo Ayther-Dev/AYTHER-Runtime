@@ -1,3 +1,5 @@
+cmake_minimum_required(VERSION 3.21)
+
 if(NOT DEFINED STATUS_EMITTER_TEST_EXE OR STATUS_EMITTER_TEST_EXE STREQUAL "")
     message(FATAL_ERROR "STATUS_EMITTER_TEST_EXE is required")
 endif()
