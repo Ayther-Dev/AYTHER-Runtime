@@ -67,6 +67,10 @@ once stable compatibility guarantees are defined.
 - Deterministic shared-library fixtures for the successful and missing-symbol
   `probe_core` paths, replacing the optional external-core lock and validating
   exit codes plus complete metadata with CMake's JSON parser on every run.
+- Configure-time Windows ABI enforcement for Engine `v0.1.0-rc.6`: Runtime
+  accepts `cl` or `clang-cl` over MSVC v145 14.51+, rejects MinGW/GNU and
+  older toolsets with actionable diagnostics, and verifies a real executable
+  link against `Ayther::engine`.
 - Reproducible AYTHER Engine artifact lock for Linux and Windows
   x86_64, including standard and VPX variants, plus a bootstrap that verifies
   locked/published checksums and SLSA provenance, extracts the package, and

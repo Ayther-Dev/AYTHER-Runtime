@@ -19,9 +19,11 @@ Required:
 
 - CMake 3.21 or newer;
 - a C++20 compiler;
-- on Windows, MSVC v145 14.51+ from Visual Studio 2026 and a matching or newer
-  Visual C++ Redistributable; the published Engine archive was compiled with
-  LLVM `clang-cl` 20.1.8 over that STL/toolset;
+- on Windows, Microsoft `cl` or LLVM `clang-cl` using the MSVC ABI, STL and
+  linker from toolset v145 14.51+ (Visual Studio 2026), plus a matching or
+  newer Visual C++ Redistributable; the published Engine archive was compiled
+  with `clang-cl` 20.1.8 over that toolset; MinGW/GNU is not supported by the
+  current Windows artifact;
 - Vulkan headers, loader, and a working driver for interactive runs;
 - an installed AYTHER package with the `engine` component; and
 - the vcpkg dependencies pinned by `vcpkg.json`.
@@ -104,6 +106,30 @@ when `Ayther::engine`, SDL3, Vulkan, Vulkan Memory Allocator, vk-bootstrap,
 toml++, zstd, ImGui, or stb cannot be resolved; do not work around that failure
 by adding private engine source paths.
 
+### Windows compiler and ABI contract
+
+The Windows `v0.1.0-rc.6` package has two independent compatibility axes:
+
+- **Frontend:** Microsoft `cl` or LLVM `clang-cl` is accepted. Engine itself
+  was built with `clang-cl` 20.1.8, but Runtime does not require that exact
+  frontend or version.
+- **ABI/toolset:** both frontends must consume Visual C++ v145 14.51 or newer
+  headers, STL, libraries and linker. This is the immediate binary contract.
+  MinGW/GNU uses a different ABI and is rejected for this artifact.
+
+During configure, `cmake/AytherWindowsToolchain.cmake` reports the detected
+frontend and toolset. After validating the minimum version, it performs a real
+`try_compile` executable link against `Ayther::engine`; merely compiling an
+Engine header is not considered sufficient. A failure names the detected
+toolset, the 14.51 minimum, Engine `v0.1.0-rc.6`, and the supported remedies.
+
+For the reference setup, launch a Visual Studio 2026 Developer PowerShell or
+Developer Command Prompt with v145 14.51+ selected before configuring. To use
+clang-cl, select the same developer environment and pass `clang-cl` as the C++
+compiler so it keeps the Visual C++ headers, libraries and linker. If that
+toolset cannot be installed, use or rebuild an Engine artifact for the intended
+ABI rather than attempting to link the current archive with MinGW.
+
 After bootstrapping Engine, verify that the manifest still covers the package's
 declared closure without accessing the network:
 
@@ -166,6 +192,7 @@ Current CTest coverage includes:
 | `ayther_engine_lock` | offline validation of release identity, checksum manifest, attestation policy, and supported artifact matrix |
 | `vcpkg_manifest` | Engine package closure, pinned baseline, SDL3/ImGui features, and direct Runtime ownership of ImGui/stb |
 | `ci_workflow_contract` | PR triggers, least-privilege permissions, SHA-pinned actions, locked Engine bootstrap, retained diagnostics, and CI preset invariants |
+| `windows_toolchain_contract` | accepted `cl`/`clang-cl` frontends, v145 14.51 minimum, MinGW rejection, and complete failure diagnostics |
 | `runtime_config` | SDL/Engine-independent data paths and launcher save-root precedence |
 | `status_emitter` | typed event shapes, byte-exact JSON escaping, single-record writes, and flush behavior |
 | `status_emitter_json` | all event fixtures parsed by CMake's real JSON parser, including hostile text and UTF-8 round trips |

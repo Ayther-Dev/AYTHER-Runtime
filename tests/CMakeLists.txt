@@ -45,6 +45,13 @@ else()
     message(STATUS "pwsh not found; dependency manifest tests disabled")
 endif()
 
+add_test(
+    NAME windows_toolchain_contract
+    COMMAND ${CMAKE_COMMAND}
+            "-DTOOLCHAIN_MODULE=${CMAKE_CURRENT_SOURCE_DIR}/../cmake/AytherWindowsToolchain.cmake"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/windows_toolchain_contract_test.cmake"
+)
+
 # ------------------------------------------------------------------
 # runtime_config_tests — MIG-020: Runtime owns its persistence paths.
 #

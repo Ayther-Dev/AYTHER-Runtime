@@ -32,6 +32,16 @@ configure_file(
     @ONLY
 )
 
+# Reject unsupported Windows frontends and Visual C++ toolsets before package
+# discovery can obscure the ABI mismatch with a secondary dependency error.
+if(WIN32)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/AytherWindowsToolchain.cmake")
+    ayther_validate_windows_engine_toolchain(
+        ENGINE_RELEASE "v0.1.0-rc.6"
+        MIN_TOOLSET_VERSION "14.51"
+    )
+endif()
+
 # Request the first-party `engine` surface because Runtime still needs the
 # renderer, Vulkan backend, and RetroRunner, not only ADR-003's SDK API.
 find_package(Ayther 0.1.0 CONFIG REQUIRED COMPONENTS engine)
@@ -44,6 +54,16 @@ if(NOT IS_DIRECTORY "${Ayther_SHADER_DIR}")
     message(FATAL_ERROR
         "Ayther_SHADER_DIR does not name an installed shader directory: "
         "${Ayther_SHADER_DIR}")
+endif()
+
+# The rc.6 Windows archive is built with clang-cl over the MSVC v145 14.51
+# ABI/STL. Prove compatibility with a real executable link against the package.
+if(WIN32)
+    ayther_verify_windows_engine_link(
+        ENGINE_RELEASE "v0.1.0-rc.6"
+        MIN_TOOLSET_VERSION "14.51"
+        TARGET Ayther::engine
+    )
 endif()
 
 find_package(SDL3         CONFIG REQUIRED)
