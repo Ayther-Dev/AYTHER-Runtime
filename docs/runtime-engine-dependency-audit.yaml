@@ -172,9 +172,21 @@ dependency_matrix:
     owner: "Runtime"
     migration_status: "complete"
 
-  - runtime_files: ["src/main.cpp"]
+  - runtime_files:
+      - "src/main.cpp"
+      - "src/player_overlay.cpp"
+      - "src/vulkan_backend/vk_context.cpp"
+      - "src/vulkan_backend/vk_postprocess.cpp"
+      - "src/vulkan_backend/vk_swapchain.cpp"
+      - "src/vulkan_backend/vk_result.cpp"
+      - "src/vulkan_backend/vulkan_calls.cpp"
     area: "Vulkan context and renderer interop"
-    current_headers: ["vulkan_backend/vk_context.h", "ayther/ayther_renderer.h", "ayther/engine/vulkan_interop.hpp"]
+    current_headers:
+      - "vulkan_backend/vk_context.h"
+      - "vulkan_backend/vk_result.h"
+      - "vulkan_backend/vulkan_calls.h"
+      - "ayther/ayther_renderer.h"
+      - "ayther/engine/vulkan_interop.hpp"
     required_contract:
       context: >-
         Runtime-lifetime context owns instance, surface, selected physical device,
@@ -185,7 +197,12 @@ dependency_matrix:
         readback. Runtime records rendering into the frame command buffer and
         rebinds views after resize. GPU idle is required before pack-texture
         eviction, reload, rebuild, and explicit shutdown.
-      failure: "A Vulkan or post-process initialization failure should retain a degraded path when possible."
+      failure: >-
+        Every Runtime-owned operation returning VkResult passes through the
+        injectable VulkanCalls dispatch. VkFailure retains the operation and
+        numeric result, and diagnostics add its symbolic name. A Vulkan or
+        post-process initialization failure should retain a degraded path when
+        possible.
       render_image: >-
         RenderImageView borrows image, view, and sampler handles; declares
         format, extent, layout, readiness scopes, and exclusive graphics queue
@@ -193,7 +210,9 @@ dependency_matrix:
     target_state: >-
       Runtime owns the complete Vulkan context and presentation path. Engine
       receives VulkanContextView, which contains no surface, present queue, or
-      swapchain, and publishes RenderImageView for its offscreen result.
+      swapchain, and publishes RenderImageView for its offscreen result. The
+      injectable call boundary is the failure seam for transactional lifecycle
+      tests.
     owner: "Shared: Runtime owns presentation; Engine owns renderer resources"
     migration_status: "complete"
 

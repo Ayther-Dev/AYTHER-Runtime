@@ -86,7 +86,11 @@ with `AYTHER_STATUS `.
 7. **Single status boundary.** Only `StatusEmitter` frames process events. Every
    event uses its typed model and the same JSON serializer, complete-line write,
    and immediate flush path.
-8. **Single-purpose window.** The Runtime window contains gameplay and in-game
+8. **Checked Vulkan boundary.** Every Runtime-owned operation returning
+   `VkResult` is invoked through `VulkanCalls` and checked as a typed
+   `VkFailure`. Diagnostics retain the operation, symbolic result, and integer
+   code. Tests can replace individual calls to exercise lifecycle failures.
+9. **Single-purpose window.** The Runtime window contains gameplay and in-game
    controls only. Library management belongs to AYTHER Play.
 
 ## 4. Component map
@@ -102,6 +106,9 @@ with `AYTHER_STATUS `.
 | `src/pack_layers.*` | Runtime-owned presentation stack derived from pack layers. |
 | `src/sonic_telemetry.*` | Bounds-checked Runtime-only decoding of game-specific work-RAM diagnostics. |
 | `src/vulkan_backend/vk_context.*` | Runtime-owned Vulkan instance, device, queues, surface, and VMA allocator; exports a borrowed Engine view. |
+| `src/vulkan_backend/vulkan_calls.*` | Injectable dispatch for Runtime-owned Vulkan/VMA creation, synchronization, presentation, and teardown calls. |
+| `src/vulkan_backend/vk_result.*` | Typed Vulkan failure classification, symbolic names, and diagnostics. |
+| `src/vulkan_backend/spirv_file.*` | Complete, aligned SPIR-V loading with RAII file ownership. |
 | `src/vulkan_backend/vk_swapchain.*` | Swapchain and two-frames-in-flight synchronization. |
 | `src/vulkan_backend/vk_present.*` | Aspect-correct blit, split presentation, and layout transitions. |
 | `src/vulkan_backend/vk_postprocess.*` | CRT/post-process pipeline and fallback behavior. |

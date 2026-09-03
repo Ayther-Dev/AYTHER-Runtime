@@ -13,8 +13,26 @@ static_assert(!std::is_move_assignable_v<VkContext>);
 static_assert(std::is_same_v<
               decltype(std::declval<VkContext&>().engine_view()),
               ayther::engine::VulkanContextView&>);
+static_assert(std::is_constructible_v<
+              VkContext, const ayther::runtime::vulkan::VulkanCalls&>);
+
+namespace {
+
+VKAPI_ATTR VkResult VKAPI_CALL fake_device_wait_idle(VkDevice) {
+    return VK_ERROR_DEVICE_LOST;
+}
+
+}  // namespace
 
 int main(int argc, char** argv) {
+    auto injected_calls = ayther::runtime::vulkan::default_vulkan_calls();
+    injected_calls.device_wait_idle = &fake_device_wait_idle;
+    VkContext injected_context{injected_calls};
+    if (injected_context.calls().device_wait_idle != &fake_device_wait_idle ||
+        injected_context.wait_idle("unused-with-null-device").has_value()) {
+        return 6;
+    }
+
     VkContext context;
     if (context.is_ready() || context.engine_view().is_valid()) {
         return 1;

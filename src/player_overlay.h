@@ -108,7 +108,8 @@ public:
 
 private:
     bool create_render_pass  (VkContext& ctx, VkFormat fmt);
-    void create_framebuffers (VkContext& ctx, VkSwapchain& swap);
+    [[nodiscard]] bool create_framebuffers(VkContext& ctx,
+                                           VkSwapchain& swap);
     void destroy_framebuffers(VkContext& ctx);
 
     VkRenderPass               render_pass_ = VK_NULL_HANDLE;

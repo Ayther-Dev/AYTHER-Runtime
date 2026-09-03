@@ -207,6 +207,9 @@ Current CTest coverage includes:
 | `diagnostics` | pure recommendation rules without SDL or Vulkan |
 | `core_probe_api` | installed `CoreProbe` ownership, JSON, and loader-error contract |
 | `probe_core` | codes 0/2/3 and parsed `AYTHER_STATUS` JSON using a deterministic synthetic Libretro core, a missing path, and a loadable non-core library |
+| `vulkan_result` | typed Vulkan failures retain operation, symbolic result, and integer code |
+| `vulkan_result_source_contract` | result-returning Vulkan calls cannot bypass the injectable dispatch |
+| `spirv_file` | complete aligned SPIR-V reads and RAII file ownership |
 | `runtime_oot_smoke_contract` | standalone source-root discovery, explicit Engine package inputs, and mutual exclusion |
 
 The test suite does not establish full GPU-driver compatibility, frame-perfect

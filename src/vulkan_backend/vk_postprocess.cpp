@@ -23,6 +23,7 @@
 // ---------------------------------------------------------------------------
 
 #include "vk_postprocess.h"
+#include "vulkan_backend/spirv_file.h"
 #include "vulkan_backend/vk_context.h"
 #include "vk_swapchain.h"
 #include "aspect_fit.h"
@@ -33,40 +34,19 @@
 #include <cstring>
 #include <vector>
 
-// ---------------------------------------------------------------------------
-// Internal file-local helpers (same pattern as vk_sprite.cpp)
-// ---------------------------------------------------------------------------
-// (the per-swap-image lookup helper is gone — use swap.current_image() directly.)
-
-static std::vector<uint32_t> pp_load_spv(const char* path) {
-    FILE* f = std::fopen(path, "rb");
-    if (!f) {
-        std::fprintf(stderr, "[VkPostProcess] Cannot open shader: %s\n", path);
-        return {};
-    }
-    std::fseek(f, 0, SEEK_END);
-    long sz = std::ftell(f);
-    std::rewind(f);
-    if (sz <= 0 || (sz % 4) != 0) {
-        std::fprintf(stderr,
-            "[VkPostProcess] Bad SPIR-V size (%ld) for: %s\n", sz, path);
-        std::fclose(f);
-        return {};
-    }
-    std::vector<uint32_t> code(static_cast<size_t>(sz) / 4);
-    std::fread(code.data(), 1, static_cast<size_t>(sz), f);
-    std::fclose(f);
-    return code;
-}
-
 static VkShaderModule pp_make_shader_module(VkContext& ctx,
-                                             const std::vector<uint32_t>& code) {
+                                             const std::vector<uint32_t>& code,
+                                             const char* operation) {
     VkShaderModuleCreateInfo info{};
     info.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     info.codeSize = code.size() * sizeof(uint32_t);
     info.pCode    = code.data();
     VkShaderModule mod = VK_NULL_HANDLE;
-    vkCreateShaderModule(ctx.device(), &info, nullptr, &mod);
+    if (!ayther::runtime::vulkan::require_vk_success(
+            operation, ctx.calls().create_shader_module(
+                           ctx.device(), &info, nullptr, &mod))) {
+        return VK_NULL_HANDLE;
+    }
     return mod;
 }
 
@@ -123,11 +103,10 @@ bool VkPostProcess::create_render_pass(VkContext& ctx, VkFormat fmt) {
     rp_info.dependencyCount = 2;
     rp_info.pDependencies   = deps;
 
-    if (vkCreateRenderPass(ctx.device(), &rp_info, nullptr, &render_pass_) != VK_SUCCESS) {
-        std::fprintf(stderr, "[VkPostProcess] vkCreateRenderPass failed\n");
-        return false;
-    }
-    return true;
+    return ayther::runtime::vulkan::require_vk_success(
+        "vkCreateRenderPass [VkPostProcess]",
+        ctx.calls().create_render_pass(
+            ctx.device(), &rp_info, nullptr, &render_pass_));
 }
 
 // ---------------------------------------------------------------------------
@@ -136,16 +115,26 @@ bool VkPostProcess::create_render_pass(VkContext& ctx, VkFormat fmt) {
 bool VkPostProcess::create_pipeline(VkContext& ctx,
                                      const char* vert_spv_path,
                                      const char* frag_spv_path) {
-    auto vert_code = pp_load_spv(vert_spv_path);
-    auto frag_code = pp_load_spv(frag_spv_path);
-    if (vert_code.empty() || frag_code.empty()) return false;
+    const auto vert_binary =
+        ayther::runtime::vulkan::load_spirv_binary(vert_spv_path);
+    const auto frag_binary =
+        ayther::runtime::vulkan::load_spirv_binary(frag_spv_path);
+    if (!vert_binary || !frag_binary) {
+        std::fprintf(stderr,
+            "[VkPostProcess] Cannot read complete SPIR-V shaders: %s, %s\n",
+            vert_spv_path, frag_spv_path);
+        return false;
+    }
 
-    VkShaderModule vert_mod = pp_make_shader_module(ctx, vert_code);
-    VkShaderModule frag_mod = pp_make_shader_module(ctx, frag_code);
+    VkShaderModule vert_mod = pp_make_shader_module(
+        ctx, vert_binary.words, "vkCreateShaderModule [vertex]");
+    VkShaderModule frag_mod = pp_make_shader_module(
+        ctx, frag_binary.words, "vkCreateShaderModule [fragment]");
     if (!vert_mod || !frag_mod) {
-        if (vert_mod) vkDestroyShaderModule(ctx.device(), vert_mod, nullptr);
-        if (frag_mod) vkDestroyShaderModule(ctx.device(), frag_mod, nullptr);
-        std::fprintf(stderr, "[VkPostProcess] vkCreateShaderModule failed\n");
+        if (vert_mod)
+            ctx.calls().destroy_shader_module(ctx.device(), vert_mod, nullptr);
+        if (frag_mod)
+            ctx.calls().destroy_shader_module(ctx.device(), frag_mod, nullptr);
         return false;
     }
 
@@ -161,10 +150,12 @@ bool VkPostProcess::create_pipeline(VkContext& ctx,
     dsl_info.bindingCount = 1;
     dsl_info.pBindings    = &sampler_binding;
 
-    if (vkCreateDescriptorSetLayout(ctx.device(), &dsl_info,
-                                    nullptr, &desc_layout_) != VK_SUCCESS) {
-        vkDestroyShaderModule(ctx.device(), vert_mod, nullptr);
-        vkDestroyShaderModule(ctx.device(), frag_mod, nullptr);
+    if (!ayther::runtime::vulkan::require_vk_success(
+            "vkCreateDescriptorSetLayout",
+            ctx.calls().create_descriptor_set_layout(
+                ctx.device(), &dsl_info, nullptr, &desc_layout_))) {
+        ctx.calls().destroy_shader_module(ctx.device(), vert_mod, nullptr);
+        ctx.calls().destroy_shader_module(ctx.device(), frag_mod, nullptr);
         return false;
     }
 
@@ -181,10 +172,12 @@ bool VkPostProcess::create_pipeline(VkContext& ctx,
     pl_info.pushConstantRangeCount = 1;
     pl_info.pPushConstantRanges    = &pc_range;
 
-    if (vkCreatePipelineLayout(ctx.device(), &pl_info,
-                               nullptr, &pipe_layout_) != VK_SUCCESS) {
-        vkDestroyShaderModule(ctx.device(), vert_mod, nullptr);
-        vkDestroyShaderModule(ctx.device(), frag_mod, nullptr);
+    if (!ayther::runtime::vulkan::require_vk_success(
+            "vkCreatePipelineLayout",
+            ctx.calls().create_pipeline_layout(
+                ctx.device(), &pl_info, nullptr, &pipe_layout_))) {
+        ctx.calls().destroy_shader_module(ctx.device(), vert_mod, nullptr);
+        ctx.calls().destroy_shader_module(ctx.device(), frag_mod, nullptr);
         return false;
     }
 
@@ -261,17 +254,14 @@ bool VkPostProcess::create_pipeline(VkContext& ctx,
     gp_info.renderPass          = render_pass_;
     gp_info.subpass             = 0;
 
-    VkResult res = vkCreateGraphicsPipelines(ctx.device(), VK_NULL_HANDLE,
-                                              1, &gp_info, nullptr, &pipeline_);
+    const VkResult pipeline_result = ctx.calls().create_graphics_pipelines(
+        ctx.device(), VK_NULL_HANDLE, 1, &gp_info, nullptr, &pipeline_);
 
-    vkDestroyShaderModule(ctx.device(), vert_mod, nullptr);
-    vkDestroyShaderModule(ctx.device(), frag_mod, nullptr);
+    ctx.calls().destroy_shader_module(ctx.device(), vert_mod, nullptr);
+    ctx.calls().destroy_shader_module(ctx.device(), frag_mod, nullptr);
 
-    if (res != VK_SUCCESS) {
-        std::fprintf(stderr, "[VkPostProcess] vkCreateGraphicsPipelines failed (%d)\n", res);
-        return false;
-    }
-    return true;
+    return ayther::runtime::vulkan::require_vk_success(
+        "vkCreateGraphicsPipelines", pipeline_result);
 }
 
 // ---------------------------------------------------------------------------
@@ -292,11 +282,11 @@ bool VkPostProcess::create_samplers(VkContext& ctx) {
         si.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         si.minLod       = 0.0f;
         si.maxLod       = 0.25f;  // no mipmaps
-        if (vkCreateSampler(ctx.device(), &si, nullptr, out) != VK_SUCCESS) {
-            std::fprintf(stderr, "[VkPostProcess] vkCreateSampler failed\n");
-            return false;
-        }
-        return true;
+        return ayther::runtime::vulkan::require_vk_success(
+            filtro == VK_FILTER_LINEAR
+                ? "vkCreateSampler [linear]"
+                : "vkCreateSampler [nearest]",
+            ctx.calls().create_sampler(ctx.device(), &si, nullptr, out));
     };
     return crear(VK_FILTER_LINEAR,  &sampler_smooth_)
         && crear(VK_FILTER_NEAREST, &sampler_sharp_);
@@ -319,8 +309,10 @@ bool VkPostProcess::create_desc(VkContext& ctx) {
     pi.poolSizeCount = 1;
     pi.pPoolSizes    = &pool_size;
 
-    if (vkCreateDescriptorPool(ctx.device(), &pi, nullptr, &desc_pool_) != VK_SUCCESS) {
-        std::fprintf(stderr, "[VkPostProcess] vkCreateDescriptorPool failed\n");
+    if (!ayther::runtime::vulkan::require_vk_success(
+            "vkCreateDescriptorPool",
+            ctx.calls().create_descriptor_pool(
+                ctx.device(), &pi, nullptr, &desc_pool_))) {
         return false;
     }
 
@@ -333,8 +325,10 @@ bool VkPostProcess::create_desc(VkContext& ctx) {
     alloc_info.descriptorSetCount = 2;
     alloc_info.pSetLayouts        = layouts;
 
-    if (vkAllocateDescriptorSets(ctx.device(), &alloc_info, sets) != VK_SUCCESS) {
-        std::fprintf(stderr, "[VkPostProcess] vkAllocateDescriptorSets failed\n");
+    if (!ayther::runtime::vulkan::require_vk_success(
+            "vkAllocateDescriptorSets",
+            ctx.calls().allocate_descriptor_sets(
+                ctx.device(), &alloc_info, sets))) {
         return false;
     }
     desc_smooth_ = sets[0];
@@ -377,7 +371,7 @@ void VkPostProcess::set_source(
 // ---------------------------------------------------------------------------
 // VkPostProcess::create_framebuffers / destroy_framebuffers
 // ---------------------------------------------------------------------------
-void VkPostProcess::create_framebuffers(VkContext& ctx, VkSwapchain& swap) {
+bool VkPostProcess::create_framebuffers(VkContext& ctx, VkSwapchain& swap) {
     fb_w_ = swap.extent().width;
     fb_h_ = swap.extent().height;
 
@@ -393,17 +387,20 @@ void VkPostProcess::create_framebuffers(VkContext& ctx, VkSwapchain& swap) {
         fi.width           = fb_w_;
         fi.height          = fb_h_;
         fi.layers          = 1;
-        if (vkCreateFramebuffer(ctx.device(), &fi, nullptr,
-                                &framebuffers_[i]) != VK_SUCCESS) {
-            std::fprintf(stderr, "[VkPostProcess] vkCreateFramebuffer %u failed\n", i);
+        if (!ayther::runtime::vulkan::require_vk_success(
+                "vkCreateFramebuffer [VkPostProcess]",
+                ctx.calls().create_framebuffer(
+                    ctx.device(), &fi, nullptr, &framebuffers_[i]))) {
+            return false;
         }
     }
+    return true;
 }
 
 void VkPostProcess::destroy_framebuffers(VkContext& ctx) {
     for (auto fb : framebuffers_) {
         if (fb != VK_NULL_HANDLE)
-            vkDestroyFramebuffer(ctx.device(), fb, nullptr);
+            ctx.calls().destroy_framebuffer(ctx.device(), fb, nullptr);
     }
     framebuffers_.clear();
     fb_w_ = fb_h_ = 0;
@@ -421,7 +418,7 @@ bool VkPostProcess::init(VkContext& ctx, VkSwapchain& swap,
     if (!create_samplers   (ctx))                             return false;
     if (!create_desc       (ctx))                             return false;
 
-    create_framebuffers(ctx, swap);
+    if (!create_framebuffers(ctx, swap)) return false;
 
     std::fprintf(stdout,
         "[VkPostProcess] Post-process pipeline ready  (%ux%u)\n",
@@ -431,9 +428,13 @@ bool VkPostProcess::init(VkContext& ctx, VkSwapchain& swap,
 
 void VkPostProcess::rebuild(VkContext& ctx, VkSwapchain& swap) {
     if (!pipeline_) return;
-    vkDeviceWaitIdle(ctx.device());
+    if (const auto failure =
+            ctx.wait_idle("vkDeviceWaitIdle [VkPostProcess::rebuild]")) {
+        ayther::runtime::vulkan::log_vk_failure(*failure);
+        return;
+    }
     destroy_framebuffers(ctx);
-    create_framebuffers(ctx, swap);
+    if (!create_framebuffers(ctx, swap)) return;
     std::fprintf(stdout,
         "[VkPostProcess] Rebuilt framebuffers  (%ux%u)\n",
         fb_w_, fb_h_);
@@ -441,17 +442,42 @@ void VkPostProcess::rebuild(VkContext& ctx, VkSwapchain& swap) {
 
 void VkPostProcess::shutdown(VkContext& ctx) {
     if (!ctx.is_ready()) return;
-    vkDeviceWaitIdle(ctx.device());
+    if (const auto failure =
+            ctx.wait_idle("vkDeviceWaitIdle [VkPostProcess::shutdown]")) {
+        ayther::runtime::vulkan::log_vk_failure(*failure);
+    }
 
     destroy_framebuffers(ctx);
 
-    if (desc_pool_   != VK_NULL_HANDLE) { vkDestroyDescriptorPool    (ctx.device(), desc_pool_,   nullptr); desc_pool_   = VK_NULL_HANDLE; }
-    if (sampler_smooth_ != VK_NULL_HANDLE) { vkDestroySampler         (ctx.device(), sampler_smooth_, nullptr); sampler_smooth_ = VK_NULL_HANDLE; }
-    if (sampler_sharp_  != VK_NULL_HANDLE) { vkDestroySampler         (ctx.device(), sampler_sharp_,  nullptr); sampler_sharp_  = VK_NULL_HANDLE; }
-    if (pipeline_    != VK_NULL_HANDLE) { vkDestroyPipeline           (ctx.device(), pipeline_,    nullptr); pipeline_    = VK_NULL_HANDLE; }
-    if (pipe_layout_ != VK_NULL_HANDLE) { vkDestroyPipelineLayout     (ctx.device(), pipe_layout_, nullptr); pipe_layout_ = VK_NULL_HANDLE; }
-    if (desc_layout_ != VK_NULL_HANDLE) { vkDestroyDescriptorSetLayout(ctx.device(), desc_layout_, nullptr); desc_layout_ = VK_NULL_HANDLE; }
-    if (render_pass_ != VK_NULL_HANDLE) { vkDestroyRenderPass         (ctx.device(), render_pass_, nullptr); render_pass_ = VK_NULL_HANDLE; }
+    if (desc_pool_ != VK_NULL_HANDLE) {
+        ctx.calls().destroy_descriptor_pool(ctx.device(), desc_pool_, nullptr);
+        desc_pool_ = VK_NULL_HANDLE;
+    }
+    if (sampler_smooth_ != VK_NULL_HANDLE) {
+        ctx.calls().destroy_sampler(ctx.device(), sampler_smooth_, nullptr);
+        sampler_smooth_ = VK_NULL_HANDLE;
+    }
+    if (sampler_sharp_ != VK_NULL_HANDLE) {
+        ctx.calls().destroy_sampler(ctx.device(), sampler_sharp_, nullptr);
+        sampler_sharp_ = VK_NULL_HANDLE;
+    }
+    if (pipeline_ != VK_NULL_HANDLE) {
+        ctx.calls().destroy_pipeline(ctx.device(), pipeline_, nullptr);
+        pipeline_ = VK_NULL_HANDLE;
+    }
+    if (pipe_layout_ != VK_NULL_HANDLE) {
+        ctx.calls().destroy_pipeline_layout(ctx.device(), pipe_layout_, nullptr);
+        pipe_layout_ = VK_NULL_HANDLE;
+    }
+    if (desc_layout_ != VK_NULL_HANDLE) {
+        ctx.calls().destroy_descriptor_set_layout(
+            ctx.device(), desc_layout_, nullptr);
+        desc_layout_ = VK_NULL_HANDLE;
+    }
+    if (render_pass_ != VK_NULL_HANDLE) {
+        ctx.calls().destroy_render_pass(ctx.device(), render_pass_, nullptr);
+        render_pass_ = VK_NULL_HANDLE;
+    }
     desc_smooth_ = VK_NULL_HANDLE;  // freed with the pool
     desc_sharp_  = VK_NULL_HANDLE;
 }
