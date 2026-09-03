@@ -25,11 +25,23 @@ and the real core-probe process contract. The
 standalone smoke bootstraps the pinned, attested Engine release and proves its
 CMake configuration and public-header contract without an Engine or monorepo
 checkout. The pinned `v0.1.0-rc.6` package configures successfully and Runtime
-sources compile against its installed public surface.
+sources compile and link against its installed public surface.
 
 A clean vcpkg manifest installation resolves the complete native dependency
 closure advertised by `AytherConfig.cmake`; the manifest oracle also preserves
 Runtime's direct ImGui and stb dependencies and their required backends.
+
+On 2026-09-03, pull request #2 was merged into `main` as
+`d924f4b7b4fe67a32970d7ae2e8088ce87cb0c19`. From that clean Windows x64
+checkout (Windows 25H2, build 26200.9278), the standalone smoke bootstrapped
+and verified the pinned Engine `v0.1.0-rc.6` archive, including its locked and
+published SHA-256 values and SLSA provenance. CMake 4.3.3 and Ninja configured
+and built all 58 steps with MSVC 19.51.36256.0 from the v145 14.51.36231
+toolset. PowerShell 7.5.2 enabled the complete test inventory, and CTest passed
+19/19 tests with zero failures or tests omitted at the CTest level. The full
+local smoke log is retained at
+`build-mad001-d924f4b/mad-001-smoke.log` (995,642 bytes; SHA-256
+`014338932bb1f8c1cea012598f522d5adb538348286fd307f5302d77950a7ab0`).
 
 These checks do not prove broad GPU, driver, operating-system, core, or game
 compatibility.
@@ -39,17 +51,11 @@ compatibility.
 1. `Ayther::engine` remains provisional, although Runtime now consumes its
    typed pack, input, renderer, core-probe, and Vulkan-interoperability
    contracts exclusively through installed public headers.
-2. The Windows `v0.1.0-rc.6` static library was produced on the
-   `windows-2025-vs2026` runner with MSVC v145 14.51, newer than the locally
-   installed v143 14.43 toolset. Its public surface configures and compiles
-   here, but the final link requires v145 14.51+ (or a repackaged Engine built
-   against the declared minimum toolset) before the complete standalone CTest
-   gate can pass.
-3. Numeric CLI parsing does not consistently detect malformed values or
+2. Numeric CLI parsing does not consistently detect malformed values or
    overflow.
-4. Manual staging of `tomlplusplus` should be verified against the actual link
+3. Manual staging of `tomlplusplus` should be verified against the actual link
    closure and removed if the executable no longer imports it.
-5. GPU-dependent integration coverage, compatibility matrices, packaging, and
+4. GPU-dependent integration coverage, compatibility matrices, packaging, and
    reproducible release automation are not yet established.
 
 The evidence and proposed ownership for these items are recorded in
