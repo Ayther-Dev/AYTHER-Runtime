@@ -32,6 +32,15 @@ if(AYTHER_PWSH_EXECUTABLE)
                 -File ${CMAKE_CURRENT_SOURCE_DIR}/runtime_oot_smoke_contract_test.ps1
                 -SmokeScript ${CMAKE_CURRENT_SOURCE_DIR}/../tools/runtime_oot_smoke.ps1
     )
+    add_test(
+        NAME ci_workflow_contract
+        COMMAND ${AYTHER_PWSH_EXECUTABLE}
+                -NoProfile
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/ci_workflow_contract_test.ps1
+                -Workflow ${CMAKE_CURRENT_SOURCE_DIR}/../.github/workflows/ci.yml
+                -Presets ${CMAKE_CURRENT_SOURCE_DIR}/../CMakePresets.json
+                -EngineLock ${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/ayther-engine.lock.json
+    )
 else()
     message(STATUS "pwsh not found; dependency manifest tests disabled")
 endif()

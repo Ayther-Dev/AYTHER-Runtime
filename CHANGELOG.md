@@ -54,6 +54,11 @@ once stable compatibility guarantees are defined.
 
 ### Added
 
+- Pull request CI for Windows and Linux using reproducible RelWithDebInfo CMake
+  presets, the locked Engine `v0.1.0-rc.6` bootstrap, SHA-pinned GitHub Actions,
+  least-privilege token permissions, and always-retained logs plus JUnit output.
+- A CTest contract that guards the CI trigger, platform jobs, Engine lock,
+  action pins, artifact retention, and CMake preset invariants.
 - Reproducible AYTHER Engine artifact lock for Linux and Windows
   x86_64, including standard and VPX variants, plus a bootstrap that verifies
   locked/published checksums and SLSA provenance, extracts the package, and

@@ -129,6 +129,20 @@ Runtime resolves stb directly through `find_package(Stb)` and links its local
 header-only interface target. `capture.cpp` owns the PNG-writer implementation;
 capture never obtains `stbi_write_png` from `Ayther::engine`.
 
+Pull request CI uses the `windows-ci` and `linux-ci` presets from
+`CMakePresets.json`. With `AYTHER_ENGINE_PREFIX` set to the bootstrapped Engine
+prefix and `VCPKG_ROOT` set to the vcpkg installation, reproduce a job with:
+
+```powershell
+cmake --preset windows-ci
+cmake --build --preset windows-ci
+ctest --preset windows-ci --output-junit "$PWD/out/windows-ci-junit.xml"
+```
+
+Use `linux-ci` for the Linux/Ninja job. These are deliberately CI-only
+RelWithDebInfo presets; the full Debug and analysis preset matrix belongs to
+MAD-004.
+
 For a multi-configuration generator, omit `CMAKE_BUILD_TYPE` and pass
 `--config RelWithDebInfo` to the build and test commands. The executable and
 staged runtime assets are written below `build/bin/`.
@@ -152,7 +166,7 @@ any working directory in an independent Runtime clone:
 provided, the script downloads the artifact pinned by Runtime.
 
 See [Development guide](docs/development.md) for build modes, test scope, shader
-updates, and troubleshooting.
+updates, CI branch-protection check names, and troubleshooting.
 
 ## Run
 

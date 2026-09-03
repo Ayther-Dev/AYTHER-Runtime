@@ -1,0 +1,88 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "ci-base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_FIND_USE_PACKAGE_REGISTRY": "OFF",
+        "CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY": "OFF",
+        "CMAKE_PREFIX_PATH": "$env{AYTHER_ENGINE_PREFIX}",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+      }
+    },
+    {
+      "name": "windows-ci",
+      "displayName": "Windows CI (RelWithDebInfo)",
+      "description": "Visual Studio 2026 and MSVC v145 against the locked Engine package.",
+      "inherits": "ci-base",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "toolset": "v145",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x64-windows"
+      }
+    },
+    {
+      "name": "linux-ci",
+      "displayName": "Linux CI (RelWithDebInfo)",
+      "description": "Ninja build against the locked Linux Engine package.",
+      "inherits": "ci-base",
+      "generator": "Ninja",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "VCPKG_TARGET_TRIPLET": "x64-linux"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-ci",
+      "configurePreset": "windows-ci",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "linux-ci",
+      "configurePreset": "linux-ci"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "windows-ci",
+      "configurePreset": "windows-ci",
+      "configuration": "RelWithDebInfo",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-ci",
+      "configurePreset": "linux-ci",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    }
+  ]
+}
