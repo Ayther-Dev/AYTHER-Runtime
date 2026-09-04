@@ -32,6 +32,7 @@
 #include "player_config.h"          // #299: lo que el panel ajusta y se recuerda
 #include "capture.h"                // #300: captura comparativa sincronizada
 #include "capture_service.h"
+#include "presentation_controller.h"
 #include "save_state_store.h"
 #include <ayther/engine/core_probe.hpp>  // MIG-022: sondeo RAII publico del Engine
 #include "output_profile.h"         // #296: perfiles de salida (CRT/LCD/pixel)
@@ -296,18 +297,22 @@ int main(int argc, char* argv[]) {
     // -----------------------------------------------------------------------
     // Vulkan context
     // -----------------------------------------------------------------------
-    VkContext vulkan;
+    ayther::runtime::PresentationController presentation;
+    VkContext& vulkan = presentation.context();
+    VkSwapchain& swapchain = presentation.swapchain();
     const bool has_vulkan = vulkan_window && vulkan.init(window);
     log_startup_milestone("Vulkan");
     if (!has_vulkan) {
         std::fprintf(stdout,
             "[main] Vulkan context not available — running in Phase 1/2 mode\n");
+        emit_status(ayther::runtime::WarningStatus{
+            ayther::runtime::RuntimeErrorCode::vulkan_unavailable,
+            "Vulkan no esta disponible; se continua sin presentacion GPU"});
     }
 
     // -----------------------------------------------------------------------
     // Swapchain + texture
     // -----------------------------------------------------------------------
-    VkSwapchain swapchain;
     // Genesis framebuffer max size: 320×240 (Mode 5) — used by the sprite overlay.
     static constexpr uint32_t kEmuW = 320, kEmuH = 240;
     bool swap_ok = false;
@@ -319,6 +324,9 @@ int main(int argc, char* argv[]) {
                                  static_cast<uint32_t>(win_h));
         if (!swap_ok) {
             std::fprintf(stderr, "[main] Swapchain init failed — headless fallback\n");
+            emit_status(ayther::runtime::WarningStatus{
+                ayther::runtime::RuntimeErrorCode::vulkan_initialization_failed,
+                "fallo la inicializacion del swapchain"});
         }
     }
 
@@ -583,10 +591,14 @@ int main(int argc, char* argv[]) {
         postprocess_ok = postprocess.init(vulkan, swapchain,
                                           AYTHER_SHADER_DIR "postprocess.vert.spv",
                                           AYTHER_SHADER_DIR "postprocess.frag.spv");
-        if (postprocess_ok)
+        if (postprocess_ok) {
             postprocess.set_source(vulkan, renderer.render_image());
-        else
+        } else {
             std::fprintf(stdout, "[main] VkPostProcess disabled — plain blit fallback.\n");
+            emit_status(ayther::runtime::WarningStatus{
+                ayther::runtime::RuntimeErrorCode::postprocess_degraded,
+                "postprocesado no disponible; se conserva la presentacion original"});
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -747,6 +759,39 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    const auto rebuild_presentation = [&](const int width, const int height) {
+        if (width <= 0 || height <= 0 ||
+            !swapchain.rebuild(vulkan, static_cast<std::uint32_t>(width),
+                               static_cast<std::uint32_t>(height))) {
+            swap_ok = false;
+            return false;
+        }
+        swap_ok = true;
+        if (renderer_ok) {
+            const FitRect canvas = aspect_fit(
+                4, 3, swapchain.extent().width, swapchain.extent().height);
+            renderer.resize(vulkan.engine_view(),
+                            static_cast<std::uint32_t>(canvas.w),
+                            static_cast<std::uint32_t>(canvas.h));
+            if (postprocess_ok) {
+                postprocess_ok = postprocess.rebuild(vulkan, swapchain);
+                if (postprocess_ok) {
+                    postprocess.set_source(vulkan, renderer.render_image());
+                } else {
+                    emit_status(ayther::runtime::WarningStatus{
+                        ayther::runtime::RuntimeErrorCode::postprocess_degraded,
+                        "fallo el rebuild del postprocesado; se usa blit simple"});
+                }
+            }
+        }
+        if (overlay.is_ready() && !overlay.rebuild(vulkan, swapchain)) {
+            emit_status(ayther::runtime::WarningStatus{
+                ayther::runtime::RuntimeErrorCode::vulkan_frame_failed,
+                "no se pudo reconstruir el overlay"});
+        }
+        return true;
+    };
+
     bool running = true;
     while (running) {
         SDL_Event event;
@@ -830,23 +875,8 @@ int main(int argc, char* argv[]) {
                 // Only rebuild when it is the *main* game window that resized.
                 const SDL_WindowID game_wid = SDL_GetWindowID(window);
                 if (event.window.windowID == game_wid) {
-                    int w = event.window.data1;
-                    int h = event.window.data2;
-                    swap_ok = swapchain.rebuild(vulkan,
-                                               static_cast<uint32_t>(w),
-                                               static_cast<uint32_t>(h));
-                    if (swap_ok && renderer_ok) {
-                        const FitRect cf = aspect_fit(4, 3, swapchain.extent().width,
-                                                            swapchain.extent().height);
-                        renderer.resize(
-                            vulkan.engine_view(), static_cast<uint32_t>(cf.w),
-                            static_cast<uint32_t>(cf.h));
-                        if (postprocess_ok) {   // re-bind to the new offscreen view
-                            postprocess.rebuild(vulkan, swapchain);
-                            postprocess.set_source(vulkan, renderer.render_image());
-                        }
-                        overlay.rebuild(vulkan, swapchain);   // M4: rebuild overlay FBs
-                    }
+                    (void)rebuild_presentation(event.window.data1,
+                                               event.window.data2);
                 }
             }
         }
@@ -973,9 +1003,11 @@ int main(int argc, char* argv[]) {
 
         // ---- Vulkan present path ------------------------------------------
         if (swap_ok && renderer_ok && fv.fb_pixels) {
-            if (swapchain.begin_frame(vulkan)) {
+            if (auto acquired_frame = swapchain.begin_frame(vulkan);
+                acquired_frame.has_value()) {
+                AcquiredFrame& frame = *acquired_frame;
                 const auto      pack = sess->pack();   // typed borrowed HD assets
-                VkCommandBuffer cmd  = swapchain.current_frame().cmd;
+                const VkCommandBuffer cmd = frame.command_buffer();
 
                 // The motor renders the emulator frame + HD tile/sprite subs
                 // into its offscreen image.  hd_on_ = false → emu frame only
@@ -1008,7 +1040,7 @@ int main(int argc, char* argv[]) {
                     // las dos mitades en un solo pase y compararlas con el CRT
                     // encima compararía el shader, no la remasterización.
                     VkPresent::blit_split_to_swapchain(
-                        vulkan, swapchain,
+                        vulkan, frame,
                         renderer.compare_render_image(), renderer.render_image(),
                         split_pos_, split_vertical_);
                 } else if (postprocess_ok) {
@@ -1052,7 +1084,7 @@ int main(int argc, char* argv[]) {
                                   *out_profile_, 4, 3,
                                   swapchain.extent().width,
                                   swapchain.extent().height);
-                    postprocess.apply(vulkan, swapchain,
+                    postprocess.apply(vulkan, frame,
                         static_cast<float>(swapchain.extent().width),
                         static_cast<float>(swapchain.extent().height),
                         static_cast<float>(emu_h_px),
@@ -1069,7 +1101,7 @@ int main(int argc, char* argv[]) {
                         fx.ntsc);
                 } else {
                     VkPresent::blit_to_swapchain(
-                        vulkan, swapchain,
+                        vulkan, frame,
                         renderer.render_image(),
                         out_profile_->scaling
                             == ayther::runtime::OutputScaling::Integer,
@@ -1222,7 +1254,7 @@ int main(int argc, char* argv[]) {
 
                 // M4: pause overlay — draws the menu over the swapchain image
                 // (after CRT/blit, before finalize). No-op when not paused.
-                overlay.render(vulkan, cmd, swapchain, hd_on_, running,
+                overlay.render(vulkan, frame, hd_on_, running,
                                sess.get(), &player_cfg, &shaders_on_);
                 // #299: guardar al SALIR del panel, no en cada movimiento de un
                 // slider — eso escribiría el archivo sesenta veces por segundo.
@@ -1232,28 +1264,17 @@ int main(int argc, char* argv[]) {
                 }
 
                 // Transition swap → PRESENT_SRC_KHR.
-                VkPresent::finalize(vulkan, swapchain);
+                VkPresent::finalize(vulkan, frame);
 
-                if (!swapchain.end_frame(vulkan)) {
-                    // Swapchain out of date — rebuild it + re-track the offscreen
-                    // canvas to the new size (skip 0×0 / minimised).
+                if (!swapchain.end_frame(vulkan, frame)) {
                     int w, h;
                     SDL_GetWindowSizeInPixels(window, &w, &h);
-                    swap_ok = swapchain.rebuild(vulkan,
-                                               static_cast<uint32_t>(w),
-                                               static_cast<uint32_t>(h));
-                    if (swap_ok && renderer_ok && w > 0 && h > 0) {
-                        const FitRect cf = aspect_fit(4, 3, swapchain.extent().width,
-                                                            swapchain.extent().height);
-                        renderer.resize(
-                            vulkan.engine_view(), static_cast<uint32_t>(cf.w),
-                            static_cast<uint32_t>(cf.h));
-                        if (postprocess_ok) {
-                            postprocess.rebuild(vulkan, swapchain);
-                            postprocess.set_source(vulkan, renderer.render_image());
-                        }
-                    }
+                    (void)rebuild_presentation(w, h);
                 }
+            } else {
+                int w, h;
+                SDL_GetWindowSizeInPixels(window, &w, &h);
+                (void)rebuild_presentation(w, h);
             }
         }
 
@@ -1355,9 +1376,8 @@ int main(int argc, char* argv[]) {
         overlay.shutdown(vulkan);           // ImGui + overlay render pass + FBs (M4)
         postprocess.shutdown(vulkan);       // CRT presentation pass (frontend)
         renderer.shutdown(vulkan.engine_view()); // Engine offscreen resources
-        swapchain.shutdown();
     }
-    vulkan.shutdown();   // safe no-op if never initialized
+    presentation.shutdown();
     SDL_DestroyWindow(window);
     SDL_Quit();
     return 0;

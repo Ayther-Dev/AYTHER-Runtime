@@ -229,4 +229,6 @@ target_compile_definitions(ayther_runtime PRIVATE
 
 # Runtime verification targets (ADR-004 section 3, E8) compile Runtime sources
 # and therefore belong to this repository's test tree.
+option(AYTHER_ENABLE_GPU_TESTS
+    "Run SDL/Vulkan presentation tests on a real GPU" OFF)
 add_subdirectory(tests)

@@ -32,6 +32,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <utility>
 #include <vector>
 
 static VkShaderModule pp_make_shader_module(VkContext& ctx,
@@ -371,14 +372,13 @@ void VkPostProcess::set_source(
 // ---------------------------------------------------------------------------
 // VkPostProcess::create_framebuffers / destroy_framebuffers
 // ---------------------------------------------------------------------------
-bool VkPostProcess::create_framebuffers(VkContext& ctx, VkSwapchain& swap) {
-    fb_w_ = swap.extent().width;
-    fb_h_ = swap.extent().height;
-
-    const uint32_t n = swap.image_count();
-    framebuffers_.resize(n, VK_NULL_HANDLE);
-    for (uint32_t i = 0; i < n; ++i) {
-        VkImageView view = swap.image_view(i);
+bool VkPostProcess::create_framebuffers(
+    VkContext& ctx, VkSwapchain& swap,
+    std::vector<VkFramebuffer>& output) const {
+    const auto views = swap.image_views();
+    output.resize(views.size(), VK_NULL_HANDLE);
+    for (std::size_t i = 0; i < views.size(); ++i) {
+        const VkImageView view = views[i];
         VkFramebufferCreateInfo fi{};
         fi.sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         fi.renderPass      = render_pass_;
@@ -390,7 +390,7 @@ bool VkPostProcess::create_framebuffers(VkContext& ctx, VkSwapchain& swap) {
         if (!ayther::runtime::vulkan::require_vk_success(
                 "vkCreateFramebuffer [VkPostProcess]",
                 ctx.calls().create_framebuffer(
-                    ctx.device(), &fi, nullptr, &framebuffers_[i]))) {
+                    ctx.device(), &fi, nullptr, &output[i]))) {
             return false;
         }
     }
@@ -412,13 +412,22 @@ void VkPostProcess::destroy_framebuffers(VkContext& ctx) {
 bool VkPostProcess::init(VkContext& ctx, VkSwapchain& swap,
                           const char* vert_spv_path, const char* frag_spv_path) {
     if (!ctx.is_ready() || !swap.is_ready()) return false;
+    if (is_ready()) return true;
 
-    if (!create_render_pass(ctx, swap.format()))              return false;
-    if (!create_pipeline   (ctx, vert_spv_path, frag_spv_path)) return false;
-    if (!create_samplers   (ctx))                             return false;
-    if (!create_desc       (ctx))                             return false;
-
-    if (!create_framebuffers(ctx, swap)) return false;
+    VkPostProcess pending;
+    const bool complete =
+        pending.create_render_pass(ctx, swap.format()) &&
+        pending.create_pipeline(ctx, vert_spv_path, frag_spv_path) &&
+        pending.create_samplers(ctx) && pending.create_desc(ctx) &&
+        pending.create_framebuffers(ctx, swap, pending.framebuffers_);
+    if (!complete) {
+        pending.shutdown(ctx);
+        return false;
+    }
+    pending.fb_w_ = swap.extent().width;
+    pending.fb_h_ = swap.extent().height;
+    shutdown(ctx);
+    swap_state(pending);
 
     std::fprintf(stdout,
         "[VkPostProcess] Post-process pipeline ready  (%ux%u)\n",
@@ -426,18 +435,31 @@ bool VkPostProcess::init(VkContext& ctx, VkSwapchain& swap,
     return true;
 }
 
-void VkPostProcess::rebuild(VkContext& ctx, VkSwapchain& swap) {
-    if (!pipeline_) return;
+bool VkPostProcess::rebuild(VkContext& ctx, VkSwapchain& swap) {
+    if (!pipeline_ || !swap.is_ready()) return false;
     if (const auto failure =
             ctx.wait_idle("vkDeviceWaitIdle [VkPostProcess::rebuild]")) {
         ayther::runtime::vulkan::log_vk_failure(*failure);
-        return;
+        return false;
+    }
+    std::vector<VkFramebuffer> pending;
+    if (!create_framebuffers(ctx, swap, pending)) {
+        for (const VkFramebuffer framebuffer : pending) {
+            if (framebuffer != VK_NULL_HANDLE) {
+                ctx.calls().destroy_framebuffer(
+                    ctx.device(), framebuffer, nullptr);
+            }
+        }
+        return false;
     }
     destroy_framebuffers(ctx);
-    if (!create_framebuffers(ctx, swap)) return;
+    framebuffers_ = std::move(pending);
+    fb_w_ = swap.extent().width;
+    fb_h_ = swap.extent().height;
     std::fprintf(stdout,
         "[VkPostProcess] Rebuilt framebuffers  (%ux%u)\n",
         fb_w_, fb_h_);
+    return true;
 }
 
 void VkPostProcess::shutdown(VkContext& ctx) {
@@ -482,18 +504,34 @@ void VkPostProcess::shutdown(VkContext& ctx) {
     desc_sharp_  = VK_NULL_HANDLE;
 }
 
+void VkPostProcess::swap_state(VkPostProcess& other) noexcept {
+    using std::swap;
+    swap(render_pass_, other.render_pass_);
+    swap(desc_layout_, other.desc_layout_);
+    swap(pipe_layout_, other.pipe_layout_);
+    swap(pipeline_, other.pipeline_);
+    swap(sampler_smooth_, other.sampler_smooth_);
+    swap(sampler_sharp_, other.sampler_sharp_);
+    swap(desc_pool_, other.desc_pool_);
+    swap(desc_smooth_, other.desc_smooth_);
+    swap(desc_sharp_, other.desc_sharp_);
+    swap(framebuffers_, other.framebuffers_);
+    swap(fb_w_, other.fb_w_);
+    swap(fb_h_, other.fb_h_);
+}
+
 // ---------------------------------------------------------------------------
 // VkPostProcess::apply
 // ---------------------------------------------------------------------------
-void VkPostProcess::apply(VkContext& ctx, VkSwapchain& swap,
+void VkPostProcess::apply(VkContext&, const AcquiredFrame& frame,
                            float scr_w, float scr_h, float emu_h, float time_s,
                            const OutDestRect& dest, bool smooth,
                            float crt_strength, float scan_strength, float vignette,
                            float ntsc) {
-    if (!pipeline_) return;
-    if (framebuffers_.empty()) return;
+    const auto framebuffer = frame.framebuffer(framebuffers_);
+    if (!pipeline_ || !framebuffer) return;
 
-    VkCommandBuffer cmd = swap.current_frame().cmd;
+    const VkCommandBuffer cmd = frame.command_buffer();
 
     // No explicit layout barrier before BeginRenderPass:
     // initialLayout = UNDEFINED means the driver transitions the image as part
@@ -508,8 +546,8 @@ void VkPostProcess::apply(VkContext& ctx, VkSwapchain& swap,
     VkRenderPassBeginInfo rp_begin{};
     rp_begin.sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     rp_begin.renderPass      = render_pass_;
-    rp_begin.framebuffer     = framebuffers_[swap.current_image_index()];
-    rp_begin.renderArea      = { {0, 0}, swap.extent() };
+    rp_begin.framebuffer     = *framebuffer;
+    rp_begin.renderArea      = { {0, 0}, frame.extent() };
     rp_begin.clearValueCount = 1;
     rp_begin.pClearValues    = &clear_val;
 
@@ -525,7 +563,7 @@ void VkPostProcess::apply(VkContext& ctx, VkSwapchain& swap,
     // siempre. El fit 4:3 queda de fallback para quien no pase rect.
     FitRect fit = { dest.x, dest.y, dest.w, dest.h };
     if (fit.w <= 0 || fit.h <= 0)
-        fit = aspect_fit(4, 3, swap.extent().width, swap.extent().height);
+        fit = aspect_fit(4, 3, frame.extent().width, frame.extent().height);
     VkViewport vp{};
     vp.x        = static_cast<float>(fit.x);
     vp.y        = static_cast<float>(fit.y);

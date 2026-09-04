@@ -18,6 +18,7 @@
 #include <SDL3/SDL.h>
 #include <cstdint>
 #include <cstdio>
+#include <utility>
 #include <string>
 
 #include <ayther/ayther_session.h>  // #299: el panel opera sobre la sesión
@@ -102,14 +103,13 @@ bool PlayerOverlay::create_render_pass(VkContext& ctx, VkFormat fmt) {
 // ---------------------------------------------------------------------------
 // Framebuffers — one per swapchain image, over the swapchain image views
 // ---------------------------------------------------------------------------
-bool PlayerOverlay::create_framebuffers(VkContext& ctx, VkSwapchain& swap) {
-    fb_w_ = swap.extent().width;
-    fb_h_ = swap.extent().height;
-
-    const uint32_t n = swap.image_count();
-    framebuffers_.resize(n, VK_NULL_HANDLE);
-    for (uint32_t i = 0; i < n; ++i) {
-        VkImageView view = swap.image_view(i);
+bool PlayerOverlay::create_framebuffers(
+    VkContext& ctx, VkSwapchain& swap,
+    std::vector<VkFramebuffer>& output) const {
+    const auto views = swap.image_views();
+    output.resize(views.size(), VK_NULL_HANDLE);
+    for (std::size_t i = 0; i < views.size(); ++i) {
+        const VkImageView view = views[i];
         VkFramebufferCreateInfo fi{};
         fi.sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         fi.renderPass      = render_pass_;
@@ -121,7 +121,7 @@ bool PlayerOverlay::create_framebuffers(VkContext& ctx, VkSwapchain& swap) {
         if (!ayther::runtime::vulkan::require_vk_success(
                 "vkCreateFramebuffer [PlayerOverlay]",
                 ctx.calls().create_framebuffer(
-                    ctx.device(), &fi, nullptr, &framebuffers_[i]))) {
+                    ctx.device(), &fi, nullptr, &output[i]))) {
             return false;
         }
     }
@@ -140,13 +140,23 @@ void PlayerOverlay::destroy_framebuffers(VkContext& ctx) {
 // init
 // ---------------------------------------------------------------------------
 bool PlayerOverlay::init(VkContext& ctx, VkSwapchain& swap, SDL_Window* window) {
-    if (!ctx.is_ready() || !swap.is_ready()) return false;
+    if (!ctx.is_ready() || !swap.is_ready() || window == nullptr) return false;
+    if (is_ready()) return true;
 
-    if (!create_render_pass(ctx, swap.format())) return false;
-    if (!create_framebuffers(ctx, swap)) return false;
+    if (!create_render_pass(ctx, swap.format()) ||
+        !create_framebuffers(ctx, swap, framebuffers_)) {
+        shutdown(ctx);
+        return false;
+    }
+    fb_w_ = swap.extent().width;
+    fb_h_ = swap.extent().height;
 
     // ---- ImGui core context (independent — multi-context safe) ---------------
     overlay_ctx_ = ImGui::CreateContext();
+    if (overlay_ctx_ == nullptr) {
+        shutdown(ctx);
+        return false;
+    }
     ImGui::SetCurrentContext(overlay_ctx_);
 
     ImGuiIO& io = ImGui::GetIO();
@@ -170,7 +180,12 @@ bool PlayerOverlay::init(VkContext& ctx, VkSwapchain& swap, SDL_Window* window) 
     style.Colors[ImGuiCol_NavHighlight]  = ImVec4(0.85f, 0.55f, 0.05f, 1.0f);
 
     // ---- SDL3 backend --------------------------------------------------------
-    ImGui_ImplSDL3_InitForVulkan(window);
+    if (!ImGui_ImplSDL3_InitForVulkan(window)) {
+        ImGui::DestroyContext(overlay_ctx_);
+        overlay_ctx_ = nullptr;
+        shutdown(ctx);
+        return false;
+    }
 
     // ---- Vulkan backend (ImGui 1.92.8 API) -----------------------------------
     // RenderPass and MSAASamples moved to InitInfo.PipelineInfoMain since 1.92.
@@ -190,8 +205,10 @@ bool PlayerOverlay::init(VkContext& ctx, VkSwapchain& swap, SDL_Window* window) 
 
     if (!ImGui_ImplVulkan_Init(&init_info)) {
         std::fprintf(stderr, "[PlayerOverlay] ImGui_ImplVulkan_Init failed\n");
+        ImGui_ImplSDL3_Shutdown();
         ImGui::DestroyContext(overlay_ctx_);
         overlay_ctx_ = nullptr;
+        shutdown(ctx);
         return false;
     }
     // Fonts upload automatically on the first ImGui_ImplVulkan_NewFrame() call
@@ -206,16 +223,29 @@ bool PlayerOverlay::init(VkContext& ctx, VkSwapchain& swap, SDL_Window* window) 
 // ---------------------------------------------------------------------------
 // rebuild — call after swapchain resize
 // ---------------------------------------------------------------------------
-void PlayerOverlay::rebuild(VkContext& ctx, VkSwapchain& swap) {
-    if (!render_pass_) return;
+bool PlayerOverlay::rebuild(VkContext& ctx, VkSwapchain& swap) {
+    if (!render_pass_ || !swap.is_ready()) return false;
     if (const auto failure =
             ctx.wait_idle("vkDeviceWaitIdle [PlayerOverlay::rebuild]")) {
         ayther::runtime::vulkan::log_vk_failure(*failure);
-        return;
+        return false;
+    }
+    std::vector<VkFramebuffer> pending;
+    if (!create_framebuffers(ctx, swap, pending)) {
+        for (const VkFramebuffer framebuffer : pending) {
+            if (framebuffer != VK_NULL_HANDLE) {
+                ctx.calls().destroy_framebuffer(
+                    ctx.device(), framebuffer, nullptr);
+            }
+        }
+        return false;
     }
     destroy_framebuffers(ctx);
-    if (!create_framebuffers(ctx, swap)) return;
+    framebuffers_ = std::move(pending);
+    fb_w_ = swap.extent().width;
+    fb_h_ = swap.extent().height;
     std::fprintf(stdout, "[PlayerOverlay] rebuilt (%ux%u)\n", fb_w_, fb_h_);
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -254,11 +284,13 @@ constexpr VisualGroup kVisual[] = {
 
 }  // namespace
 
-void PlayerOverlay::render(VkContext& ctx, VkCommandBuffer cmd, VkSwapchain& swap,
+void PlayerOverlay::render(VkContext&, const AcquiredFrame& frame,
                             bool& hd_on, bool& running,
                             AytherSession* session, PlayerConfig* cfg,
                             bool* shaders_on) {
-    if (!paused_ || !imgui_ready_ || framebuffers_.empty()) return;
+    const auto framebuffer = frame.framebuffer(framebuffers_);
+    if (!paused_ || !imgui_ready_ || !framebuffer) return;
+    const VkCommandBuffer cmd = frame.command_buffer();
 
     ImGuiContext* prev = ImGui::GetCurrentContext();
     ImGui::SetCurrentContext(overlay_ctx_);
@@ -484,13 +516,13 @@ void PlayerOverlay::render(VkContext& ctx, VkCommandBuffer cmd, VkSwapchain& swa
 
     // ---- Vulkan render pass -------------------------------------------------
     // TRANSFER_DST_OPTIMAL → COLOR_ATTACHMENT_OPTIMAL (explicit barrier)
-    barrier_to_color(cmd, swap.current_image());
+    barrier_to_color(cmd, frame.image());
 
     VkClearValue clear_val{};
     VkRenderPassBeginInfo rp_begin{};
     rp_begin.sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     rp_begin.renderPass      = render_pass_;
-    rp_begin.framebuffer     = framebuffers_[swap.current_image_index()];
+    rp_begin.framebuffer     = *framebuffer;
     rp_begin.renderArea      = { {0, 0}, { fb_w_, fb_h_ } };
     rp_begin.clearValueCount = 1;
     rp_begin.pClearValues    = &clear_val;

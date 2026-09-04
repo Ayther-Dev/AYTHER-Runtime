@@ -71,6 +71,16 @@ public:
     [[nodiscard]] const std::string& gpu_name() const noexcept {
         return gpu_name_;
     }
+    [[nodiscard]] std::uint32_t validation_error_count() const noexcept;
+    [[nodiscard]] static constexpr bool validation_enabled() noexcept {
+#if defined(AYTHER_FORCE_VULKAN_VALIDATION)
+        return true;
+#elif defined(NDEBUG)
+        return false;
+#else
+        return true;
+#endif
+    }
     [[nodiscard]] const ayther::runtime::vulkan::VulkanCalls&
     calls() const noexcept {
         return calls_;
@@ -91,6 +101,11 @@ public:
     }
 
 private:
+    friend struct VkContextTestAccess;
+
+    [[nodiscard]] bool init_uncommitted(SDL_Window* window);
+    void adopt(VkContext& source) noexcept;
+
     ayther::runtime::vulkan::VulkanCalls calls_;
     ayther::engine::VulkanContextView engine_view_{};
     VkDebugUtilsMessengerEXT debug_messenger_{VK_NULL_HANDLE};

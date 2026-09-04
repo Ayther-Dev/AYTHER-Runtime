@@ -483,6 +483,7 @@ add_executable(vulkan_context_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_result.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vulkan_calls.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_context.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_swapchain.cpp
 )
 target_include_directories(vulkan_context_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
@@ -490,6 +491,7 @@ target_include_directories(vulkan_context_tests PRIVATE
 target_compile_definitions(vulkan_context_tests PRIVATE
     VMA_STATIC_VULKAN_FUNCTIONS=1
     VMA_DYNAMIC_VULKAN_FUNCTIONS=0
+    AYTHER_FORCE_VULKAN_VALIDATION=1
 )
 target_link_libraries(vulkan_context_tests PRIVATE
     Ayther::engine
@@ -506,6 +508,18 @@ add_test(
     COMMAND vulkan_context_tests
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
+if(AYTHER_ENABLE_GPU_TESTS)
+    add_test(
+        NAME    vulkan_gpu_smoke
+        COMMAND vulkan_context_tests --gpu
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    set_tests_properties(vulkan_gpu_smoke PROPERTIES
+        LABELS "gpu;vulkan"
+        SKIP_RETURN_CODE 77
+        TIMEOUT 30
+    )
+endif()
 
 # ------------------------------------------------------------------
 # vulkan_presentation_contract_tests — MIG-025 integration boundary.
@@ -546,6 +560,41 @@ set_target_properties(vulkan_presentation_contract_tests PROPERTIES
 add_test(
     NAME    vulkan_presentation_contract
     COMMAND vulkan_presentation_contract_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+add_executable(vulkan_failure_injection_tests
+    vulkan_failure_injection_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/spirv_file.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_result.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vulkan_calls.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_context.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_swapchain.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_postprocess.cpp
+)
+target_include_directories(vulkan_failure_injection_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend
+)
+target_compile_definitions(vulkan_failure_injection_tests PRIVATE
+    VMA_STATIC_VULKAN_FUNCTIONS=1
+    VMA_DYNAMIC_VULKAN_FUNCTIONS=0
+    AYTHER_TEST_VERT_SPV="${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/shaders/postprocess.vert.spv"
+    AYTHER_TEST_FRAG_SPV="${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/shaders/postprocess.frag.spv"
+)
+target_link_libraries(vulkan_failure_injection_tests PRIVATE
+    Ayther::engine
+    SDL3::SDL3
+    Vulkan::Vulkan
+    GPUOpen::VulkanMemoryAllocator
+    vk-bootstrap::vk-bootstrap
+)
+set_target_properties(vulkan_failure_injection_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    vulkan_failure_injection
+    COMMAND vulkan_failure_injection_tests
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
