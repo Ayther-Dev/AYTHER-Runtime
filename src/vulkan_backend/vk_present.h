@@ -6,9 +6,9 @@
 //
 //   swapchain.begin_frame(ctx)
 //   renderer.render(ctx, cmd, ...)
-//   VkPresent::blit_to_swapchain(ctx, swap, renderer.render_image())
-//   VkPresent::finalize(ctx, swap)
-//   swapchain.end_frame(ctx)
+//   VkPresent::blit_to_swapchain(ctx, frame, renderer.render_image())
+//   VkPresent::finalize(ctx, frame)
+//   swapchain.end_frame(ctx, frame)
 // ---------------------------------------------------------------------------
 #include <vulkan/vulkan.h>
 #include <cstdint>
@@ -16,7 +16,7 @@
 #include <ayther/engine/vulkan_interop.hpp>
 
 class VkContext;
-class VkSwapchain;
+class AcquiredFrame;
 
 class VkPresent {
 public:
@@ -35,7 +35,8 @@ public:
     /// @pre `src` is valid and its owning queue family matches the recording
     ///      command buffer. The swapchain must have a currently acquired image.
     /// @post `src` is restored to its declared handoff layout.
-    static void blit_to_swapchain(VkContext& ctx, VkSwapchain& swap,
+    static void blit_to_swapchain(VkContext& ctx,
+                                  const AcquiredFrame& frame,
                                   const ayther::engine::RenderImageView& src,
                                   bool integer = false, bool smooth = true);
 
@@ -49,7 +50,8 @@ public:
     // `split` is clamped to [0, 1]. With `vertical == false`, a vertical divider
     // separates left and right images. Each image is cropped rather than scaled
     // into half of the window, preserving the unsplit image geometry.
-    static void blit_split_to_swapchain(VkContext& ctx, VkSwapchain& swap,
+    static void blit_split_to_swapchain(VkContext& ctx,
+                                        const AcquiredFrame& frame,
                                         const ayther::engine::RenderImageView& left,
                                         const ayther::engine::RenderImageView& right,
                                         float split, bool vertical);
@@ -58,5 +60,5 @@ public:
     // Finalize — transition swapchain image from TRANSFER_DST → PRESENT_SRC.
     // Must be called once per frame after all blit and blit_tiles calls.
     // -----------------------------------------------------------------------
-    static void finalize(VkContext& ctx, VkSwapchain& swap);
+    static void finalize(VkContext& ctx, const AcquiredFrame& frame);
 };

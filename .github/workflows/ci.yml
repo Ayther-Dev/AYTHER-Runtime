@@ -27,6 +27,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Initialize CI logs
         shell: pwsh
@@ -39,6 +40,16 @@ jobs:
           Set-Content artifacts/test.log "CTest did not run."
           Set-Content artifacts/LastTest.log "CTest did not produce LastTest.log."
           Set-Content artifacts/junit.xml '<?xml version="1.0" encoding="UTF-8"?><testsuites name="CTest did not run" tests="0" failures="0" />'
+
+          @(
+              "runtime_sha=$(& git rev-parse HEAD)"
+              "pr_head_sha=${{ github.event.pull_request.head.sha }}"
+              "github_merge_sha=$env:GITHUB_SHA"
+              "runner_os=$env:RUNNER_OS"
+              "runner_arch=$env:RUNNER_ARCH"
+              "runner_image=$env:ImageOS"
+              "cmake=$((& cmake --version | Select-Object -First 1))"
+          ) | Set-Content artifacts/environment.txt
 
           $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
           if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) {
@@ -127,11 +138,19 @@ jobs:
           retention-days: 14
 
   linux:
-    name: Linux / RelWithDebInfo
+    name: Linux / ${{ matrix.check }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - preset: linux-quality
+            check: RelWithDebInfo
+          - preset: linux-sanitizers
+            check: ASan-UBSan-Fuzz
     env:
-      CI_PRESET: linux-ci
+      CI_PRESET: ${{ matrix.preset }}
       ENGINE_PLATFORM: linux
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -139,6 +158,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Initialize CI logs
         shell: pwsh
@@ -152,11 +172,28 @@ jobs:
           Set-Content artifacts/LastTest.log "CTest did not produce LastTest.log."
           Set-Content artifacts/junit.xml '<?xml version="1.0" encoding="UTF-8"?><testsuites name="CTest did not run" tests="0" failures="0" />'
 
+          @(
+              "runtime_sha=$(& git rev-parse HEAD)"
+              "pr_head_sha=${{ github.event.pull_request.head.sha }}"
+              "github_merge_sha=$env:GITHUB_SHA"
+              "runner_os=$env:RUNNER_OS"
+              "runner_arch=$env:RUNNER_ARCH"
+              "runner_image=$env:ImageOS"
+              "cmake=$((& cmake --version | Select-Object -First 1))"
+          ) | Set-Content artifacts/environment.txt
+
           $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
           if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) {
               $vcpkgRoot = Split-Path -Parent (Get-Command vcpkg -ErrorAction Stop).Source
           }
           "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Install quality tools
+        if: ${{ matrix.preset == 'linux-quality' }}
+        shell: pwsh
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang-tidy gcovr llvm
 
       - name: Bootstrap locked Engine rc.6
         shell: pwsh
@@ -220,6 +257,21 @@ jobs:
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) { exit $exitCode }
 
+      - name: Coverage report and floor
+        if: ${{ matrix.preset == 'linux-quality' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & gcovr `
+              --root . `
+              --gcov-executable 'llvm-cov gcov' `
+              --filter 'src/(runtime_options|status_emitter|player_config|capture|capture_service|save_state_store|vulkan_backend/spirv_file)\.cpp$' `
+              --html-details artifacts/coverage.html `
+              --xml artifacts/coverage.xml `
+              --fail-under-line 60 `
+              "out/build/$env:CI_PRESET"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Collect CTest diagnostics
         if: ${{ always() }}
         shell: pwsh
@@ -233,7 +285,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ci-linux-${{ github.run_attempt }}
+          name: ci-${{ matrix.preset }}-${{ github.run_attempt }}
           path: artifacts/
           if-no-files-found: error
           retention-days: 14

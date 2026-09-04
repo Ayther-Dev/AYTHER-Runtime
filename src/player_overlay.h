@@ -43,6 +43,7 @@
 struct ImGuiContext;
 class VkContext;
 class VkSwapchain;
+class AcquiredFrame;
 struct SDL_Window;
 
 namespace ayther {
@@ -69,7 +70,7 @@ public:
 
     /// Recreate framebuffers after a swapchain resize.
     /// @pre init() succeeded and the resized swapchain is ready.
-    void rebuild(VkContext& ctx, VkSwapchain& swap);
+    [[nodiscard]] bool rebuild(VkContext& ctx, VkSwapchain& swap);
 
     /// Forward an SDL event to this overlay's ImGui context.
     void handle_event(const SDL_Event& e);
@@ -88,7 +89,7 @@ public:
     ///
     /// @pre init() succeeded and `cmd` is recording for `swap`'s current image.
     /// @note No operation is recorded while the overlay is not paused.
-    void render(VkContext& ctx, VkCommandBuffer cmd, VkSwapchain& swap,
+    void render(VkContext& ctx, const AcquiredFrame& frame,
                 bool& hd_on, bool& running,
                 AytherSession* session = nullptr,
                 PlayerConfig* cfg = nullptr, bool* shaders_on = nullptr);
@@ -108,8 +109,9 @@ public:
 
 private:
     bool create_render_pass  (VkContext& ctx, VkFormat fmt);
-    [[nodiscard]] bool create_framebuffers(VkContext& ctx,
-                                           VkSwapchain& swap);
+    [[nodiscard]] bool create_framebuffers(
+        VkContext& ctx, VkSwapchain& swap,
+        std::vector<VkFramebuffer>& output) const;
     void destroy_framebuffers(VkContext& ctx);
 
     VkRenderPass               render_pass_ = VK_NULL_HANDLE;

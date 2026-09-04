@@ -27,7 +27,13 @@ using UniqueFile = std::unique_ptr<std::FILE, FileCloser>;
 
 SpirvBinary load_spirv_binary(const std::string_view path) {
     const std::string owned_path{path};
-    const UniqueFile file{std::fopen(owned_path.c_str(), "rb")};
+    std::FILE* opened_file = nullptr;
+#ifdef _WIN32
+    (void)fopen_s(&opened_file, owned_path.c_str(), "rb");
+#else
+    opened_file = std::fopen(owned_path.c_str(), "rb");
+#endif
+    const UniqueFile file{opened_file};
     if (!file) {
         return {{}, SpirvReadError::open_failed, 0U, 0U};
     }

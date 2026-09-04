@@ -7,22 +7,22 @@
 
 #include <cstdint>
 
-// Note: the current swapchain VkImage is cached in VkSwapchain::images_ —
-// we fetch it via swap.current_image().  This removes the 6 redundant
-// vkGetSwapchainImagesKHR calls per frame the old helper used to do.
+// The acquired capability carries the exact command buffer, image and extent;
+// presentation code has no unchecked access to swapchain-owned arrays.
 
 // ---------------------------------------------------------------------------
 // VkPresent::blit_to_swapchain
 //   src:  Engine offscreen in its declared handoff layout
 //   swap: UNDEFINED → TRANSFER_DST (left here; caller calls finalize())
 // ---------------------------------------------------------------------------
-void VkPresent::blit_to_swapchain(VkContext& ctx, VkSwapchain& swap,
+void VkPresent::blit_to_swapchain(VkContext& ctx,
+                                  const AcquiredFrame& frame,
                                   const ayther::engine::RenderImageView& src,
                                   bool integer, bool smooth) {
-    if (!src.is_valid() ||
+    if (!frame.valid() || !src.is_valid() ||
         src.queue_family_index != ctx.graphics_family()) return;
-    VkCommandBuffer cmd      = swap.current_frame().cmd;
-    VkImage         swap_img = swap.current_image();
+    const VkCommandBuffer cmd = frame.command_buffer();
+    const VkImage swap_img = frame.image();
 
     // Borrowed source: declared handoff layout → TRANSFER_SRC. The view's
     // readiness masks are the source scope supplied by Engine.
@@ -71,7 +71,7 @@ void VkPresent::blit_to_swapchain(VkContext& ctx, VkSwapchain& swap,
         smooth, 0.0f, 0.0f, 0.0f };
     const ayther::runtime::OutputRect r = ayther::runtime::output_rect(
         prof, src.extent.width, src.extent.height,
-        swap.extent().width, swap.extent().height);
+        frame.extent().width, frame.extent().height);
     const FitRect fit{ r.x, r.y, r.w, r.h };
 
     VkImageBlit region{};
@@ -110,15 +110,16 @@ void VkPresent::blit_to_swapchain(VkContext& ctx, VkSwapchain& swap,
 //   left/right: dos offscreen en su layout declarado (el original y el HD del
 //   MISMO FrameView). Salen recortados a su lado del divisor.
 // ---------------------------------------------------------------------------
-void VkPresent::blit_split_to_swapchain(VkContext& ctx, VkSwapchain& swap,
+void VkPresent::blit_split_to_swapchain(VkContext& ctx,
+                                        const AcquiredFrame& frame,
                                         const ayther::engine::RenderImageView& left,
                                         const ayther::engine::RenderImageView& right,
                                         float split, bool vertical) {
-    if (!left.is_valid() || !right.is_valid() ||
+    if (!frame.valid() || !left.is_valid() || !right.is_valid() ||
         left.queue_family_index != ctx.graphics_family() ||
         right.queue_family_index != ctx.graphics_family()) return;
-    VkCommandBuffer cmd      = swap.current_frame().cmd;
-    VkImage         swap_img = swap.current_image();
+    const VkCommandBuffer cmd = frame.command_buffer();
+    const VkImage swap_img = frame.image();
     if (split < 0.0f) split = 0.0f;
     if (split > 1.0f) split = 1.0f;
 
@@ -162,7 +163,7 @@ void VkPresent::blit_split_to_swapchain(VkContext& ctx, VkSwapchain& swap,
     // El mismo rect que usaría el blit sin dividir: las dos mitades caen donde
     // caería la imagen entera, sólo que cada una muestra su parte.
     const FitRect fit = aspect_fit(left.extent.width, left.extent.height,
-                                   swap.extent().width, swap.extent().height);
+                                   frame.extent().width, frame.extent().height);
 
     // Un lado con 0 píxeles no es un blit válido —Vulkan lo rechaza— y además
     // no hay nada que dibujar: el divisor en un extremo es «mostrar sólo el
@@ -217,9 +218,10 @@ void VkPresent::blit_split_to_swapchain(VkContext& ctx, VkSwapchain& swap,
 // VkPresent::finalize
 //   swap: TRANSFER_DST → PRESENT_SRC_KHR
 // ---------------------------------------------------------------------------
-void VkPresent::finalize(VkContext& ctx, VkSwapchain& swap) {
-    VkCommandBuffer cmd      = swap.current_frame().cmd;
-    VkImage         swap_img = swap.current_image();
+void VkPresent::finalize(VkContext&, const AcquiredFrame& frame) {
+    if (!frame.valid()) return;
+    const VkCommandBuffer cmd = frame.command_buffer();
+    const VkImage swap_img = frame.image();
 
     VkImageMemoryBarrier to_present{};
     to_present.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
