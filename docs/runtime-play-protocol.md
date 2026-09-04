@@ -1,6 +1,10 @@
 # Runtime–Play protocol v1
 
-Status: stable since Runtime 0.1.0. Last reviewed: 2026-09-03.
+Status: protocol v1 is stable. Last reviewed: 2026-09-03.
+
+This wire contract is stable independently of the product release channel.
+AYTHER Runtime itself remains `0.1.0-prerelease`; its package, ABI, save-state,
+and general product surfaces are not covered by the protocol-v1 guarantee.
 
 Runtime writes one record per line to stdout. A protocol record starts with
 `AYTHER_STATUS ` and is followed by one UTF-8 JSON object. Diagnostic log lines

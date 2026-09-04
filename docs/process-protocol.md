@@ -1,8 +1,9 @@
-# Process and CLI Contract
+# Process and CLI Contract (protocol v1)
 
-> [!WARNING]
-> This is a pre-release contract. AYTHER Play and Runtime must be versioned and
-> tested together until a stable protocol version is introduced.
+> [!IMPORTANT]
+> The Runtime–Play wire protocol v1 is stable. AYTHER Runtime remains the
+> separate `0.1.0-prerelease` product; stability here does not extend to its
+> package, Engine ABI, configuration, or save-state formats.
 
 ## Invocation modes
 
@@ -44,6 +45,7 @@ backward compatibility. New callers SHOULD use named options.
 | `--capture-at` | comma-separated positive `uint64_t` values | Non-empty list of logical frame numbers; every element must be greater than zero. |
 | `--crash-test` | none | Emits `crash-test` and aborts; test-only launcher isolation hook. |
 | `--probe-core` | path | Probes a core and exits without loading a ROM or initializing SDL. |
+| `--play-protocol-version` | unsigned decimal `uint32_t` | Negotiates protocol v1 before SDL, Vulkan, core, ROM, or session startup. |
 | `--hd-compose` | none | Deprecated compatibility option; accepted but no longer enables the removed path. |
 
 Numeric values are parsed with complete-input and range validation. Empty or
@@ -65,15 +67,19 @@ writes it with one `fwrite` call, and immediately flushes stdout. Quotes,
 backslashes, JSON control characters, and line breaks are escaped; valid UTF-8
 is preserved.
 
-Consumers MUST:
+Every JSON object includes `"protocol_version":1` before the event-specific
+fields. Consumers MUST:
 
 - parse only complete lines beginning with the exact `AYTHER_STATUS ` prefix;
 - treat all other stdout and stderr as human diagnostic output;
-- tolerate unknown event names and additional JSON fields; and
+- reject an unsupported protocol version before starting a session;
+- tolerate unknown event names and additional JSON fields within v1; and
 - treat process termination without an `exit` event as abnormal.
 
-The protocol is not yet explicitly versioned. Fields documented below reflect
-the current implementation.
+Play SHOULD pass `--play-protocol-version 1`. Runtime accepts version 1 and
+rejects lower or higher explicit versions with reason `protocol.incompatible`
+and exit code `65` before subsystem startup. Omitting negotiation is retained
+only for older launchers, which must inspect the first status record.
 
 ## Events
 
@@ -82,12 +88,12 @@ the current implementation.
 Successful probe:
 
 ```json
-{"event":"probe","ok":true,"api":1,"library_name":"...","library_version":"...","valid_extensions":"...","need_fullpath":false,"block_extract":false}
+{"protocol_version":1,"event":"probe","ok":true,"api":1,"library_name":"...","library_version":"...","valid_extensions":"...","need_fullpath":false,"block_extract":false}
 ```
 
-Failure reasons currently include `no_carga` (library load failure) and
-`no_es_libretro` (required Libretro symbols missing). These reason tokens are
-legacy wire values and MUST be treated as opaque identifiers.
+Failure reasons are stable machine identifiers: `core.load_failed` for a
+library-load failure and `core.invalid` when required Libretro symbols are
+missing. Optional `message` text is human-readable and MUST NOT drive logic.
 
 Engine owns the temporary dynamic-library handle and copies the Libretro
 metadata. Runtime transfers those owned values into `ProbeSucceededStatus`; the
@@ -97,7 +103,7 @@ protocol framing.
 ### `ready`
 
 ```json
-{"event":"ready","game_id":"...","has_pack":false,"manifest":"..."}
+{"protocol_version":1,"event":"ready","game_id":"...","has_pack":false,"manifest":"..."}
 ```
 
 Indicates that the session exists. It does not guarantee that Vulkan
@@ -106,7 +112,7 @@ post-processing or every optional subsystem initialized successfully.
 ### `now-playing`
 
 ```json
-{"event":"now-playing","game_id":"...","title":"..."}
+{"protocol_version":1,"event":"now-playing","game_id":"...","title":"..."}
 ```
 
 Indicates transition into active gameplay. The current implementation uses the
@@ -115,12 +121,13 @@ game identifier as the title fallback.
 ### `warning`
 
 ```json
-{"event":"warning","reason":"..."}
+{"protocol_version":1,"event":"warning","reason":"persistence.config_invalid","message":"..."}
 ```
 
-Reports a recoverable degradation, such as a loaded pack with no active
-subsystems or a failed resume. The `reason` field is currently human-readable,
-not a stable machine code.
+Reports a warning or recoverable degradation. `reason` is a stable machine code;
+`message`, when present, is explanatory text and may change or be localized.
+The complete reason taxonomy and recovery classification is normative in
+[`runtime-play-protocol.md`](runtime-play-protocol.md).
 
 ### `crash-test`
 
@@ -130,13 +137,13 @@ hook and MUST NOT be interpreted as a clean exit.
 ### `exit`
 
 ```json
-{"event":"exit"}
+{"protocol_version":1,"event":"exit"}
 ```
 
 or, after a save state is written successfully:
 
 ```json
-{"event":"exit","savestate":"C:\\path\\to\\state.bin"}
+{"protocol_version":1,"event":"exit","savestate":"C:\\path\\to\\state.bin"}
 ```
 
 Only the `savestate` path from a clean `exit` is eligible for launcher-side
@@ -150,10 +157,13 @@ upload or synchronization.
 | `2` | Dynamic library could not be loaded. |
 | `3` | Required Libretro symbols were not found. |
 | `64` | Invalid command line: a required session argument or option value is missing, malformed, out of range, or outside its documented domain. |
+| `65` | Explicit Runtime–Play protocol versions are incompatible. |
+| `69` | A required service is unavailable. |
+| `74` | A non-recoverable I/O operation failed. |
 
-Code `64` is emitted before SDL initialization and is accompanied by a
-human-readable stderr diagnostic. Other startup and runtime failures currently
-use general nonzero process codes; do not infer a stable taxonomy for them.
+Codes and their identifiers are stable protocol-v1 values. CLI and negotiation
+errors occur before SDL initialization and include both a machine reason in the
+status stream and a human-readable diagnostic.
 
 ## Security and trust
 

@@ -11,11 +11,12 @@
 #   cmake -S . -B build_rt -DCMAKE_PREFIX_PATH=<Engine bootstrap prefix>
 #   cmake --build build_rt
 # ---------------------------------------------------------------------------
-set(AYTHER_RUNTIME_VERSION "0.1.0")
+set(AYTHER_RUNTIME_VERSION "0.1.0-prerelease")
+set(AYTHER_RUNTIME_PROJECT_VERSION "0.1.0")
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     cmake_minimum_required(VERSION 3.21)
-    project(AytherRuntime VERSION ${AYTHER_RUNTIME_VERSION} LANGUAGES CXX)
+    project(AytherRuntime VERSION ${AYTHER_RUNTIME_PROJECT_VERSION} LANGUAGES CXX)
     set(CMAKE_CXX_STANDARD 20)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
     if(NOT CMAKE_BUILD_TYPE)
