@@ -41,13 +41,34 @@ if(NOT EXISTS "${package_bin}/shaders/postprocess.vert.spv" OR
    NOT EXISTS "${package_bin}/shaders/postprocess.frag.spv")
     message(FATAL_ERROR "Installed Runtime shaders are incomplete")
 endif()
+if(NOT EXISTS "${SMOKE_DIR}/share/licenses/ayther-runtime/LICENSE")
+    message(FATAL_ERROR "Installed Runtime license is missing")
+endif()
+set(package_metadata
+    "${SMOKE_DIR}/share/ayther-runtime/ayther-runtime-package.json")
+if(NOT EXISTS "${package_metadata}")
+    message(FATAL_ERROR "Installed Runtime package metadata is missing")
+endif()
+file(READ "${package_metadata}" metadata)
+foreach(field IN ITEMS layout_version runtime_version protocol_version
+                       engine_release engine_min_version
+                       engine_max_version_exclusive)
+    string(JSON field_type ERROR_VARIABLE field_error TYPE "${metadata}" "${field}")
+    if(NOT field_error STREQUAL "NOTFOUND")
+        message(FATAL_ERROR "Package metadata omits '${field}': ${field_error}")
+    endif()
+endforeach()
+
+set(clean_working_directory "${SMOKE_DIR}-cwd")
+file(REMOVE_RECURSE "${clean_working_directory}")
+file(MAKE_DIRECTORY "${clean_working_directory}")
 
 # An intentional CLI error proves the packaged process reached main(). A
 # missing transitive DLL would fail in the Windows loader before producing the
 # stable EX_USAGE-compatible status.
 execute_process(
     COMMAND "${packaged_runtime}" --definitely-invalid-option
-    WORKING_DIRECTORY "${package_bin}"
+    WORKING_DIRECTORY "${clean_working_directory}"
     RESULT_VARIABLE runtime_result
     OUTPUT_VARIABLE runtime_stdout
     ERROR_VARIABLE runtime_stderr
@@ -56,4 +77,56 @@ if(NOT runtime_result EQUAL 64)
     message(FATAL_ERROR
         "Packaged Runtime did not reach CLI parsing (exit=${runtime_result}).\n"
         "stdout:\n${runtime_stdout}\nstderr:\n${runtime_stderr}")
+endif()
+string(REGEX MATCH
+    "AYTHER_STATUS \\{[^\r\n]*\"protocol_version\":1[^\r\n]*\}"
+    status_line "${runtime_stdout}")
+if(status_line STREQUAL "" OR
+   NOT status_line MATCHES "\"reason\":\"cli.invalid_argument\"")
+    message(FATAL_ERROR
+        "Installed Runtime did not emit the protocol-v1 CLI error:\n"
+        "${runtime_stdout}\n${runtime_stderr}")
+endif()
+
+# Prove the executable is using its installed dependency set rather than the
+# build tree. Remove each packaged shared library in isolation until the loader
+# rejects startup before main(); at least one direct dependency must do so.
+if(WIN32)
+    file(GLOB dependency_candidates "${package_bin}/*.dll")
+else()
+    file(GLOB dependency_candidates
+        "${package_bin}/*.so" "${package_bin}/*.so.*")
+endif()
+list(REMOVE_DUPLICATES dependency_candidates)
+if(NOT dependency_candidates)
+    message(FATAL_ERROR
+        "Installed Runtime contains no shared dependency to test")
+endif()
+
+set(missing_dependency_rejected FALSE)
+foreach(candidate IN LISTS dependency_candidates)
+    set(negative_root "${SMOKE_DIR}-missing-dependency")
+    file(REMOVE_RECURSE "${negative_root}")
+    file(MAKE_DIRECTORY "${negative_root}")
+    file(COPY "${SMOKE_DIR}/" DESTINATION "${negative_root}")
+    get_filename_component(candidate_name "${candidate}" NAME)
+    file(REMOVE "${negative_root}/bin/${candidate_name}")
+    execute_process(
+        COMMAND "${negative_root}/bin/${runtime_name}"
+                --definitely-invalid-option
+        WORKING_DIRECTORY "${clean_working_directory}"
+        RESULT_VARIABLE negative_result
+        OUTPUT_VARIABLE negative_stdout
+        ERROR_VARIABLE negative_stderr)
+    if(NOT negative_result EQUAL 64 OR
+       NOT negative_stdout MATCHES "AYTHER_STATUS")
+        set(missing_dependency_rejected TRUE)
+        message(STATUS
+            "Missing dependency rejected before Runtime protocol startup: ${candidate_name}")
+        break()
+    endif()
+endforeach()
+if(NOT missing_dependency_rejected)
+    message(FATAL_ERROR
+        "Removing every packaged shared library still allowed Runtime startup")
 endif()

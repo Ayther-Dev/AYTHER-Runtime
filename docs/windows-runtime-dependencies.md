@@ -21,7 +21,9 @@ MSVC/UCRT and Windows libraries (`KERNEL32`, `USER32`, `SHELL32`, `USERENV`,
 Visual C++ Redistributable prerequisites and are not copied by this project.
 
 The `runtime_package_smoke` CTest runs `cmake --install` into an empty prefix,
-verifies the tomlplusplus artifact and shaders exist in the installed layout,
-and launches that installed binary. The intentional CLI exit 64
-proves all loader-time imports resolved and control reached `main()`; CI runs
-this after every package build.
+verifies shared libraries, shaders, package metadata and the MPL-2.0 license,
+then launches that installed binary from an unrelated working directory. The
+intentional CLI exit 64 and protocol-v1 record prove all loader-time imports
+resolved and control reached `main()`. A negative copy removes one packaged
+shared dependency and must fail before protocol startup. The same smoke now
+runs on Windows and Linux.

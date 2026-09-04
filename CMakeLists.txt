@@ -13,6 +13,9 @@
 # ---------------------------------------------------------------------------
 set(AYTHER_RUNTIME_VERSION "0.1.0-prerelease")
 set(AYTHER_RUNTIME_PROJECT_VERSION "0.1.0")
+set(AYTHER_ENGINE_MIN_VERSION "0.1.0")
+set(AYTHER_ENGINE_MAX_VERSION_EXCLUSIVE "0.2.0")
+set(AYTHER_ENGINE_LOCKED_RELEASE "v0.1.0-rc.6")
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     cmake_minimum_required(VERSION 3.21)
@@ -32,6 +35,11 @@ configure_file(
     "${AYTHER_RUNTIME_GENERATED_DIR}/ayther_runtime_version.h"
     @ONLY
 )
+configure_file(
+    cmake/ayther-runtime-package.json.in
+    "${AYTHER_RUNTIME_GENERATED_DIR}/ayther-runtime-package.json"
+    @ONLY
+)
 
 # Reject unsupported Windows frontends and Visual C++ toolsets before package
 # discovery can obscure the ABI mismatch with a secondary dependency error.
@@ -46,7 +54,32 @@ endif()
 
 # Request the first-party `engine` surface because Runtime still needs the
 # renderer, Vulkan backend, and RetroRunner, not only ADR-003's SDK API.
-find_package(Ayther 0.1.0 CONFIG REQUIRED COMPONENTS engine)
+find_package(Ayther
+    ${AYTHER_ENGINE_MIN_VERSION}...<${AYTHER_ENGINE_MAX_VERSION_EXCLUSIVE}
+    CONFIG REQUIRED COMPONENTS engine)
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/AytherEngineCompatibility.cmake")
+ayther_validate_engine_package_contract(
+    PACKAGE_VERSION "${Ayther_VERSION}"
+    MIN_VERSION "${AYTHER_ENGINE_MIN_VERSION}"
+    MAX_VERSION_EXCLUSIVE "${AYTHER_ENGINE_MAX_VERSION_EXCLUSIVE}"
+    SYSTEM_NAME "${CMAKE_SYSTEM_NAME}"
+    SYSTEM_PROCESSOR "${CMAKE_SYSTEM_PROCESSOR}"
+    POINTER_SIZE "${CMAKE_SIZEOF_VOID_P}"
+    COMPILER_ID "${CMAKE_CXX_COMPILER_ID}"
+    COMPILER_VERSION "${CMAKE_CXX_COMPILER_VERSION}"
+    SIMULATE_ID "${CMAKE_CXX_SIMULATE_ID}"
+)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    include(CheckCXXSourceCompiles)
+    check_cxx_source_compiles(
+        "#include <cstddef>\n#ifndef __GLIBCXX__\n#error libstdc++ required\n#endif\nint main() { return 0; }"
+        AYTHER_ENGINE_USES_LIBSTDCXX)
+    if(NOT AYTHER_ENGINE_USES_LIBSTDCXX)
+        message(FATAL_ERROR
+            "AYTHER Engine package contract failed: Linux requires Clang 18 "
+            "with libstdc++, but __GLIBCXX__ is unavailable.")
+    endif()
+endif()
 if(NOT DEFINED Ayther_SHADER_DIR OR Ayther_SHADER_DIR STREQUAL "")
     message(FATAL_ERROR
         "The installed Ayther engine package does not export "
@@ -89,6 +122,11 @@ option(AYTHER_ENABLE_CLANG_TIDY "Run clang-tidy while compiling" OFF)
 option(AYTHER_ENABLE_SANITIZERS "Enable AddressSanitizer and UBSan" OFF)
 option(AYTHER_ENABLE_COVERAGE "Instrument first-party code for gcovr" OFF)
 option(AYTHER_ENABLE_FUZZING "Build deterministic libFuzzer targets" OFF)
+
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY
+        "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+endif()
 
 if(AYTHER_STRICT_WARNINGS)
     if(MSVC)
@@ -204,6 +242,7 @@ target_compile_definitions(ayther_runtime PRIVATE
 
 set_target_properties(ayther_runtime PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    INSTALL_RPATH "$ORIGIN"
 )
 
 # ---------------------------------------------------------------------------
@@ -230,7 +269,7 @@ endif()
 # ---------------------------------------------------------------------------
 # SPIR-V shaders — pre-compiled .spv are committed next to their GLSL sources,
 # so the build needs NO glslc / Vulkan SDK. They are staged to bin/shaders/ and
-# loaded at runtime via AYTHER_SHADER_DIR (absolute path, CWD-independent).
+# located at runtime relative to SDL_GetBasePath(), keeping installs relocatable.
 #
 # Only the runtime's OWN shaders live here (postprocess: CRT + present). The
 # ones AytherRenderer loads (sprite*, indexed_plane, video) belong to the motor
@@ -276,10 +315,6 @@ add_custom_target(ayther_stage_shaders ALL
 )
 add_dependencies(ayther_runtime ayther_stage_shaders)
 
-target_compile_definitions(ayther_runtime PRIVATE
-    AYTHER_SHADER_DIR="${SHADER_BIN_DIR}/"
-)
-
 # Produce the same self-contained runtime layout that the package smoke tests.
 # The install-time import scan follows exact linked artifacts and excludes the
 # Windows/Linux system boundary.
@@ -295,10 +330,27 @@ install(TARGETS ayther_runtime
             ".*[\\/][Ss][Yy][Ss][Tt][Ee][Mm]32[\\/].*"
             "^/lib/.*"
             "^/usr/lib/.*"
-    RUNTIME DESTINATION bin
+    RUNTIME DESTINATION bin COMPONENT Runtime
+    LIBRARY DESTINATION bin COMPONENT Runtime
 )
-install(DIRECTORY "${Ayther_SHADER_DIR}/" DESTINATION bin/shaders)
-install(FILES ${AYTHER_RUNTIME_SHADER_FILES} DESTINATION bin/shaders)
+install(DIRECTORY "${Ayther_SHADER_DIR}/"
+        DESTINATION bin/shaders COMPONENT Runtime)
+install(FILES ${AYTHER_RUNTIME_SHADER_FILES}
+        DESTINATION bin/shaders COMPONENT Runtime)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
+        DESTINATION share/licenses/ayther-runtime COMPONENT Runtime)
+install(FILES "${AYTHER_RUNTIME_GENERATED_DIR}/ayther-runtime-package.json"
+        DESTINATION share/ayther-runtime COMPONENT Runtime)
+
+set(CPACK_PACKAGE_NAME "AYTHER-Runtime")
+set(CPACK_PACKAGE_VENDOR "Ayther-Dev")
+set(CPACK_PACKAGE_VERSION "${AYTHER_RUNTIME_PROJECT_VERSION}")
+set(CPACK_PACKAGE_FILE_NAME
+    "ayther-runtime-${AYTHER_RUNTIME_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+set(CPACK_GENERATOR "ZIP;TGZ")
+set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)
+set(CPACK_COMPONENTS_ALL Runtime)
+include(CPack)
 
 # Runtime verification targets (ADR-004 section 3, E8) compile Runtime sources
 # and therefore belong to this repository's test tree.

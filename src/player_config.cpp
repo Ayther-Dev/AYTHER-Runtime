@@ -282,11 +282,16 @@ PlayerConfig player_config_load(const std::filesystem::path& file) {
 }
 
 bool player_config_save(const std::filesystem::path& file,
-                        const PlayerConfig& config) {
+                        const PlayerConfig& config,
+                        const PlayerConfigSaveFault fault) {
     for (const float gain : config.bus_gain) {
         if (!std::isfinite(gain) || gain < 0.0F || gain > 1.0F) {
             return false;
         }
+    }
+
+    if (fault == PlayerConfigSaveFault::disk_full) {
+        return false;
     }
 
     std::error_code filesystem_error;
@@ -331,6 +336,10 @@ bool player_config_save(const std::filesystem::path& file,
     const bool write_succeeded = static_cast<bool>(output);
     output.close();
     if (!write_succeeded || output.fail()) {
+        std::filesystem::remove(temporary, filesystem_error);
+        return false;
+    }
+    if (fault == PlayerConfigSaveFault::before_publish) {
         std::filesystem::remove(temporary, filesystem_error);
         return false;
     }

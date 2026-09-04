@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <vector>
 
 int main() {
@@ -33,7 +34,9 @@ int main() {
     }
 
     const auto loaded = store.load(saved.path);
-    if (!loaded.loaded() || loaded.bytes != state) {
+    if (!loaded.loaded() || loaded.format_version !=
+            ayther::runtime::save_state_format_version ||
+        loaded.bytes != state) {
         std::filesystem::remove_all(root, error);
         return 3;
     }
@@ -55,6 +58,75 @@ int main() {
         return 5;
     }
 
+    const auto legacy_path = root / "legacy-v0.bin";
+    {
+        std::ofstream legacy(legacy_path, std::ios::binary | std::ios::trunc);
+        legacy.write(reinterpret_cast<const char*>(state.data()),
+                     static_cast<std::streamsize>(state.size()));
+    }
+    const auto legacy = store.load(legacy_path);
+    if (!legacy.loaded() || legacy.format_version != 0U ||
+        legacy.bytes != state) {
+        std::filesystem::remove_all(root, error);
+        return 6;
+    }
+
+    std::ifstream encoded_input(saved.path, std::ios::binary);
+    std::vector<std::uint8_t> encoded{
+        std::istreambuf_iterator<char>{encoded_input},
+        std::istreambuf_iterator<char>{}};
+    encoded_input.close();
+    const auto write_bytes = [](const std::filesystem::path& path,
+                                const std::vector<std::uint8_t>& bytes) {
+        std::ofstream output(path, std::ios::binary | std::ios::trunc);
+        output.write(reinterpret_cast<const char*>(bytes.data()),
+                     static_cast<std::streamsize>(bytes.size()));
+    };
+
+    auto truncated = encoded;
+    truncated.resize(12U);
+    const auto truncated_path = root / "truncated-v1.bin";
+    write_bytes(truncated_path, truncated);
+    if (store.load(truncated_path).status != SaveStateStatus::invalid) {
+        std::filesystem::remove_all(root, error);
+        return 7;
+    }
+
+    auto corrupt = encoded;
+    corrupt.back() ^= 0xffU;
+    const auto corrupt_path = root / "corrupt-v1.bin";
+    write_bytes(corrupt_path, corrupt);
+    if (store.load(corrupt_path).status != SaveStateStatus::invalid) {
+        std::filesystem::remove_all(root, error);
+        return 8;
+    }
+
+    auto future = encoded;
+    future[8] = 2U;
+    future[9] = future[10] = future[11] = 0U;
+    const auto future_path = root / "future-v2.bin";
+    write_bytes(future_path, future);
+    if (store.load(future_path).status !=
+        SaveStateStatus::unsupported_version) {
+        std::filesystem::remove_all(root, error);
+        return 9;
+    }
+
+    const ayther::runtime::SaveStateStore disk_full{
+        ayther::runtime::SaveStateWriteFault::disk_full};
+    const ayther::runtime::SaveStateStore interrupted{
+        ayther::runtime::SaveStateWriteFault::before_publish};
+    if (disk_full.save(root, "game", "profile", "rev", replacement,
+                       "20260101T020000Z").status !=
+            SaveStateStatus::io_error ||
+        interrupted.save(root, "game", "profile", "rev", replacement,
+                         "20260101T030000Z").status !=
+            SaveStateStatus::io_error ||
+        store.load(saved.path).bytes != state) {
+        std::filesystem::remove_all(root, error);
+        return 10;
+    }
+
     std::filesystem::remove_all(root, error);
-    return error ? 6 : 0;
+    return error ? 11 : 0;
 }

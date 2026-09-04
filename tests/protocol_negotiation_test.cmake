@@ -7,6 +7,20 @@ execute_process(
 if(NOT result EQUAL 65)
     message(FATAL_ERROR "future Play protocol must exit 65; got ${result}")
 endif()
+
+execute_process(
+    COMMAND "${RUNTIME_EXE}" --play-protocol-version 1
+    RESULT_VARIABLE current_result
+    OUTPUT_VARIABLE current_stdout
+    ERROR_VARIABLE current_stderr
+)
+if(current_result EQUAL 65 OR
+   current_stdout MATCHES "protocol.incompatible" OR
+   current_stderr MATCHES "protocol.incompatible")
+    message(FATAL_ERROR
+        "current Play protocol must pass negotiation:\n"
+        "${current_stdout}\n${current_stderr}")
+endif()
 string(FIND "${stdout}" "\"protocol_version\":1" has_version)
 string(FIND "${stdout}" "\"reason\":\"protocol.incompatible\"" has_reason)
 if(has_version EQUAL -1 OR has_reason EQUAL -1)

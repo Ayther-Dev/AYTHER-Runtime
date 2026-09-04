@@ -190,6 +190,30 @@ int main() {
         check(ayther::player_config_load_checked(future_path).status ==
                   ayther::PlayerConfigLoadStatus::unsupported_version,
               "una version futura no se interpreta silenciosamente");
+
+        const auto legacy_path = test_directory / "legacy-v0.toml";
+        write_text(legacy_path, "profile = \"legacy\"\nhd = false\n");
+        const auto legacy = ayther::player_config_load_checked(legacy_path);
+        check(legacy.loaded() && legacy.config.profile == "legacy" &&
+                  !legacy.config.hd_on,
+              "un fixture legacy v0 conserva compatibilidad hacia atras");
+
+        const auto transactional_path = test_directory / "transactional.toml";
+        write_text(transactional_path, "format_version = 1\nprofile = \"old\"\n");
+        ayther::PlayerConfig replacement;
+        replacement.profile = "new";
+        const std::string previous = read_text(transactional_path);
+        check(!ayther::player_config_save(
+                  transactional_path, replacement,
+                  ayther::PlayerConfigSaveFault::disk_full) &&
+                  read_text(transactional_path) == previous,
+              "falta de espacio preserva la configuracion anterior");
+        check(!ayther::player_config_save(
+                  transactional_path, replacement,
+                  ayther::PlayerConfigSaveFault::before_publish) &&
+                  read_text(transactional_path) == previous &&
+                  !fs::exists(transactional_path.string() + ".tmp"),
+              "una escritura interrumpida no publica ni deja temporales");
     }
 
     fs::remove_all(test_directory, filesystem_error);

@@ -1,62 +1,31 @@
-# Security Policy
+# Security policy
 
-## Supported versions
+AYTHER Runtime is a prerelease product, but dependency and secret findings are
+treated as release-blocking engineering defects.
 
-AYTHER Runtime has no supported production releases yet. Version `0.1.0` and the
-default branch are early-development snapshots and do not receive a guaranteed
-security-support window or service-level commitment.
+## Reporting
 
-| Version | Support status |
-| --- | --- |
-| Default branch / `0.1.x` snapshots | Best-effort investigation only |
-| Tagged stable releases | None published |
-| Older snapshots and downstream forks | Not supported by this repository |
+Do not open a public issue for a suspected vulnerability or exposed secret.
+Use GitHub's private vulnerability reporting for this repository. Rotate or
+revoke exposed credentials before investigating their history.
 
-Maintainers may still investigate credible reports against the current code and
-will document support expectations before the first stable release.
+## Pull-request gates
 
-## Report a vulnerability
+- GitHub CodeQL default setup analyzes Actions and C++.
+- GitHub secret scanning and push protection detect supported provider tokens.
+- `Security / Secret Scan` runs TruffleHog OSS over the pull-request range.
+- `Security / Dependency Review` rejects newly introduced dependencies with a
+  high or critical advisory. Medium and low findings remain visible for triage.
+- All workflow actions are referenced by immutable commit SHA.
 
-Do **not** open a public issue, discussion, or pull request for a suspected
-vulnerability.
+## Remediation and exceptions
 
-Use the repository's private GitHub vulnerability-reporting or Security Advisory
-workflow when it is available. If it is unavailable, contact the repository
-maintainers through an established private organization channel and ask for a
-secure reporting path. Do not include exploit details in a public message.
+Critical findings target remediation within 24 hours; high findings within
+seven days; medium findings within 30 days. A high/critical dependency may be
+excepted only when no fixed compatible release exists and a private security
+record documents the owner, affected versions, compensating control, expiry
+date (at most 30 days), and rollback. Renewals require a new review.
 
-Include, when safe and relevant:
-
-- affected commit or version;
-- platform, compiler, GPU/driver, core, and launch mode;
-- impact and required attacker capabilities;
-- minimal reproduction steps or a proof of concept;
-- whether untrusted core, ROM, pack, patch, manifest, path, or save-state input
-  is involved; and
-- suggested mitigation, if known.
-
-Never attach copyrighted game content, private keys, access tokens, personal
-data, or third-party binaries that you are not authorized to share.
-
-## What to expect
-
-Maintainers will attempt to acknowledge a report, reproduce it with synthetic or
-lawfully shareable inputs, assess affected boundaries, and coordinate a fix and
-disclosure when appropriate. Pre-release status means no acknowledgement,
-remediation, embargo, or release deadline is guaranteed.
-
-## Scope and trust boundaries
-
-High-priority areas include native core loading, pack and patch parsing, save and
-configuration paths, process-event serialization, Vulkan resource lifetimes,
-FFI boundaries, and malformed launcher input.
-
-A user-supplied Libretro core is native code running inside the Runtime process.
-Runtime's separation from AYTHER Play reduces launcher exposure but is not a
-sandbox and does not make an untrusted core safe.
-
-## Disclosure
-
-Allow maintainers reasonable time to investigate and coordinate a fix before
-public disclosure. Because the project is pre-release, response and remediation
-times are best-effort and no fixed timeline is promised.
+Secret findings are never excepted. False positives must be suppressed at the
+narrowest possible path or rule and include an inline rationale that contains
+no secret material. Disabling a repository-wide scanner is not an exception.

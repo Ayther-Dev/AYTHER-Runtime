@@ -41,6 +41,14 @@ if(AYTHER_PWSH_EXECUTABLE)
                 -Presets ${CMAKE_CURRENT_SOURCE_DIR}/../CMakePresets.json
                 -EngineLock ${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/ayther-engine.lock.json
     )
+    add_test(
+        NAME security_workflow_contract
+        COMMAND ${AYTHER_PWSH_EXECUTABLE}
+                -NoProfile
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/security_workflow_contract_test.ps1
+                -Workflow ${CMAKE_CURRENT_SOURCE_DIR}/../.github/workflows/security.yml
+                -Policy ${CMAKE_CURRENT_SOURCE_DIR}/../SECURITY.md
+    )
 else()
     message(STATUS "pwsh not found; dependency manifest tests disabled")
 endif()
@@ -50,6 +58,18 @@ add_test(
     COMMAND ${CMAKE_COMMAND}
             "-DTOOLCHAIN_MODULE=${CMAKE_CURRENT_SOURCE_DIR}/../cmake/AytherWindowsToolchain.cmake"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/windows_toolchain_contract_test.cmake"
+)
+add_test(
+    NAME engine_package_contract
+    COMMAND ${CMAKE_COMMAND}
+            "-DCONTRACT_MODULE=${CMAKE_CURRENT_SOURCE_DIR}/../cmake/AytherEngineCompatibility.cmake"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/engine_package_contract_test.cmake"
+)
+add_test(
+    NAME quality_gate_contract
+    COMMAND ${CMAKE_COMMAND}
+            "-DRUNTIME_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/.."
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/quality_gate_contract_test.cmake"
 )
 
 # ------------------------------------------------------------------
@@ -108,6 +128,33 @@ add_test(
             -DRUNTIME_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/../src
             -P ${CMAKE_CURRENT_SOURCE_DIR}/status_emitter_source_contract_test.cmake
 )
+add_test(
+    NAME protocol_v1_runtime_conformance
+    COMMAND ${CMAKE_COMMAND}
+            -DSTATUS_EMITTER_TEST_EXE=$<TARGET_FILE:status_emitter_tests>
+            -DCONFORMANCE_SCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/protocol_v1_conformance.cmake
+            -DOUTPUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/protocol-v1-runtime.jsonl
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/protocol_v1_emitter_conformance_test.cmake
+)
+foreach(fixture IN ITEMS valid-current valid-forward-compatible)
+    add_test(
+        NAME protocol_v1_${fixture}
+        COMMAND ${CMAKE_COMMAND}
+                -DINPUT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/protocol-v1/${fixture}.jsonl
+                -DEXPECT_VALID=ON
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/protocol_v1_conformance.cmake
+    )
+endforeach()
+foreach(fixture IN ITEMS invalid-future-version invalid-missing-field
+                         invalid-partial-write)
+    add_test(
+        NAME protocol_v1_${fixture}
+        COMMAND ${CMAKE_COMMAND}
+                -DINPUT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/protocol-v1/${fixture}.jsonl
+                -DEXPECT_VALID=OFF
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/protocol_v1_conformance.cmake
+    )
+endforeach()
 
 add_executable(runtime_error_tests runtime_error_test.cpp)
 target_include_directories(runtime_error_tests PRIVATE
@@ -150,22 +197,27 @@ add_test(
             -P ${CMAKE_CURRENT_SOURCE_DIR}/main_decomposition_test.cmake
 )
 add_test(
+    NAME presentation_controller_contract
+    COMMAND ${CMAKE_COMMAND}
+            -DCONTROLLER_HEADER=${CMAKE_CURRENT_SOURCE_DIR}/../src/presentation_controller.h
+            -DAPPLICATION_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime_application.cpp
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/presentation_controller_contract_test.cmake
+)
+add_test(
     NAME    cli_errors
     COMMAND ${CMAKE_COMMAND}
             -DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cli_error_test.cmake
 )
-if(WIN32)
-    add_test(
-        NAME    runtime_package_smoke
-        COMMAND ${CMAKE_COMMAND}
-                -DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>
-                -DBUILD_DIR=${CMAKE_BINARY_DIR}
-                -DINSTALL_CONFIG=$<CONFIG>
-                -DSMOKE_DIR=${CMAKE_CURRENT_BINARY_DIR}/runtime-package-smoke
-                -P ${CMAKE_CURRENT_SOURCE_DIR}/runtime_package_smoke_test.cmake
-    )
-endif()
+add_test(
+    NAME    runtime_package_smoke
+    COMMAND ${CMAKE_COMMAND}
+            -DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>
+            -DBUILD_DIR=${CMAKE_BINARY_DIR}
+            -DINSTALL_CONFIG=$<CONFIG>
+            -DSMOKE_DIR=${CMAKE_CURRENT_BINARY_DIR}/runtime-package-smoke
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/runtime_package_smoke_test.cmake
+)
 add_test(
     NAME    protocol_negotiation
     COMMAND ${CMAKE_COMMAND}

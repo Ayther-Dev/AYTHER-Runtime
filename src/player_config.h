@@ -53,6 +53,14 @@ enum class PlayerConfigLoadStatus {
     io_error,
 };
 
+/// Deterministic storage failures used to prove transactional replacement.
+/// Production callers use `none`.
+enum class PlayerConfigSaveFault {
+    none,
+    disk_full,
+    before_publish,
+};
+
 struct PlayerConfigLoadResult final {
     PlayerConfig config;
     PlayerConfigLoadStatus status{PlayerConfigLoadStatus::missing};
@@ -84,7 +92,9 @@ player_config_load_checked(const std::filesystem::path& file);
 /// Persist preferences, creating parent directories as needed.
 /// @return `true` only when the complete file was written successfully.
 bool         player_config_save(const std::filesystem::path& file,
-                                const PlayerConfig& cfg);
+                                const PlayerConfig& cfg,
+                                PlayerConfigSaveFault fault =
+                                    PlayerConfigSaveFault::none);
 
 /// Sanitize untrusted text for use as a portable file-name component.
 ///

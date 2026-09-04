@@ -1,0 +1,3 @@
+AYTHER_STATUS {"protocol_version":1,"event":"ready","game_id":"juego-ñ-日本","has_pack":true,"manifest":"C:\\packs\\\"especial\".toml","future_field":{"nested":true}}
+AYTHER_STATUS {"protocol_version":1,"event":"future-event","opaque":"Play vNext must ignore this event"}
+AYTHER_STATUS {"protocol_version":1,"event":"exit"}

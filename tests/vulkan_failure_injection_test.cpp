@@ -27,6 +27,7 @@ int injection_step = 0;
 int fail_at_step = 0;
 int live_objects = 0;
 std::uintptr_t next_handle = 100;
+VkResult device_wait_result = VK_SUCCESS;
 
 bool injected_failure() {
     ++injection_step;
@@ -144,7 +145,7 @@ VKAPI_ATTR VkResult VKAPI_CALL fake_create_image_view(
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL fake_device_wait_idle(VkDevice) {
-    return VK_SUCCESS;
+    return device_wait_result;
 }
 
 #define AYTHER_FAKE_DESTROY(name, type)                                      \
@@ -336,7 +337,8 @@ int main() {
     }
 
     VkSwapchainTestAccess::disarm(swap);
+    device_wait_result = VK_ERROR_DEVICE_LOST;
     context.shutdown();
     context.shutdown();
-    return 0;
+    return context.is_ready() ? 42 : 0;
 }

@@ -14,6 +14,7 @@ The following documents collectively define the current Runtime contract:
 3. [Project status](status.md) records maturity, known gaps, and the conditions
    required before a stable release.
 4. [Runtime/Engine dependency audit](runtime-engine-dependency-audit.yaml)
+5. [Runtime/Engine compatibility contract](runtime-engine-compatibility.md)
    records the evidence and migration decisions behind the package boundary.
 5. [`CMakeLists.txt`](../CMakeLists.txt), [`vcpkg.json`](../vcpkg.json), and the
    tests are the executable source of truth when prose and implementation differ.

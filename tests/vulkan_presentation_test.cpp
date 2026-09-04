@@ -28,6 +28,12 @@ Handle handle(const std::uintptr_t value) {
 
 VkResult acquire_result = VK_SUCCESS;
 VkResult present_result = VK_SUCCESS;
+VkResult wait_result = VK_SUCCESS;
+VkResult reset_pool_result = VK_SUCCESS;
+VkResult begin_result = VK_SUCCESS;
+VkResult end_result = VK_SUCCESS;
+VkResult reset_fence_result = VK_SUCCESS;
+VkResult submit_result = VK_SUCCESS;
 std::uint32_t acquired_index = 0;
 std::uint32_t presented_index = UINT32_MAX;
 int present_calls = 0;
@@ -39,7 +45,7 @@ int destroyed_swapchains = 0;
 
 VKAPI_ATTR VkResult VKAPI_CALL fake_wait_for_fences(
     VkDevice, std::uint32_t, const VkFence*, VkBool32, std::uint64_t) {
-    return VK_SUCCESS;
+    return wait_result;
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL fake_acquire_next_image(
@@ -51,26 +57,26 @@ VKAPI_ATTR VkResult VKAPI_CALL fake_acquire_next_image(
 
 VKAPI_ATTR VkResult VKAPI_CALL fake_reset_command_pool(
     VkDevice, VkCommandPool, VkCommandPoolResetFlags) {
-    return VK_SUCCESS;
+    return reset_pool_result;
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL fake_begin_command_buffer(
     VkCommandBuffer, const VkCommandBufferBeginInfo*) {
-    return VK_SUCCESS;
+    return begin_result;
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL fake_end_command_buffer(VkCommandBuffer) {
-    return VK_SUCCESS;
+    return end_result;
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL fake_reset_fences(
     VkDevice, std::uint32_t, const VkFence*) {
-    return VK_SUCCESS;
+    return reset_fence_result;
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL fake_queue_submit(
     VkQueue, std::uint32_t, const VkSubmitInfo*, VkFence) {
-    return VK_SUCCESS;
+    return submit_result;
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL fake_queue_present(
@@ -169,16 +175,35 @@ int main() {
         return 1;
     }
 
-    acquire_result = VK_ERROR_OUT_OF_DATE_KHR;
+    wait_result = VK_ERROR_DEVICE_LOST;
     if (swap.begin_frame(context).has_value()) {
         return 2;
+    }
+    wait_result = VK_SUCCESS;
+
+    acquire_result = VK_ERROR_OUT_OF_DATE_KHR;
+    if (swap.begin_frame(context).has_value()) {
+        return 3;
     }
 
     acquire_result = VK_SUCCESS;
     acquired_index = 99;
     if (swap.begin_frame(context).has_value()) {
-        return 3;
+        return 4;
     }
+
+    acquired_index = 0;
+    reset_pool_result = VK_ERROR_DEVICE_LOST;
+    if (swap.begin_frame(context).has_value()) {
+        return 5;
+    }
+    reset_pool_result = VK_SUCCESS;
+
+    begin_result = VK_ERROR_DEVICE_LOST;
+    if (swap.begin_frame(context).has_value()) {
+        return 6;
+    }
+    begin_result = VK_SUCCESS;
 
     acquired_index = 1;
     auto acquired = swap.begin_frame(context);
@@ -192,23 +217,47 @@ int main() {
         acquired->framebuffer(short_framebuffers).has_value() ||
         acquired->framebuffer(complete_framebuffers) != complete_framebuffers[1] ||
         swap.begin_frame(context).has_value()) {
-        return 4;
+        return 7;
     }
 
     if (!swap.end_frame(context, *acquired) || acquired->valid() ||
         present_calls != 1 || presented_index != 1 ||
         swap.end_frame(context, *acquired)) {
-        return 5;
+        return 8;
+    }
+
+    const auto expect_end_failure = [&](VkResult& injected_result) {
+        acquired_index = 0;
+        auto frame = swap.begin_frame(context);
+        if (!frame || !frame->valid()) {
+            return false;
+        }
+        injected_result = VK_ERROR_DEVICE_LOST;
+        const bool unexpectedly_succeeded = swap.end_frame(context, *frame);
+        injected_result = VK_SUCCESS;
+        return !unexpectedly_succeeded && !frame->valid();
+    };
+    if (!expect_end_failure(end_result)) {
+        return 9;
+    }
+    if (!expect_end_failure(reset_fence_result)) {
+        return 10;
+    }
+    if (!expect_end_failure(submit_result)) {
+        return 11;
+    }
+    if (!expect_end_failure(present_result)) {
+        return 12;
     }
 
     acquired_index = 0;
     auto stale = swap.begin_frame(context);
     if (!stale || !stale->valid()) {
-        return 6;
+        return 13;
     }
     VkSwapchainTestAccess::invalidate_for_rebuild(swap);
     if (stale->valid() || swap.end_frame(context, *stale)) {
-        return 7;
+        return 14;
     }
 
     swap.shutdown();
@@ -216,7 +265,7 @@ int main() {
     if (swap.is_ready() || destroyed_pools != 2 || destroyed_fences != 2 ||
         destroyed_semaphores != 4 || destroyed_views != 2 ||
         destroyed_swapchains != 1) {
-        return 8;
+        return 15;
     }
     return 0;
 }

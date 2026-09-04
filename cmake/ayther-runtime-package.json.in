@@ -1,0 +1,8 @@
+{
+  "layout_version": 1,
+  "runtime_version": "@AYTHER_RUNTIME_VERSION@",
+  "protocol_version": 1,
+  "engine_release": "@AYTHER_ENGINE_LOCKED_RELEASE@",
+  "engine_min_version": "@AYTHER_ENGINE_MIN_VERSION@",
+  "engine_max_version_exclusive": "@AYTHER_ENGINE_MAX_VERSION_EXCLUSIVE@"
+}

@@ -1,0 +1,6 @@
+AYTHER_STATUS {"protocol_version":1,"event":"probe","ok":true,"api":1,"library_name":"Synthetic","library_version":"1.0","valid_extensions":"bin|rom","need_fullpath":false,"block_extract":false}
+AYTHER_STATUS {"protocol_version":1,"event":"ready","game_id":"crc32:1234","has_pack":false,"manifest":"launch.toml"}
+AYTHER_STATUS {"protocol_version":1,"event":"now-playing","game_id":"crc32:1234","title":"Demo"}
+AYTHER_STATUS {"protocol_version":1,"event":"warning","reason":"vulkan.unavailable","message":"headless"}
+AYTHER_STATUS {"protocol_version":1,"event":"crash-test"}
+AYTHER_STATUS {"protocol_version":1,"event":"exit","savestate":"saves/state.bin"}

@@ -72,3 +72,18 @@ be used for branching.
 The normative definitions are `RuntimeErrorCode`, `error_reason`,
 `error_severity`, and `RuntimeExitCode` in `src/runtime_error.h`; tests pin their
 values.
+
+## Shared conformance suite
+
+`tests/protocol_v1_conformance.cmake` is the portable consumer oracle. Runtime
+validates its real `StatusEmitter` output with it; AYTHER Play can run the same
+script against captured JSONL without linking Runtime:
+
+```console
+cmake -DINPUT_FILE=<capture.jsonl> -DEXPECT_VALID=ON \
+      -P tests/protocol_v1_conformance.cmake
+```
+
+The checked-in fixtures cover every current event, all required field types,
+the stable reason vocabulary, older/current/future negotiation, unknown fields
+and events, UTF-8 and escaped characters, and a truncated partial write.

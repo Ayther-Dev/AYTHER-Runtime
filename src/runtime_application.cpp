@@ -56,6 +56,33 @@
 // blits the offscreen result to the swapchain.
 // ---------------------------------------------------------------------------
 
+namespace {
+
+class SdlLifetime final {
+public:
+    SdlLifetime() = default;
+    ~SdlLifetime() { SDL_Quit(); }
+    SdlLifetime(const SdlLifetime&) = delete;
+    SdlLifetime& operator=(const SdlLifetime&) = delete;
+};
+
+class SdlWindowOwner final {
+public:
+    explicit SdlWindowOwner(SDL_Window* window) noexcept : window_(window) {}
+    ~SdlWindowOwner() {
+        if (window_ != nullptr) {
+            SDL_DestroyWindow(window_);
+        }
+    }
+    SdlWindowOwner(const SdlWindowOwner&) = delete;
+    SdlWindowOwner& operator=(const SdlWindowOwner&) = delete;
+
+private:
+    SDL_Window* window_{};
+};
+
+}  // namespace
+
 
 int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
@@ -238,6 +265,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
         std::fprintf(stderr, "SDL_Init(video) failed: %s\n", SDL_GetError());
         return 1;
     }
+    SdlLifetime sdl_lifetime;
     log_startup_milestone("SDL video");
     if (!SDL_Init(SDL_INIT_GAMEPAD)) {
         std::fprintf(stderr, "SDL_Init(gamepad) failed: %s\n", SDL_GetError());
@@ -282,10 +310,17 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
         );
         if (!window) {
             std::fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
-            SDL_Quit();
             return 1;
         }
     }
+    SdlWindowOwner window_owner{window};
+    const char* const base_path = SDL_GetBasePath();
+    const std::filesystem::path shader_directory =
+        (base_path != nullptr ? std::filesystem::path{base_path}
+                              : std::filesystem::current_path()) /
+        "shaders";
+    const std::string shader_directory_string =
+        shader_directory.generic_string() + "/";
 
     // -----------------------------------------------------------------------
     // Rust ayther_core sanity check
@@ -299,6 +334,8 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     ayther::runtime::PresentationController presentation;
     VkContext& vulkan = presentation.context();
     VkSwapchain& swapchain = presentation.swapchain();
+    VkPostProcess& postprocess = presentation.postprocess();
+    ayther::PlayerOverlay& overlay = presentation.overlay();
     const bool has_vulkan = vulkan_window && vulkan.init(window);
     log_startup_milestone("Vulkan");
     if (!has_vulkan) {
@@ -540,7 +577,8 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
             4, 3, swapchain.extent().width, swapchain.extent().height);
         renderer_ok = renderer.init(
             vulkan.engine_view(), static_cast<std::uint32_t>(canvas_fit.w),
-            static_cast<std::uint32_t>(canvas_fit.h), AYTHER_SHADER_DIR);
+            static_cast<std::uint32_t>(canvas_fit.h),
+            shader_directory_string.c_str());
         if (!renderer_ok)
             std::fprintf(stderr, "[main] AytherRenderer::init failed — no HD render.\n");
         // #140: activar el tier del pack para la ALTURA del canvas ANTES de la
@@ -593,12 +631,15 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     // falls back to a plain blit. Re-bound to the offscreen view on init + resize
     // (kept in the frontend so the Lab can show the clean frame in R3.3).
     // -----------------------------------------------------------------------
-    VkPostProcess postprocess;
     bool postprocess_ok = false;
     if (swap_ok && renderer_ok) {
+        const std::string vertex_shader =
+            (shader_directory / "postprocess.vert.spv").string();
+        const std::string fragment_shader =
+            (shader_directory / "postprocess.frag.spv").string();
         postprocess_ok = postprocess.init(vulkan, swapchain,
-                                          AYTHER_SHADER_DIR "postprocess.vert.spv",
-                                          AYTHER_SHADER_DIR "postprocess.frag.spv");
+                                          vertex_shader.c_str(),
+                                          fragment_shader.c_str());
         if (postprocess_ok)
             postprocess.set_source(vulkan, renderer.render_image());
         else {
@@ -640,7 +681,6 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     ayther::GameInput input;
 
     // In-game pause overlay + HD↔Original toggle (M4).
-    ayther::PlayerOverlay overlay;
     if (swap_ok) {
         if (!overlay.init(vulkan, swapchain, window))
             std::fprintf(stderr, "[main] PlayerOverlay::init failed — overlay disabled.\n");
@@ -1385,12 +1425,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
                 vulkan.wait_idle("vkDeviceWaitIdle [main teardown]")) {
             ayther::runtime::vulkan::log_vk_failure(*failure);
         }
-        overlay.shutdown(vulkan);           // ImGui + overlay render pass + FBs (M4)
-        postprocess.shutdown(vulkan);       // CRT presentation pass (frontend)
         renderer.shutdown(vulkan.engine_view()); // Engine offscreen resources
     }
-    presentation.shutdown();
-    SDL_DestroyWindow(window);
-    SDL_Quit();
     return 0;
 }
