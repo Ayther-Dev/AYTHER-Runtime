@@ -49,6 +49,28 @@
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "VCPKG_TARGET_TRIPLET": "x64-linux"
       }
+    },
+    {
+      "name": "linux-quality",
+      "displayName": "Linux quality (clang-tidy + coverage)",
+      "inherits": "linux-ci",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "clang++",
+        "AYTHER_ENABLE_CLANG_TIDY": "ON",
+        "AYTHER_ENABLE_COVERAGE": "ON"
+      }
+    },
+    {
+      "name": "linux-sanitizers",
+      "displayName": "Linux ASan/UBSan + fuzz",
+      "inherits": "linux-ci",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "clang++",
+        "AYTHER_ENABLE_SANITIZERS": "ON",
+        "AYTHER_ENABLE_FUZZING": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -60,6 +82,14 @@
     {
       "name": "linux-ci",
       "configurePreset": "linux-ci"
+    },
+    {
+      "name": "linux-quality",
+      "configurePreset": "linux-quality"
+    },
+    {
+      "name": "linux-sanitizers",
+      "configurePreset": "linux-sanitizers"
     }
   ],
   "testPresets": [
@@ -77,6 +107,26 @@
     {
       "name": "linux-ci",
       "configurePreset": "linux-ci",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-quality",
+      "configurePreset": "linux-quality",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-sanitizers",
+      "configurePreset": "linux-sanitizers",
       "output": {
         "outputOnFailure": true
       },

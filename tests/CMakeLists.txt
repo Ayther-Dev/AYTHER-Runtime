@@ -144,6 +144,12 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 add_test(
+    NAME    main_decomposition_contract
+    COMMAND ${CMAKE_COMMAND}
+            -DMAIN_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/../src/main.cpp
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/main_decomposition_test.cmake
+)
+add_test(
     NAME    cli_errors
     COMMAND ${CMAKE_COMMAND}
             -DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>
@@ -597,6 +603,37 @@ add_test(
     COMMAND vulkan_failure_injection_tests
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
+
+if(AYTHER_ENABLE_FUZZING)
+    add_executable(runtime_fuzz
+        runtime_fuzz.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime_options.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/player_config.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/status_emitter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/capture.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/spirv_file.cpp
+    )
+    target_include_directories(runtime_fuzz PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    )
+    target_link_libraries(runtime_fuzz PRIVATE ayther_runtime_stb)
+    target_compile_options(runtime_fuzz PRIVATE -fsanitize=fuzzer)
+    target_link_options(runtime_fuzz PRIVATE -fsanitize=fuzzer)
+    set_target_properties(runtime_fuzz PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME runtime_fuzz_smoke
+        COMMAND runtime_fuzz
+                -runs=1000
+                -max_len=4096
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz_corpus
+    )
+    set_tests_properties(runtime_fuzz_smoke PROPERTIES
+        LABELS "fuzz;sanitizer"
+        TIMEOUT 30
+    )
+endif()
 
 # ------------------------------------------------------------------
 # probe_core — #589: el sondeo de cores que consume Play.
