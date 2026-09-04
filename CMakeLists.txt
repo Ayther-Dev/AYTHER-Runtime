@@ -40,6 +40,7 @@ if(WIN32)
         ENGINE_RELEASE "v0.1.0-rc.6"
         MIN_TOOLSET_VERSION "14.51"
     )
+    enable_language(RC)
 endif()
 
 # Request the first-party `engine` surface because Runtime still needs the
@@ -71,6 +72,7 @@ find_package(Vulkan              REQUIRED)
 find_package(VulkanMemoryAllocator CONFIG REQUIRED)
 find_package(vk-bootstrap CONFIG REQUIRED)   # Runtime context + swapchain creation
 find_package(imgui        CONFIG REQUIRED)   # overlay in-game (M4)
+find_package(tomlplusplus CONFIG REQUIRED)   # explicit Engine ABI/runtime import
 
 # stb is header-only, so express the direct Runtime dependency with an interface
 # target. vcpkg installs the header from Runtime's own manifest; Engine is not
@@ -156,6 +158,18 @@ add_executable(ayther_runtime
     src/vulkan_backend/vk_present.cpp
     src/vulkan_backend/vk_postprocess.cpp
 )
+
+if(WIN32)
+    target_sources(ayther_runtime PRIVATE
+        resources/windows/ayther_runtime.rc
+        resources/windows/AYTHER-Runtime.ico
+    )
+    set_source_files_properties(
+        resources/windows/AYTHER-Runtime.ico
+        PROPERTIES HEADER_FILE_ONLY TRUE
+    )
+endif()
+
 if(AYTHER_ENABLE_CLANG_TIDY)
     set_property(TARGET ayther_runtime PROPERTY
         CXX_CLANG_TIDY "${AYTHER_CLANG_TIDY_COMMAND}")
@@ -178,6 +192,7 @@ target_link_libraries(ayther_runtime PRIVATE
     GPUOpen::VulkanMemoryAllocator
     vk-bootstrap::vk-bootstrap   # Runtime context + swapchain creation
     imgui::imgui                 # Dear ImGui — SDL3+Vulkan backends (M4 overlay)
+    tomlplusplus::tomlplusplus   # exact runtime DLL through target metadata
     ${CMAKE_DL_LIBS}             # -ldl on Linux (no-op on Windows)
 )
 
@@ -208,24 +223,6 @@ if(WIN32)
             $<TARGET_RUNTIME_DLLS:ayther_runtime> $<TARGET_FILE_DIR:ayther_runtime>
         COMMAND_EXPAND_LISTS
         COMMENT "Staging runtime DLLs (SDL3, nfd, ...) next to ayther_runtime"
-    )
-endif()
-
-# tomlplusplus is a *compiled* vcpkg port (tomlplusplus-3.dll) pulled in PRIVATEly
-# through the ayther_engine static lib, so TARGET_RUNTIME_DLLS does not see it —
-# yet the exe imports it, and missing it makes ayther_runtime fail to load with no
-# output.  Copy it explicitly (glob so a soname bump doesn't break this).
-set(AYTHER_TOMLXX_DLLS "")
-if(VCPKG_INSTALLED_DIR AND VCPKG_TARGET_TRIPLET)
-    file(GLOB AYTHER_TOMLXX_DLLS
-        "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin/tomlplusplus*.dll")
-endif()
-if(AYTHER_TOMLXX_DLLS)
-    add_custom_command(TARGET ayther_runtime POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${AYTHER_TOMLXX_DLLS} $<TARGET_FILE_DIR:ayther_runtime>
-        COMMAND_EXPAND_LISTS
-        COMMENT "Staging tomlplusplus DLL next to ayther_runtime"
     )
 endif()
 
@@ -281,6 +278,26 @@ add_dependencies(ayther_runtime ayther_stage_shaders)
 target_compile_definitions(ayther_runtime PRIVATE
     AYTHER_SHADER_DIR="${SHADER_BIN_DIR}/"
 )
+
+# Produce the same self-contained runtime layout that the package smoke tests.
+# The install-time import scan follows exact linked artifacts and excludes the
+# Windows/Linux system boundary.
+if(POLICY CMP0207)
+    cmake_policy(SET CMP0207 NEW)
+endif()
+install(TARGETS ayther_runtime
+    RUNTIME_DEPENDENCIES
+        PRE_EXCLUDE_REGEXES
+            "api-ms-.*"
+            "ext-ms-.*"
+        POST_EXCLUDE_REGEXES
+            ".*[\\/][Ss][Yy][Ss][Tt][Ee][Mm]32[\\/].*"
+            "^/lib/.*"
+            "^/usr/lib/.*"
+    RUNTIME DESTINATION bin
+)
+install(DIRECTORY "${Ayther_SHADER_DIR}/" DESTINATION bin/shaders)
+install(FILES ${AYTHER_RUNTIME_SHADER_FILES} DESTINATION bin/shaders)
 
 # Runtime verification targets (ADR-004 section 3, E8) compile Runtime sources
 # and therefore belong to this repository's test tree.
