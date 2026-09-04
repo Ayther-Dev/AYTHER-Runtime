@@ -2,7 +2,7 @@
 
 ## Current maturity
 
-AYTHER Runtime `0.1.0-prerelease` is an early, pre-release product under active
+AYTHER Runtime `0.1.0-beta.1` is an internal, pre-release product under active
 separation from the AYTHER monorepo. It is suitable for engineering integration
 and focused testing. It is **not** presented as production-ready, generally
 available, or backward compatible.
@@ -14,7 +14,7 @@ configuration, or save-state formats.
 
 There are currently:
 
-- no supported release line;
+- no supported stable release line; `v0.1.0-beta.1` is for internal evaluation;
 - no stable Runtime/Engine ABI or package surface;
 - one stable launcher protocol version (v1), with future breaking changes
   requiring a new protocol version;

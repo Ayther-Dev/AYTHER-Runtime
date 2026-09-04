@@ -8,18 +8,19 @@ once stable compatibility guarantees are defined.
 
 > [!WARNING]
 > AYTHER Runtime is in early development. The build reports product version
-> `0.1.0-prerelease`; no supported product release has been published from this repository.
-> Until the first tagged release, entries remain under **Unreleased** and may
-> describe interfaces that change without notice. The Runtime–Play process
+> `0.1.0-beta.1`; this is an internal prerelease and is not supported for
+> production use. The Runtime–Play process
 > protocol v1 is the exception: its documented wire fields, reason identifiers,
 > and exit codes are stable within v1.
 
 ## [Unreleased]
 
+## [0.1.0-beta.1] - 2026-09-03
+
 ### Changed
 
 - Declared the Runtime–Play process protocol v1 stable while keeping the
-  Runtime product explicitly at `0.1.0-prerelease`.
+  Runtime product explicitly in the beta prerelease channel.
 - Split the beta-hardening work into reviewable protocol, persistence, Vulkan,
   quality, packaging, and documentation commits.
 - Advanced the verified AYTHER Engine dependency lock from `v0.1.0-rc.4` to
@@ -127,4 +128,5 @@ once stable compatibility guarantees are defined.
 - Documented handling requirements for untrusted cores, ROMs, packs, patches,
   manifests, paths, and save states.
 
-[Unreleased]: https://github.com/Ayther-Dev/AYTHER-Runtime/commits/main
+[Unreleased]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.1...HEAD
+[0.1.0-beta.1]: https://github.com/Ayther-Dev/AYTHER-Runtime/releases/tag/v0.1.0-beta.1

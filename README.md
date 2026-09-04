@@ -8,7 +8,7 @@ the original and HD-composed frame paths through Vulkan, and owns the in-game
 presentation and controls.
 
 > [!WARNING]
-> **Early development:** product version `0.1.0-prerelease` is an engineering snapshot.
+> **Beta:** product version `0.1.0-beta.1` is an internal evaluation release.
 > APIs, command-line options, package boundaries, configuration formats, and
 > saved-state compatibility may change without notice. The Runtime–Play process
 > protocol v1 is stable, but that narrow wire guarantee does not make the

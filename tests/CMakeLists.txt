@@ -49,6 +49,14 @@ if(AYTHER_PWSH_EXECUTABLE)
                 -Workflow ${CMAKE_CURRENT_SOURCE_DIR}/../.github/workflows/security.yml
                 -Policy ${CMAKE_CURRENT_SOURCE_DIR}/../SECURITY.md
     )
+    add_test(
+        NAME release_workflow_contract
+        COMMAND ${AYTHER_PWSH_EXECUTABLE}
+                -NoProfile
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/release_workflow_contract_test.ps1
+                -Workflow ${CMAKE_CURRENT_SOURCE_DIR}/../.github/workflows/release.yml
+                -Project ${CMAKE_CURRENT_SOURCE_DIR}/../CMakeLists.txt
+    )
 else()
     message(STATUS "pwsh not found; dependency manifest tests disabled")
 endif()
