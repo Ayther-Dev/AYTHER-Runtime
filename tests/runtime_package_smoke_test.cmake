@@ -110,10 +110,23 @@ foreach(candidate IN LISTS dependency_candidates)
     file(MAKE_DIRECTORY "${negative_root}")
     file(COPY "${SMOKE_DIR}/" DESTINATION "${negative_root}")
     get_filename_component(candidate_name "${candidate}" NAME)
-    file(REMOVE "${negative_root}/bin/${candidate_name}")
+    if(WIN32)
+        file(REMOVE "${negative_root}/bin/${candidate_name}")
+        set(negative_command "${negative_root}/bin/${runtime_name}")
+    else()
+        # One ELF dependency is commonly installed as a chain of linker-name,
+        # SONAME, and fully-versioned symlinks. Remove that complete logical
+        # family so the negative case cannot succeed through another alias.
+        string(REGEX REPLACE "\\.so(\\..*)?$" "" dependency_stem
+            "${candidate_name}")
+        file(GLOB dependency_family
+            "${negative_root}/bin/${dependency_stem}.so*")
+        file(REMOVE ${dependency_family})
+        set(negative_command "${CMAKE_COMMAND}" -E env
+            --unset=LD_LIBRARY_PATH "${negative_root}/bin/${runtime_name}")
+    endif()
     execute_process(
-        COMMAND "${negative_root}/bin/${runtime_name}"
-                --definitely-invalid-option
+        COMMAND ${negative_command} --definitely-invalid-option
         WORKING_DIRECTORY "${clean_working_directory}"
         RESULT_VARIABLE negative_result
         OUTPUT_VARIABLE negative_stdout
