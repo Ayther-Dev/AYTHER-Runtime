@@ -27,6 +27,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Initialize CI logs
         shell: pwsh
@@ -42,7 +43,8 @@ jobs:
 
           @(
               "runtime_sha=$(& git rev-parse HEAD)"
-              "github_sha=$env:GITHUB_SHA"
+              "pr_head_sha=${{ github.event.pull_request.head.sha }}"
+              "github_merge_sha=$env:GITHUB_SHA"
               "runner_os=$env:RUNNER_OS"
               "runner_arch=$env:RUNNER_ARCH"
               "runner_image=$env:ImageOS"
@@ -156,6 +158,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Initialize CI logs
         shell: pwsh
@@ -171,7 +174,8 @@ jobs:
 
           @(
               "runtime_sha=$(& git rev-parse HEAD)"
-              "github_sha=$env:GITHUB_SHA"
+              "pr_head_sha=${{ github.event.pull_request.head.sha }}"
+              "github_merge_sha=$env:GITHUB_SHA"
               "runner_os=$env:RUNNER_OS"
               "runner_arch=$env:RUNNER_ARCH"
               "runner_image=$env:ImageOS"
