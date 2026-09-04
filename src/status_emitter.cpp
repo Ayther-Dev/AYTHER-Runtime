@@ -98,6 +98,7 @@ private:
 
 [[nodiscard]] std::string serialize_json(const StatusEvent& event) {
     JsonObject json;
+    json.field("protocol_version", status_protocol_version);
     std::visit(
         [&json](const auto& status) {
             using Status = std::decay_t<decltype(status)>;
@@ -113,7 +114,10 @@ private:
             } else if constexpr (std::is_same_v<Status, ProbeFailedStatus>) {
                 json.field("event", "probe");
                 json.field("ok", false);
-                json.field("reason", status.reason);
+                json.field("reason", error_reason(status.code));
+                if (!status.message.empty()) {
+                    json.field("message", status.message);
+                }
             } else if constexpr (std::is_same_v<Status, ReadyStatus>) {
                 json.field("event", "ready");
                 json.field("game_id", status.game_id);
@@ -125,7 +129,10 @@ private:
                 json.field("title", status.title);
             } else if constexpr (std::is_same_v<Status, WarningStatus>) {
                 json.field("event", "warning");
-                json.field("reason", status.reason);
+                json.field("reason", error_reason(status.code));
+                if (!status.message.empty()) {
+                    json.field("message", status.message);
+                }
             } else if constexpr (std::is_same_v<Status, CrashTestStatus>) {
                 json.field("event", "crash-test");
             } else if constexpr (std::is_same_v<Status, ExitStatus>) {

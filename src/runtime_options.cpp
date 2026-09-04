@@ -220,7 +220,8 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char* const argv
             if (auto error = read_string(argument, options.probe_core)) {
                 return RuntimeOptionsParseResult{std::move(*error)};
             }
-        } else if (argument == "--subsystems" || argument == "--mute-buses") {
+        } else if (argument == "--subsystems" || argument == "--mute-buses" ||
+                   argument == "--play-protocol-version") {
             auto value = next_value(argument);
             if (const auto* error = std::get_if<RuntimeOptionError>(&value)) {
                 return RuntimeOptionsParseResult{*error};
@@ -233,8 +234,11 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char* const argv
             }
             if (argument == "--subsystems") {
                 options.subsystems = std::get<std::uint32_t>(parsed);
-            } else {
+            } else if (argument == "--mute-buses") {
                 options.mute_buses = std::get<std::uint32_t>(parsed);
+            } else {
+                options.play_protocol_version =
+                    std::get<std::uint32_t>(parsed);
             }
         } else if (argument == "--frames") {
             auto value = next_value(argument);

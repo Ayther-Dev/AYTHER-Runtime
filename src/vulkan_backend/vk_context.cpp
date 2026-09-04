@@ -6,17 +6,35 @@
 #include <vk_mem_alloc.h>
 
 #include <cstdio>
+#include <atomic>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace {
 
-#ifdef NDEBUG
+#if defined(AYTHER_FORCE_VULKAN_VALIDATION)
+constexpr bool kEnableValidation = true;
+#elif defined(NDEBUG)
 constexpr bool kEnableValidation = false;
 #else
 constexpr bool kEnableValidation = true;
 #endif
+
+std::atomic_uint32_t g_validation_errors{0};
+
+VKAPI_ATTR VkBool32 VKAPI_CALL tracked_debug_callback(
+    const VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+    const VkDebugUtilsMessageTypeFlagsEXT type,
+    const VkDebugUtilsMessengerCallbackDataEXT* callback_data,
+    void* user_data) {
+    if ((severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) != 0) {
+        g_validation_errors.fetch_add(1, std::memory_order_relaxed);
+    }
+    return vkb::default_debug_callback(
+        severity, type, callback_data, user_data);
+}
 
 void log_failure(const char* operation, const char* detail) {
     std::fprintf(stderr, "[runtime.vulkan] %s: %s\n", operation,
@@ -50,7 +68,21 @@ bool VkContext::init(SDL_Window* window) {
     if (is_ready()) {
         return true;
     }
+    g_validation_errors.store(0, std::memory_order_relaxed);
+
+    // Build into a temporary owner. No handle becomes observable through this
+    // context until every mandatory Vulkan object has been created.
+    VkContext pending(calls_);
+    if (!pending.init_uncommitted(window)) {
+        return false;
+    }
+
     shutdown();
+    adopt(pending);
+    return true;
+}
+
+bool VkContext::init_uncommitted(SDL_Window* window) {
 
     vkb::InstanceBuilder instance_builder;
     instance_builder.set_app_name("Ayther Runtime")
@@ -58,7 +90,7 @@ bool VkContext::init(SDL_Window* window) {
         .require_api_version(1, 1, 0);
     if (kEnableValidation) {
         instance_builder.request_validation_layers(true)
-            .use_default_debug_messenger();
+            .set_debug_callback(&tracked_debug_callback);
     }
 
     auto instance_result = instance_builder.build();
@@ -90,7 +122,7 @@ bool VkContext::init(SDL_Window* window) {
         return false;
     }
 
-    const vkb::PhysicalDevice bootstrap_physical_device =
+    const vkb::PhysicalDevice& bootstrap_physical_device =
         physical_device_result.value();
     engine_view_.physical_device_handle =
         bootstrap_physical_device.physical_device;
@@ -105,7 +137,7 @@ bool VkContext::init(SDL_Window* window) {
         return false;
     }
 
-    const vkb::Device bootstrap_device = device_result.value();
+    const vkb::Device& bootstrap_device = device_result.value();
     engine_view_.device_handle = bootstrap_device.device;
 
     const auto graphics_queue =
@@ -158,6 +190,25 @@ bool VkContext::init(SDL_Window* window) {
         VK_VERSION_MINOR(properties.apiVersion),
         VK_VERSION_PATCH(properties.apiVersion));
     return true;
+}
+
+std::uint32_t VkContext::validation_error_count() const noexcept {
+    return g_validation_errors.load(std::memory_order_relaxed);
+}
+
+void VkContext::adopt(VkContext& source) noexcept {
+    engine_view_ = source.engine_view_;
+    debug_messenger_ = source.debug_messenger_;
+    surface_ = source.surface_;
+    present_queue_ = source.present_queue_;
+    present_family_ = source.present_family_;
+    gpu_name_ = std::move(source.gpu_name_);
+
+    source.engine_view_ = {};
+    source.debug_messenger_ = VK_NULL_HANDLE;
+    source.surface_ = VK_NULL_HANDLE;
+    source.present_queue_ = VK_NULL_HANDLE;
+    source.present_family_ = VK_QUEUE_FAMILY_IGNORED;
 }
 
 void VkContext::shutdown() noexcept {

@@ -1,0 +1,12 @@
+Checks: >
+  -*,
+  bugprone-branch-clone,
+  bugprone-sizeof-expression,
+  bugprone-suspicious-semicolon,
+  bugprone-use-after-move,
+  performance-for-range-copy,
+  performance-inefficient-string-concatenation,
+  performance-unnecessary-copy-initialization
+WarningsAsErrors: '*'
+HeaderFilterRegex: '^(?!.*[\\/]vcpkg_installed[\\/]).*[\\/](src|tests)[\\/]'
+FormatStyle: file

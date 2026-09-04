@@ -1,5 +1,7 @@
 #pragma once
 
+#include "runtime_error.h"
+
 #include <cstdint>
 #include <cstdio>
 #include <optional>
@@ -7,6 +9,24 @@
 #include <variant>
 
 namespace ayther::runtime {
+
+inline constexpr std::uint32_t status_protocol_version = 1;
+
+enum class StatusProtocolCompatibility {
+    compatible,
+    unsupported_older,
+    unsupported_newer,
+};
+
+[[nodiscard]] constexpr StatusProtocolCompatibility
+status_protocol_compatibility(const std::uint32_t peer_version) noexcept {
+    if (peer_version == status_protocol_version) {
+        return StatusProtocolCompatibility::compatible;
+    }
+    return peer_version < status_protocol_version
+               ? StatusProtocolCompatibility::unsupported_older
+               : StatusProtocolCompatibility::unsupported_newer;
+}
 
 struct ProbeSucceededStatus {
     std::uint32_t api{};
@@ -18,7 +38,8 @@ struct ProbeSucceededStatus {
 };
 
 struct ProbeFailedStatus {
-    std::string reason;
+    RuntimeErrorCode code{RuntimeErrorCode::core_load_failed};
+    std::string message;
 };
 
 struct ReadyStatus {
@@ -33,7 +54,8 @@ struct NowPlayingStatus {
 };
 
 struct WarningStatus {
-    std::string reason;
+    RuntimeErrorCode code{RuntimeErrorCode::vulkan_unavailable};
+    std::string message;
 };
 
 struct CrashTestStatus {};

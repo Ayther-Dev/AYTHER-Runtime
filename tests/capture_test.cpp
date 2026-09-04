@@ -12,11 +12,16 @@
 //     y que distinga «sin perfil» de un perfil llamado "".
 // ---------------------------------------------------------------------------
 #include "capture.h"
+#include "capture_service.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
+#include <limits>
 #include <string>
+#include <string_view>
+#include <system_error>
 #include <vector>
 
 namespace {
@@ -34,6 +39,44 @@ std::vector<uint8_t> solid(uint32_t w, uint32_t h, uint8_t v) {
 }
 uint8_t px(const std::vector<uint8_t>& b, uint32_t w, uint32_t x, uint32_t y) {
     return b[(static_cast<size_t>(y) * w + x) * 4];
+}
+
+ayther::CaptureWriteOperations real_operations;
+int png_calls = 0;
+int rename_calls = 0;
+
+bool fail_second_png(const std::filesystem::path& path,
+                     const std::uint8_t* pixels, const std::uint32_t width,
+                     const std::uint32_t height) {
+    ++png_calls;
+    return png_calls != 2 &&
+           real_operations.write_png(path, pixels, width, height);
+}
+
+bool fail_metadata(const std::filesystem::path&, std::string_view) {
+    return false;
+}
+
+bool fail_second_rename(const std::filesystem::path& source,
+                        const std::filesystem::path& destination) {
+    ++rename_calls;
+    return rename_calls != 2 &&
+           real_operations.rename_file(source, destination);
+}
+
+bool capture_set_absent(const std::filesystem::path& directory,
+                        const std::string& base) {
+    for (const char* suffix :
+         {"-original.png", "-ayther.png", "-split.png", ".json"}) {
+        const auto final_path = directory / (base + suffix);
+        auto temporary_path = final_path;
+        temporary_path += ".tmp";
+        if (std::filesystem::exists(final_path) ||
+            std::filesystem::exists(temporary_path)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 }  // namespace
@@ -136,6 +179,78 @@ int main() {
         s.pack_name.clear(); s.pack_build.clear();
         check(has(ayther::capture_metadata_json(s), "\"pack\": null"),
               "sin pack: null");
+    }
+
+    // -- 6. Overflow y commit transaccional (MAD-041) ----------------------
+    std::printf("\n[6] la captura se publica como conjunto completo\n");
+    {
+        std::vector<uint8_t> out;
+        const std::uint8_t one_pixel[4]{};
+        check(!ayther::compose_split(
+                  out, one_pixel, one_pixel,
+                  std::numeric_limits<std::uint32_t>::max(), 2U, 0.5F, false),
+              "dimensiones maliciosas fallan antes de multiplicar o reservar");
+
+        namespace fs = std::filesystem;
+        std::error_code filesystem_error;
+        const fs::path directory =
+            fs::temp_directory_path() / "ayther_capture_transaction_test";
+        fs::remove_all(directory, filesystem_error);
+        real_operations = ayther::default_capture_write_operations();
+
+        ayther::CaptureMeta metadata;
+        metadata.game_id = "crc32:test";
+        metadata.width = W;
+        metadata.height = H;
+        const ayther::runtime::CaptureService service;
+        const auto rejected = service.write(
+            directory, "bad-size", W, H,
+            std::span<const std::uint8_t>{A.data(), A.size() - 1}, B,
+            0.5F, false, metadata);
+        check(rejected.error == ayther::CaptureWriteError::invalid_input,
+              "CaptureService rechaza buffers que no coinciden con el extent");
+        const auto complete = ayther::capture_write_transactional(
+            directory, "complete", A.data(), B.data(), W, H, 0.5F, false,
+            metadata);
+        check(static_cast<bool>(complete) &&
+                  fs::exists(directory / "complete-original.png") &&
+                  fs::exists(directory / "complete-ayther.png") &&
+                  fs::exists(directory / "complete-split.png") &&
+                  fs::exists(directory / "complete.json"),
+              "PNG y metadata aparecen juntos tras cerrar todo");
+
+        auto operations = real_operations;
+        png_calls = 0;
+        operations.write_png = &fail_second_png;
+        const auto image_failure = ayther::capture_write_transactional(
+            directory, "image-fail", A.data(), B.data(), W, H, 0.5F,
+            false, metadata, operations);
+        check(image_failure.error ==
+                  ayther::CaptureWriteError::image_write_failed &&
+                  capture_set_absent(directory, "image-fail"),
+              "un fallo de imagen limpia temporales y no publica parciales");
+
+        operations = real_operations;
+        operations.write_text = &fail_metadata;
+        const auto metadata_failure = ayther::capture_write_transactional(
+            directory, "metadata-fail", A.data(), B.data(), W, H, 0.5F,
+            false, metadata, operations);
+        check(metadata_failure.error ==
+                  ayther::CaptureWriteError::metadata_write_failed &&
+                  capture_set_absent(directory, "metadata-fail"),
+              "un fallo de metadata elimina las tres imagenes temporales");
+
+        operations = real_operations;
+        rename_calls = 0;
+        operations.rename_file = &fail_second_rename;
+        const auto rename_failure = ayther::capture_write_transactional(
+            directory, "rename-fail", A.data(), B.data(), W, H, 0.5F,
+            false, metadata, operations);
+        check(rename_failure.error == ayther::CaptureWriteError::rename_failed &&
+                  capture_set_absent(directory, "rename-fail"),
+              "un fallo de rename revierte miembros ya publicados");
+
+        fs::remove_all(directory, filesystem_error);
     }
 
     std::printf("\n%d passed, %d failed\n", g_pass, g_fail);

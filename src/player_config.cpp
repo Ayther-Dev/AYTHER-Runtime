@@ -3,125 +3,375 @@
 // ---------------------------------------------------------------------------
 #include "player_config.h"
 
-#include <cctype>
+#include <charconv>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <ios>
-#include <sstream>
 #include <string>
+#include <string_view>
 #include <system_error>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 namespace ayther {
 namespace {
 
-/// Extract the unquoted value from a `key = value` line.
-std::string value_of(const std::string& line) {
-    const size_t eq = line.find('=');
-    if (eq == std::string::npos) return {};
-    std::string v = line.substr(eq + 1);
-    size_t a = 0;
-    while (a < v.size() && std::isspace(static_cast<unsigned char>(v[a]))) ++a;
-    v = v.substr(a);
-    while (!v.empty() && std::isspace(static_cast<unsigned char>(v.back()))) v.pop_back();
-    if (v.size() >= 2 && v.front() == '"' && v.back() == '"') v = v.substr(1, v.size() - 2);
-    return v;
+[[nodiscard]] std::string_view trim(std::string_view value) noexcept {
+    constexpr std::string_view whitespace = " \t\r\n";
+    const auto first = value.find_first_not_of(whitespace);
+    if (first == std::string_view::npos) {
+        return {};
+    }
+    const auto last = value.find_last_not_of(whitespace);
+    return value.substr(first, last - first + 1U);
 }
 
-bool starts(const std::string& l, const char* k) { return l.rfind(k, 0) == 0; }
+[[nodiscard]] bool parse_unsigned(const std::string_view text,
+                                  std::uint32_t& output) noexcept {
+    const auto value = trim(text);
+    if (value.empty() || value.front() == '+' || value.front() == '-') {
+        return false;
+    }
+    const char* const begin = value.data();
+    const char* const end = begin + value.size();
+    const auto parsed = std::from_chars(begin, end, output, 10);
+    return parsed.ec == std::errc{} && parsed.ptr == end;
+}
+
+[[nodiscard]] bool parse_float(const std::string_view text,
+                               float& output) noexcept {
+    const auto value = trim(text);
+    if (value.empty()) {
+        return false;
+    }
+    const char* const begin = value.data();
+    const char* const end = begin + value.size();
+    const auto parsed = std::from_chars(begin, end, output);
+    return parsed.ec == std::errc{} && parsed.ptr == end &&
+           std::isfinite(output) && output >= 0.0F && output <= 1.0F;
+}
+
+[[nodiscard]] bool parse_bool(const std::string_view text,
+                              bool& output) noexcept {
+    const auto value = trim(text);
+    if (value == "true") {
+        output = true;
+        return true;
+    }
+    if (value == "false") {
+        output = false;
+        return true;
+    }
+    return false;
+}
+
+[[nodiscard]] bool parse_string(const std::string_view text,
+                                std::string& output) {
+    const auto value = trim(text);
+    if (value.size() < 2U || value.front() != '"' || value.back() != '"') {
+        return false;
+    }
+
+    std::string parsed;
+    parsed.reserve(value.size() - 2U);
+    for (std::size_t index = 1U; index + 1U < value.size(); ++index) {
+        const char current = value[index];
+        if (current != '\\') {
+            if (static_cast<unsigned char>(current) < 0x20U) {
+                return false;
+            }
+            parsed.push_back(current);
+            continue;
+        }
+        ++index;
+        if (index + 1U >= value.size()) {
+            return false;
+        }
+        switch (value[index]) {
+        case '"': parsed.push_back('"'); break;
+        case '\\': parsed.push_back('\\'); break;
+        case 'n': parsed.push_back('\n'); break;
+        case 'r': parsed.push_back('\r'); break;
+        case 't': parsed.push_back('\t'); break;
+        default: return false;
+        }
+    }
+    output = std::move(parsed);
+    return true;
+}
+
+[[nodiscard]] std::string escape_string(const std::string_view value) {
+    std::string escaped;
+    escaped.reserve(value.size() + 8U);
+    for (const char current : value) {
+        switch (current) {
+        case '"': escaped += "\\\""; break;
+        case '\\': escaped += "\\\\"; break;
+        case '\n': escaped += "\\n"; break;
+        case '\r': escaped += "\\r"; break;
+        case '\t': escaped += "\\t"; break;
+        default: escaped.push_back(current); break;
+        }
+    }
+    return escaped;
+}
+
+[[nodiscard]] bool split_array(const std::string_view text,
+                               std::vector<std::string_view>& elements) {
+    const auto value = trim(text);
+    if (value.size() < 2U || value.front() != '[' || value.back() != ']') {
+        return false;
+    }
+    std::string_view body = value.substr(1U, value.size() - 2U);
+    elements.clear();
+    while (true) {
+        const auto comma = body.find(',');
+        const auto element = trim(body.substr(0U, comma));
+        if (element.empty()) {
+            return false;
+        }
+        elements.push_back(element);
+        if (comma == std::string_view::npos) {
+            break;
+        }
+        body.remove_prefix(comma + 1U);
+    }
+    return elements.size() == player_config_audio_bus_count;
+}
+
+[[nodiscard]] PlayerConfigLoadResult invalid_result(
+    const PlayerConfigLoadStatus status, const std::size_t line,
+    std::string diagnostic) {
+    return PlayerConfigLoadResult{
+        PlayerConfig{}, status, line, std::move(diagnostic)};
+}
 
 }  // namespace
 
-std::string config_key_sanitize(const std::string& s) {
-    std::string o;
-    o.reserve(s.size());
-    for (const char c : s) {
-        const unsigned char u = static_cast<unsigned char>(c);
-        if (std::isalnum(u) || c == '.' || c == '_' || c == '-') o += c;
-        else o += '_';
+std::string config_key_sanitize(const std::string& value) {
+    std::string output;
+    output.reserve(value.size());
+    for (const char current : value) {
+        const auto code_unit = static_cast<unsigned char>(current);
+        if ((code_unit >= 'a' && code_unit <= 'z') ||
+            (code_unit >= 'A' && code_unit <= 'Z') ||
+            (code_unit >= '0' && code_unit <= '9') || current == '.' ||
+            current == '_' || current == '-') {
+            output += current;
+        } else {
+            output += '_';
+        }
     }
-    // Avoid a hidden, ambiguous `.toml` file for an empty component.
-    if (o.empty()) o = "sin_nombre";
-    // Windows strips trailing dots, so such a path cannot be reopened under
-    // the same spelling used to create it.
-    while (!o.empty() && o.back() == '.') o.pop_back();
-    if (o.empty()) o = "sin_nombre";
-    return o;
+    if (output.empty()) {
+        output = "sin_nombre";
+    }
+    while (!output.empty() && output.back() == '.') {
+        output.pop_back();
+    }
+    return output.empty() ? std::string{"sin_nombre"} : output;
 }
 
-std::filesystem::path player_config_path(const std::filesystem::path& dir,
+std::filesystem::path player_config_path(const std::filesystem::path& directory,
                                          const std::string& game_id,
                                          const std::string& pack_name) {
     std::string key = config_key_sanitize(game_id);
-    if (!pack_name.empty()) key += "__" + config_key_sanitize(pack_name);
-    return dir / (key + ".toml");
+    if (!pack_name.empty()) {
+        key += "__" + config_key_sanitize(pack_name);
+    }
+    return directory / (key + ".toml");
+}
+
+PlayerConfigLoadResult
+player_config_load_checked(const std::filesystem::path& file) {
+    std::error_code filesystem_error;
+    if (!std::filesystem::exists(file, filesystem_error)) {
+        return filesystem_error
+                   ? invalid_result(PlayerConfigLoadStatus::io_error, 0U,
+                                    "no se pudo consultar el archivo")
+                   : PlayerConfigLoadResult{
+                         PlayerConfig{}, PlayerConfigLoadStatus::missing, 0U, {}};
+    }
+
+    std::ifstream input(file, std::ios::binary);
+    if (!input) {
+        return invalid_result(PlayerConfigLoadStatus::io_error, 0U,
+                              "no se pudo abrir el archivo");
+    }
+
+    PlayerConfig candidate;
+    std::uint32_t version = 0U;  // Version 0 is the legacy field set.
+    std::unordered_set<std::string> seen_keys;
+    std::string line;
+    std::size_t line_number = 0U;
+    while (std::getline(input, line)) {
+        ++line_number;
+        const auto text = trim(line);
+        if (text.empty() || text.front() == '#') {
+            continue;
+        }
+        const auto equals = text.find('=');
+        if (equals == std::string_view::npos) {
+            return invalid_result(PlayerConfigLoadStatus::invalid, line_number,
+                                  "se esperaba clave = valor");
+        }
+        const auto key_view = trim(text.substr(0U, equals));
+        const auto value = trim(text.substr(equals + 1U));
+        if (key_view.empty() || value.empty()) {
+            return invalid_result(PlayerConfigLoadStatus::invalid, line_number,
+                                  "la clave o el valor estan vacios");
+        }
+        const std::string key{key_view};
+        if (!seen_keys.insert(key).second) {
+            return invalid_result(PlayerConfigLoadStatus::invalid, line_number,
+                                  "la clave esta duplicada: " + key);
+        }
+
+        bool valid = true;
+        if (key == "format_version") {
+            valid = parse_unsigned(value, version);
+        } else if (key == "profile") {
+            valid = parse_string(value, candidate.profile);
+        } else if (key == "output") {
+            valid = parse_string(value, candidate.output);
+        } else if (key == "subsystems") {
+            valid = parse_unsigned(value, candidate.subsystems);
+            candidate.have_subsystems = valid;
+        } else if (key == "shaders") {
+            valid = parse_bool(value, candidate.shaders_on);
+        } else if (key == "hd") {
+            valid = parse_bool(value, candidate.hd_on);
+        } else if (key == "bus_gain") {
+            std::vector<std::string_view> elements;
+            valid = split_array(value, elements);
+            for (std::size_t index = 0U; valid && index < elements.size(); ++index) {
+                valid = parse_float(elements[index], candidate.bus_gain[index]);
+            }
+        } else if (key == "bus_muted") {
+            std::vector<std::string_view> elements;
+            valid = split_array(value, elements);
+            for (std::size_t index = 0U; valid && index < elements.size(); ++index) {
+                valid = parse_bool(elements[index], candidate.bus_muted[index]);
+            }
+        }
+
+        if (!valid) {
+            return invalid_result(PlayerConfigLoadStatus::invalid, line_number,
+                                  "valor invalido para " + key);
+        }
+    }
+    if (input.bad()) {
+        return invalid_result(PlayerConfigLoadStatus::io_error, line_number,
+                              "fallo al leer el archivo completo");
+    }
+    if (version > player_config_format_version) {
+        return invalid_result(PlayerConfigLoadStatus::unsupported_version,
+                              line_number,
+                              "version de configuracion no soportada");
+    }
+    return PlayerConfigLoadResult{
+        std::move(candidate), PlayerConfigLoadStatus::loaded, 0U, {}};
 }
 
 PlayerConfig player_config_load(const std::filesystem::path& file) {
-    PlayerConfig c;
-    std::ifstream f(file);
-    if (!f) return c;   // First run: defaults are expected, not an error.
-    std::string line;
-    while (std::getline(f, line)) {
-        size_t s = 0;
-        while (s < line.size() && std::isspace(static_cast<unsigned char>(line[s]))) ++s;
-        const std::string t = line.substr(s);
-        if (t.empty() || t[0] == '#') continue;
-
-        if      (starts(t, "profile"))    c.profile = value_of(t);
-        else if (starts(t, "output"))     c.output  = value_of(t);   // #296
-        else if (starts(t, "subsystems")) {
-            c.subsystems = static_cast<uint32_t>(std::strtoul(value_of(t).c_str(), nullptr, 10));
-            c.have_subsystems = true;
-        }
-        else if (starts(t, "shaders"))    c.shaders_on = value_of(t) == "true";
-        else if (starts(t, "hd"))         c.hd_on      = value_of(t) == "true";
-        else if (starts(t, "bus_gain")) {
-            // bus_gain = [1.0, 1.0, 0.5, 1.0]
-            std::string v = value_of(t);
-            for (char& ch : v) if (ch == '[' || ch == ']' || ch == ',') ch = ' ';
-            std::istringstream is(v);
-            for (int i = 0; i < 4; ++i) {
-                float g = 1.0f;
-                if (is >> g) c.bus_gain[i] = g;
-            }
-        }
-        else if (starts(t, "bus_muted")) {
-            std::string v = value_of(t);
-            for (char& ch : v) if (ch == '[' || ch == ']' || ch == ',') ch = ' ';
-            std::istringstream is(v);
-            std::string w;
-            for (int i = 0; i < 4 && (is >> w); ++i) c.bus_muted[i] = (w == "true");
-        }
-    }
-    return c;
+    return player_config_load_checked(file).config;
 }
 
-bool player_config_save(const std::filesystem::path& file, const PlayerConfig& c) {
-    std::error_code ec;
-    std::filesystem::create_directories(file.parent_path(), ec);
-    std::ofstream f(file, std::ios::binary | std::ios::trunc);
-    if (!f) return false;
-    f << "# Configuración de AYTHER para esta combinación de juego y pack (#299).\n"
-         "# La escribe el panel in-game; se puede editar a mano.\n\n";
-    f << "profile = \"" << c.profile << "\"\n";
-    // Preserve an empty value when the user made no explicit choice (#296).
-    // Persisting a resolved recommendation would turn it into user policy.
-    f << "output = \"" << c.output << "\"\n";
-    // Always write the mask, including zero, so a later read distinguishes an
-    // explicit "disable all" choice from an unset preference.
-    f << "subsystems = " << c.subsystems << "\n";
-    f << "shaders = " << (c.shaders_on ? "true" : "false") << "\n";
-    f << "hd = " << (c.hd_on ? "true" : "false") << "\n";
-    f << "bus_gain = [";
-    for (int i = 0; i < 4; ++i) f << (i ? ", " : "") << c.bus_gain[i];
-    f << "]\n";
-    f << "bus_muted = [";
-    for (int i = 0; i < 4; ++i) f << (i ? ", " : "") << (c.bus_muted[i] ? "true" : "false");
-    f << "]\n";
-    return static_cast<bool>(f);
+bool player_config_save(const std::filesystem::path& file,
+                        const PlayerConfig& config,
+                        const PlayerConfigSaveFault fault) {
+    for (const float gain : config.bus_gain) {
+        if (!std::isfinite(gain) || gain < 0.0F || gain > 1.0F) {
+            return false;
+        }
+    }
+
+    if (fault == PlayerConfigSaveFault::disk_full) {
+        return false;
+    }
+
+    std::error_code filesystem_error;
+    if (!file.parent_path().empty()) {
+        std::filesystem::create_directories(file.parent_path(), filesystem_error);
+        if (filesystem_error) {
+            return false;
+        }
+    }
+
+    std::filesystem::path temporary = file;
+    temporary += ".tmp";
+    std::filesystem::path backup = file;
+    backup += ".bak";
+    std::filesystem::remove(temporary, filesystem_error);
+    filesystem_error.clear();
+
+    std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+    if (!output) {
+        return false;
+    }
+    output << "# Configuracion de AYTHER para esta combinacion de juego y pack.\n"
+              "# La escribe el panel in-game; se puede editar a mano.\n\n";
+    output << "format_version = " << player_config_format_version << '\n';
+    output << "profile = \"" << escape_string(config.profile) << "\"\n";
+    output << "output = \"" << escape_string(config.output) << "\"\n";
+    output << "subsystems = " << config.subsystems << '\n';
+    output << "shaders = " << (config.shaders_on ? "true" : "false") << '\n';
+    output << "hd = " << (config.hd_on ? "true" : "false") << '\n';
+    output << "bus_gain = [" << std::setprecision(9);
+    for (std::size_t index = 0U; index < config.bus_gain.size(); ++index) {
+        output << (index == 0U ? "" : ", ") << config.bus_gain[index];
+    }
+    output << "]\n";
+    output << "bus_muted = [";
+    for (std::size_t index = 0U; index < config.bus_muted.size(); ++index) {
+        output << (index == 0U ? "" : ", ")
+               << (config.bus_muted[index] ? "true" : "false");
+    }
+    output << "]\n";
+    output.flush();
+    const bool write_succeeded = static_cast<bool>(output);
+    output.close();
+    if (!write_succeeded || output.fail()) {
+        std::filesystem::remove(temporary, filesystem_error);
+        return false;
+    }
+    if (fault == PlayerConfigSaveFault::before_publish) {
+        std::filesystem::remove(temporary, filesystem_error);
+        return false;
+    }
+
+    const bool had_previous = std::filesystem::exists(file, filesystem_error);
+    if (filesystem_error) {
+        std::filesystem::remove(temporary, filesystem_error);
+        return false;
+    }
+    if (had_previous) {
+        std::filesystem::remove(backup, filesystem_error);
+        filesystem_error.clear();
+        std::filesystem::rename(file, backup, filesystem_error);
+        if (filesystem_error) {
+            std::filesystem::remove(temporary, filesystem_error);
+            return false;
+        }
+    }
+
+    std::filesystem::rename(temporary, file, filesystem_error);
+    if (filesystem_error) {
+        if (had_previous) {
+            std::error_code restore_error;
+            std::filesystem::rename(backup, file, restore_error);
+        }
+        std::filesystem::remove(temporary, filesystem_error);
+        return false;
+    }
+    if (had_previous) {
+        std::filesystem::remove(backup, filesystem_error);
+    }
+    return true;
 }
 
 }  // namespace ayther

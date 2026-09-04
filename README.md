@@ -8,10 +8,11 @@ the original and HD-composed frame paths through Vulkan, and owns the in-game
 presentation and controls.
 
 > [!WARNING]
-> **Early development:** version `0.1.0` is a pre-release engineering snapshot.
+> **Beta:** product version `0.1.0-beta.1` is an internal evaluation release.
 > APIs, command-line options, package boundaries, configuration formats, and
-> saved-state compatibility may change without notice. There are no supported
-> production releases or compatibility guarantees yet.
+> saved-state compatibility may change without notice. The Runtime–Play process
+> protocol v1 is stable, but that narrow wire guarantee does not make the
+> product generally available or production-ready.
 
 > [!IMPORTANT]
 > Runtime source is licensed under the Mozilla Public License 2.0. Third-party

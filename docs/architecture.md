@@ -229,6 +229,21 @@ the public `ayther::engine::CoreProbe` contract. The detailed evidence and targe
 ownership decisions live in
 [`runtime-engine-dependency-audit.yaml`](runtime-engine-dependency-audit.yaml).
 
+Runtime player configuration uses schema `format_version = 1` and accepts the
+legacy unversioned field set as version 0. Save states use the binary
+`AYTHSTAT` envelope version 1 with payload length and checksum; unwrapped files
+remain readable as legacy version 0. Unknown future versions and corrupt or
+truncated envelopes fail with the stable `state.restore_failed` reason. Both
+writers publish through a temporary path, and fault-injection tests prove that
+storage exhaustion or interruption preserves the previous valid file.
+
+`PresentationController` is the sole owner of the window-side Vulkan context,
+swapchain, post-processing pass, and ImGui overlay. Its destructor releases
+overlay → post-process → swapchain → context, so normal returns and partial
+startup failures need no manual presentation `shutdown()` calls. Engine's
+renderer remains a borrower of the context and is released before the
+controller leaves scope.
+
 ## 10. Failure model
 
 - Core probing returns distinct nonzero codes for load failure and missing

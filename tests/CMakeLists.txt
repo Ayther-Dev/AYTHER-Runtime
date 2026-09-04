@@ -41,6 +41,22 @@ if(AYTHER_PWSH_EXECUTABLE)
                 -Presets ${CMAKE_CURRENT_SOURCE_DIR}/../CMakePresets.json
                 -EngineLock ${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/ayther-engine.lock.json
     )
+    add_test(
+        NAME security_workflow_contract
+        COMMAND ${AYTHER_PWSH_EXECUTABLE}
+                -NoProfile
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/security_workflow_contract_test.ps1
+                -Workflow ${CMAKE_CURRENT_SOURCE_DIR}/../.github/workflows/security.yml
+                -Policy ${CMAKE_CURRENT_SOURCE_DIR}/../SECURITY.md
+    )
+    add_test(
+        NAME release_workflow_contract
+        COMMAND ${AYTHER_PWSH_EXECUTABLE}
+                -NoProfile
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/release_workflow_contract_test.ps1
+                -Workflow ${CMAKE_CURRENT_SOURCE_DIR}/../.github/workflows/release.yml
+                -Project ${CMAKE_CURRENT_SOURCE_DIR}/../CMakeLists.txt
+    )
 else()
     message(STATUS "pwsh not found; dependency manifest tests disabled")
 endif()
@@ -50,6 +66,18 @@ add_test(
     COMMAND ${CMAKE_COMMAND}
             "-DTOOLCHAIN_MODULE=${CMAKE_CURRENT_SOURCE_DIR}/../cmake/AytherWindowsToolchain.cmake"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/windows_toolchain_contract_test.cmake"
+)
+add_test(
+    NAME engine_package_contract
+    COMMAND ${CMAKE_COMMAND}
+            "-DCONTRACT_MODULE=${CMAKE_CURRENT_SOURCE_DIR}/../cmake/AytherEngineCompatibility.cmake"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/engine_package_contract_test.cmake"
+)
+add_test(
+    NAME quality_gate_contract
+    COMMAND ${CMAKE_COMMAND}
+            "-DRUNTIME_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/.."
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/quality_gate_contract_test.cmake"
 )
 
 # ------------------------------------------------------------------
@@ -108,6 +136,46 @@ add_test(
             -DRUNTIME_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/../src
             -P ${CMAKE_CURRENT_SOURCE_DIR}/status_emitter_source_contract_test.cmake
 )
+add_test(
+    NAME protocol_v1_runtime_conformance
+    COMMAND ${CMAKE_COMMAND}
+            -DSTATUS_EMITTER_TEST_EXE=$<TARGET_FILE:status_emitter_tests>
+            -DCONFORMANCE_SCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/protocol_v1_conformance.cmake
+            -DOUTPUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/protocol-v1-runtime.jsonl
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/protocol_v1_emitter_conformance_test.cmake
+)
+foreach(fixture IN ITEMS valid-current valid-forward-compatible)
+    add_test(
+        NAME protocol_v1_${fixture}
+        COMMAND ${CMAKE_COMMAND}
+                -DINPUT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/protocol-v1/${fixture}.jsonl
+                -DEXPECT_VALID=ON
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/protocol_v1_conformance.cmake
+    )
+endforeach()
+foreach(fixture IN ITEMS invalid-future-version invalid-missing-field
+                         invalid-partial-write)
+    add_test(
+        NAME protocol_v1_${fixture}
+        COMMAND ${CMAKE_COMMAND}
+                -DINPUT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/protocol-v1/${fixture}.jsonl
+                -DEXPECT_VALID=OFF
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/protocol_v1_conformance.cmake
+    )
+endforeach()
+
+add_executable(runtime_error_tests runtime_error_test.cpp)
+target_include_directories(runtime_error_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+set_target_properties(runtime_error_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    runtime_error
+    COMMAND runtime_error_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
 
 # ------------------------------------------------------------------
 # runtime_options_tests — MAD-006: strict, typed CLI conversion.
@@ -131,10 +199,38 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 add_test(
+    NAME    main_decomposition_contract
+    COMMAND ${CMAKE_COMMAND}
+            -DMAIN_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/../src/main.cpp
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/main_decomposition_test.cmake
+)
+add_test(
+    NAME presentation_controller_contract
+    COMMAND ${CMAKE_COMMAND}
+            -DCONTROLLER_HEADER=${CMAKE_CURRENT_SOURCE_DIR}/../src/presentation_controller.h
+            -DAPPLICATION_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime_application.cpp
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/presentation_controller_contract_test.cmake
+)
+add_test(
     NAME    cli_errors
     COMMAND ${CMAKE_COMMAND}
             -DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cli_error_test.cmake
+)
+add_test(
+    NAME    runtime_package_smoke
+    COMMAND ${CMAKE_COMMAND}
+            -DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>
+            -DBUILD_DIR=${CMAKE_BINARY_DIR}
+            -DINSTALL_CONFIG=$<CONFIG>
+            -DSMOKE_DIR=${CMAKE_CURRENT_BINARY_DIR}/runtime-package-smoke
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/runtime_package_smoke_test.cmake
+)
+add_test(
+    NAME    protocol_negotiation
+    COMMAND ${CMAKE_COMMAND}
+            -DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/protocol_negotiation_test.cmake
 )
 
 # ------------------------------------------------------------------
@@ -215,6 +311,7 @@ add_test(
 add_executable(capture_tests
     capture_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/capture.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/capture_service.cpp
 )
 target_include_directories(capture_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
@@ -226,6 +323,22 @@ set_target_properties(capture_tests PROPERTIES
 add_test(
     NAME    capture
     COMMAND capture_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+add_executable(save_state_store_tests
+    save_state_store_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/save_state_store.cpp
+)
+target_include_directories(save_state_store_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+set_target_properties(save_state_store_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    save_state_store
+    COMMAND save_state_store_tests
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
@@ -447,6 +560,7 @@ add_executable(vulkan_context_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_result.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vulkan_calls.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_context.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_swapchain.cpp
 )
 target_include_directories(vulkan_context_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
@@ -454,6 +568,7 @@ target_include_directories(vulkan_context_tests PRIVATE
 target_compile_definitions(vulkan_context_tests PRIVATE
     VMA_STATIC_VULKAN_FUNCTIONS=1
     VMA_DYNAMIC_VULKAN_FUNCTIONS=0
+    AYTHER_FORCE_VULKAN_VALIDATION=1
 )
 target_link_libraries(vulkan_context_tests PRIVATE
     Ayther::engine
@@ -470,6 +585,18 @@ add_test(
     COMMAND vulkan_context_tests
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
+if(AYTHER_ENABLE_GPU_TESTS)
+    add_test(
+        NAME    vulkan_gpu_smoke
+        COMMAND vulkan_context_tests --gpu
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    set_tests_properties(vulkan_gpu_smoke PROPERTIES
+        LABELS "gpu;vulkan"
+        SKIP_RETURN_CODE 77
+        TIMEOUT 30
+    )
+endif()
 
 # ------------------------------------------------------------------
 # vulkan_presentation_contract_tests — MIG-025 integration boundary.
@@ -512,6 +639,72 @@ add_test(
     COMMAND vulkan_presentation_contract_tests
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
+
+add_executable(vulkan_failure_injection_tests
+    vulkan_failure_injection_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/spirv_file.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_result.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vulkan_calls.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_context.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_swapchain.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_postprocess.cpp
+)
+target_include_directories(vulkan_failure_injection_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend
+)
+target_compile_definitions(vulkan_failure_injection_tests PRIVATE
+    VMA_STATIC_VULKAN_FUNCTIONS=1
+    VMA_DYNAMIC_VULKAN_FUNCTIONS=0
+    AYTHER_TEST_VERT_SPV="${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/shaders/postprocess.vert.spv"
+    AYTHER_TEST_FRAG_SPV="${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/shaders/postprocess.frag.spv"
+)
+target_link_libraries(vulkan_failure_injection_tests PRIVATE
+    Ayther::engine
+    SDL3::SDL3
+    Vulkan::Vulkan
+    GPUOpen::VulkanMemoryAllocator
+    vk-bootstrap::vk-bootstrap
+)
+set_target_properties(vulkan_failure_injection_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    vulkan_failure_injection
+    COMMAND vulkan_failure_injection_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+if(AYTHER_ENABLE_FUZZING)
+    add_executable(runtime_fuzz
+        runtime_fuzz.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime_options.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/player_config.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/status_emitter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/capture.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/spirv_file.cpp
+    )
+    target_include_directories(runtime_fuzz PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    )
+    target_link_libraries(runtime_fuzz PRIVATE ayther_runtime_stb)
+    target_compile_options(runtime_fuzz PRIVATE -fsanitize=fuzzer)
+    target_link_options(runtime_fuzz PRIVATE -fsanitize=fuzzer)
+    set_target_properties(runtime_fuzz PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME runtime_fuzz_smoke
+        COMMAND runtime_fuzz
+                -runs=1000
+                -max_len=4096
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz_corpus
+    )
+    set_tests_properties(runtime_fuzz_smoke PROPERTIES
+        LABELS "fuzz;sanitizer"
+        TIMEOUT 30
+    )
+endif()
 
 # ------------------------------------------------------------------
 # probe_core — #589: el sondeo de cores que consume Play.

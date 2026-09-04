@@ -13,8 +13,24 @@
 
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <system_error>
+
+namespace {
+
+void write_text(const std::filesystem::path& path, const std::string& text) {
+    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+    output << text;
+}
+
+std::string read_text(const std::filesystem::path& path) {
+    std::ifstream input(path, std::ios::binary);
+    return {std::istreambuf_iterator<char>{input},
+            std::istreambuf_iterator<char>{}};
+}
+
+}  // namespace
 
 int main() {
     namespace fs = std::filesystem;
@@ -82,6 +98,7 @@ int main() {
     written_config.bus_muted[2] = true;
     written_config.shaders_on = false;
     written_config.hd_on = true;
+    written_config.output = "pixel\\perfect\n\"quoted\"";
     check(ayther::player_config_save(primary_path, written_config),
           "se escribe");
     const auto loaded_config = ayther::player_config_load(primary_path);
@@ -96,13 +113,21 @@ int main() {
           "el silencio por bus, sin contagiarse");
     check(!loaded_config.shaders_on && loaded_config.hd_on,
           "los dos toggles");
+    check(loaded_config.output == written_config.output,
+          "las cadenas con escapes conservan un round-trip exacto");
+    check(read_text(primary_path).find("format_version = 1") !=
+              std::string::npos,
+          "el formato persistido declara su version");
 
     // -- 3. La distincion que decide si el juego arranca remasterizado ------
     std::printf("\n[3] «apago todo» no es «nunca toco nada»\n");
     // Sin archivo: los defaults, y `have_subsystems` en falso — el runtime no
     // tiene que aplicar ninguna mascara.
-    const auto missing_config =
-        ayther::player_config_load(test_directory / "no-existe.toml");
+    const auto missing_result = ayther::player_config_load_checked(
+        test_directory / "no-existe.toml");
+    const auto& missing_config = missing_result.config;
+    check(missing_result.status == ayther::PlayerConfigLoadStatus::missing,
+          "archivo ausente se distingue de archivo invalido");
     check(!missing_config.have_subsystems,
           "sin archivo: NO hay mascara guardada (el pack manda)");
     check(missing_config.hd_on && missing_config.shaders_on &&
@@ -123,22 +148,72 @@ int main() {
               loaded_disabled_config.subsystems == 0,
           "guardar 0 se relee como «apagado a proposito», no como ausente");
 
-    // -- 4. Robustez --------------------------------------------------------
-    std::printf("\n[4] un archivo roto no tira nada\n");
+    // -- 4. Gramatica exacta y diagnosticos --------------------------------
+    std::printf("\n[4] claves, tipos y rangos son exactos\n");
     {
         const auto malformed_config_path = test_directory / "rota.toml";
-        std::FILE* config_file =
-            std::fopen(malformed_config_path.string().c_str(), "wb");
-        if (config_file != nullptr) {
-            std::fputs("esto no es toml\nsubsystems = pepe\n[[[\n", config_file);
-            std::fclose(config_file);
-        }
-        const auto recovered_config =
-            ayther::player_config_load(malformed_config_path);
-        // Lo que importa no es qué valor sale sino que SALGA uno usable: una
-        // preferencia corrupta no puede impedir jugar.
-        check(recovered_config.bus_gain[0] >= 0.0F,
-              "una configuracion ilegible da valores usables");
+        write_text(malformed_config_path,
+                   "format_version = 1\nhd = false\nsubsystems = pepe\n");
+        const std::string original_bytes = read_text(malformed_config_path);
+        const auto invalid =
+            ayther::player_config_load_checked(malformed_config_path);
+        check(invalid.status == ayther::PlayerConfigLoadStatus::invalid &&
+                  invalid.line == 3U && !invalid.diagnostic.empty(),
+              "un numero invalido produce diagnostico con linea");
+        check(invalid.config.hd_on,
+              "un archivo invalido no publica valores parciales");
+        check(read_text(malformed_config_path) == original_bytes,
+              "leer un archivo corrupto no lo destruye ni reescribe");
+
+        const auto prefix_path = test_directory / "prefijo.toml";
+        write_text(prefix_path,
+                   "format_version = 1\nhd_backup = false\n");
+        const auto prefix = ayther::player_config_load_checked(prefix_path);
+        check(prefix.loaded() && prefix.config.hd_on,
+              "hd_backup no se interpreta como hd");
+
+        const auto bool_path = test_directory / "bool.toml";
+        write_text(bool_path, "format_version = 1\nshaders = yes\n");
+        check(ayther::player_config_load_checked(bool_path).status ==
+                  ayther::PlayerConfigLoadStatus::invalid,
+              "un booleano no canonico es invalido");
+
+        const auto gain_path = test_directory / "gain.toml";
+        write_text(gain_path,
+                   "format_version = 1\nbus_gain = [1, 1.5, 1, 1]\n");
+        check(ayther::player_config_load_checked(gain_path).status ==
+                  ayther::PlayerConfigLoadStatus::invalid,
+              "un volumen fuera de [0,1] es invalido");
+
+        const auto future_path = test_directory / "future.toml";
+        write_text(future_path, "format_version = 2\nhd = false\n");
+        check(ayther::player_config_load_checked(future_path).status ==
+                  ayther::PlayerConfigLoadStatus::unsupported_version,
+              "una version futura no se interpreta silenciosamente");
+
+        const auto legacy_path = test_directory / "legacy-v0.toml";
+        write_text(legacy_path, "profile = \"legacy\"\nhd = false\n");
+        const auto legacy = ayther::player_config_load_checked(legacy_path);
+        check(legacy.loaded() && legacy.config.profile == "legacy" &&
+                  !legacy.config.hd_on,
+              "un fixture legacy v0 conserva compatibilidad hacia atras");
+
+        const auto transactional_path = test_directory / "transactional.toml";
+        write_text(transactional_path, "format_version = 1\nprofile = \"old\"\n");
+        ayther::PlayerConfig replacement;
+        replacement.profile = "new";
+        const std::string previous = read_text(transactional_path);
+        check(!ayther::player_config_save(
+                  transactional_path, replacement,
+                  ayther::PlayerConfigSaveFault::disk_full) &&
+                  read_text(transactional_path) == previous,
+              "falta de espacio preserva la configuracion anterior");
+        check(!ayther::player_config_save(
+                  transactional_path, replacement,
+                  ayther::PlayerConfigSaveFault::before_publish) &&
+                  read_text(transactional_path) == previous &&
+                  !fs::exists(transactional_path.string() + ".tmp"),
+              "una escritura interrumpida no publica ni deja temporales");
     }
 
     fs::remove_all(test_directory, filesystem_error);

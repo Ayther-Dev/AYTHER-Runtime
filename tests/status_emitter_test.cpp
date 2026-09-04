@@ -33,10 +33,10 @@ std::vector<ayther::runtime::StatusEvent> fixture_events() {
     using namespace ayther::runtime;
     return {
         ProbeSucceededStatus{1, hostile_text(), "v1", "md|bin", false, true},
-        ProbeFailedStatus{hostile_text()},
+        ProbeFailedStatus{RuntimeErrorCode::core_load_failed, hostile_text()},
         ReadyStatus{hostile_text(), true, std::string{"manifest"} + '\x02'},
         NowPlayingStatus{hostile_text(), hostile_text()},
-        WarningStatus{hostile_text()},
+        WarningStatus{RuntimeErrorCode::state_restore_failed, hostile_text()},
         CrashTestStatus{},
         ExitStatus{std::nullopt},
         ExitStatus{std::string{"C:\\saves\\quoted\"\n日本.bin"}},
@@ -66,7 +66,8 @@ int main(const int argc, char* argv[]) {
 
     const std::string escaped = StatusEmitter::format_line(
         ReadyStatus{hostile_text(), true, std::string{"manifest"} + '\x02'});
-    check(escaped.starts_with("AYTHER_STATUS {\"event\":\"ready\","),
+    check(escaped.starts_with(
+              "AYTHER_STATUS {\"protocol_version\":1,\"event\":\"ready\","),
           "record has the protocol prefix and typed event name");
     check(escaped.ends_with("}\n"), "record ends in exactly one line terminator");
     check(std::count(escaped.begin(), escaped.end(), '\n') == 1,
@@ -85,38 +86,51 @@ int main(const int argc, char* argv[]) {
 
     check(StatusEmitter::format_line(
               ProbeSucceededStatus{1, "core", "v1", "md", true, false}) ==
-              "AYTHER_STATUS {\"event\":\"probe\",\"ok\":true,\"api\":1,"
+              "AYTHER_STATUS {\"protocol_version\":1,\"event\":\"probe\","
+              "\"ok\":true,\"api\":1,"
               "\"library_name\":\"core\",\"library_version\":\"v1\","
               "\"valid_extensions\":\"md\",\"need_fullpath\":true,"
               "\"block_extract\":false}\n",
           "successful probe contains typed metadata");
-    check(StatusEmitter::format_line(ProbeFailedStatus{"no_carga"}) ==
-              "AYTHER_STATUS {\"event\":\"probe\",\"ok\":false,"
-              "\"reason\":\"no_carga\"}\n",
-          "failed probe contains its reason");
+    check(StatusEmitter::format_line(ProbeFailedStatus{
+              RuntimeErrorCode::core_load_failed, "no se pudo cargar"}) ==
+              "AYTHER_STATUS {\"protocol_version\":1,\"event\":\"probe\","
+              "\"ok\":false,\"reason\":\"core.load_failed\","
+              "\"message\":\"no se pudo cargar\"}\n",
+          "failed probe separates stable reason from human message");
     check(StatusEmitter::format_line(NowPlayingStatus{"id", "title"}) ==
-              "AYTHER_STATUS {\"event\":\"now-playing\",\"game_id\":\"id\","
+              "AYTHER_STATUS {\"protocol_version\":1,\"event\":\"now-playing\","
+              "\"game_id\":\"id\","
               "\"title\":\"title\"}\n",
           "now-playing contains identity and title");
-    check(StatusEmitter::format_line(WarningStatus{"warning"}) ==
-              "AYTHER_STATUS {\"event\":\"warning\",\"reason\":\"warning\"}\n",
-          "warning contains its reason");
+    check(StatusEmitter::format_line(WarningStatus{
+              RuntimeErrorCode::state_restore_failed, "warning"}) ==
+              "AYTHER_STATUS {\"protocol_version\":1,\"event\":\"warning\","
+              "\"reason\":\"state.restore_failed\",\"message\":\"warning\"}\n",
+          "warning contains stable reason and separate message");
     check(StatusEmitter::format_line(CrashTestStatus{}) ==
-              "AYTHER_STATUS {\"event\":\"crash-test\"}\n",
+              "AYTHER_STATUS {\"protocol_version\":1,\"event\":\"crash-test\"}\n",
           "crash-test has no invented fields");
     check(StatusEmitter::format_line(ExitStatus{std::nullopt}) ==
-              "AYTHER_STATUS {\"event\":\"exit\"}\n",
+              "AYTHER_STATUS {\"protocol_version\":1,\"event\":\"exit\"}\n",
           "exit omits an absent savestate");
     check(StatusEmitter::format_line(ExitStatus{"C:\\save\".bin"}) ==
-              "AYTHER_STATUS {\"event\":\"exit\","
+              "AYTHER_STATUS {\"protocol_version\":1,\"event\":\"exit\","
               "\"savestate\":\"C:\\\\save\\\".bin\"}\n",
           "exit preserves and escapes the savestate path");
 
-    std::unique_ptr<std::FILE, decltype(&std::fclose)> output{std::tmpfile(),
+    std::FILE* temporary_file = nullptr;
+#ifdef _WIN32
+    (void)tmpfile_s(&temporary_file);
+#else
+    temporary_file = std::tmpfile();
+#endif
+    std::unique_ptr<std::FILE, decltype(&std::fclose)> output{temporary_file,
                                                               &std::fclose};
     check(output != nullptr, "temporary output stream is available");
     if (output != nullptr) {
-        const StatusEvent event = WarningStatus{hostile_text()};
+        const StatusEvent event = WarningStatus{
+            RuntimeErrorCode::state_restore_failed, hostile_text()};
         const std::string expected = StatusEmitter::format_line(event);
         StatusEmitter emitter{*output};
         check(emitter.emit(event), "emitter writes and flushes one complete record");
@@ -128,6 +142,16 @@ int main(const int argc, char* argv[]) {
                   std::string{bytes.begin(), bytes.end()} == expected,
               "emitted bytes exactly match the formatted record");
     }
+
+    check(status_protocol_compatibility(status_protocol_version) ==
+              StatusProtocolCompatibility::compatible,
+          "the current protocol version is compatible");
+    check(status_protocol_compatibility(status_protocol_version + 1U) ==
+              StatusProtocolCompatibility::unsupported_newer,
+          "a future protocol version is rejected before session startup");
+    check(status_protocol_compatibility(0U) ==
+              StatusProtocolCompatibility::unsupported_older,
+          "an unsupported old protocol version is rejected");
 
     std::fprintf(stderr, "\n%d passed, %d failed\n", passed, failed);
     return failed == 0 ? 0 : 1;

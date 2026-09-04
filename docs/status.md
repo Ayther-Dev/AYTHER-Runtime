@@ -2,16 +2,22 @@
 
 ## Current maturity
 
-AYTHER Runtime `0.1.0` is an early, pre-release component under active
+AYTHER Runtime `0.1.0-beta.1` is an internal, pre-release product under active
 separation from the AYTHER monorepo. It is suitable for engineering integration
 and focused testing. It is **not** presented as production-ready, generally
 available, or backward compatible.
 
+The Runtime–Play process protocol v1 is stable. That is a deliberately narrow
+wire-compatibility promise for status records, reason identifiers, negotiation,
+and exit codes; it does not stabilize the Runtime product, Engine ABI, package,
+configuration, or save-state formats.
+
 There are currently:
 
-- no supported release line;
+- no supported stable release line; `v0.1.0-beta.1` is for internal evaluation;
 - no stable Runtime/Engine ABI or package surface;
-- no stable launcher protocol version;
+- one stable launcher protocol version (v1), with future breaking changes
+  requiring a new protocol version;
 - no end-user installer or standalone engine distribution in this repository;
 - no declared long-term save-state compatibility policy; and
 - no completed distribution-wide third-party license inventory or notice bundle.
@@ -51,16 +57,13 @@ compatibility.
 1. `Ayther::engine` remains provisional, although Runtime now consumes its
    typed pack, input, renderer, core-probe, and Vulkan-interoperability
    contracts exclusively through installed public headers.
-2. The Windows `v0.1.0-rc.6` static library was produced on the
-   `windows-2025-vs2026` runner with MSVC v145 14.51, newer than the locally
-   installed v143 14.43 toolset. Its public surface configures and compiles
-   here, but the final link requires v145 14.51+ (or a repackaged Engine built
-   against the declared minimum toolset) before the complete standalone CTest
-   gate can pass.
-3. Manual staging of `tomlplusplus` should be verified against the actual link
-   closure and removed if the executable no longer imports it.
-4. GPU-dependent integration coverage, compatibility matrices, packaging, and
-   reproducible release automation are not yet established.
+2. Windows is verified with MSVC v145 14.51; older toolsets are intentionally
+   rejected during configure. Ubuntu 24.04/Clang 18 remains gated by the remote
+   quality and sanitizer jobs for each integration SHA.
+3. GPU coverage currently represents one discrete Windows adapter. Integrated
+   GPUs and Linux display stacks remain unverified and are not support claims.
+4. Packaging smoke coverage exists, but an end-user installer, signed release
+   automation, and a complete distribution license/notice bundle do not.
 
 The evidence and proposed ownership for these items are recorded in
 [`runtime-engine-dependency-audit.yaml`](runtime-engine-dependency-audit.yaml).
@@ -72,7 +75,8 @@ A stable release should not be declared until maintainers have:
 - verified MPL-2.0 notices and completed the third-party license inventory for
   every distributed artifact;
 - narrowed and versioned the Runtime/Engine package contract;
-- versioned the launcher process protocol and defined compatibility behavior;
+- preserved the stable v1 launcher protocol and versioned any future breaking
+  wire changes;
 - defined supported platforms, compilers, Vulkan requirements, and test cores;
 - established clean build, test, security-scanning, and packaging automation;
 - documented save/config migration and compatibility policies; and

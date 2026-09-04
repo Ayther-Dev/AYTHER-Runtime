@@ -360,7 +360,7 @@ dependency_matrix:
       - "Require AytherConfig.cmake to export a valid Ayther_SHADER_DIR."
       - "Stage Engine SPIR-V only from Ayther_SHADER_DIR and Runtime SPIR-V from its source tree."
       - "Stage imported runtime DLLs beside ayther_runtime."
-      - "AYTHER_SHADER_DIR compile definition points to the staged shader directory."
+      - "Runtime resolves the adjacent shaders directory from SDL_GetBasePath; no build-tree path is embedded in the installed executable."
       - "vcpkg manifest mode supplies every find_dependency emitted by AytherConfig.cmake."
       - "Dear ImGui and stb remain direct Runtime dependencies."
     known_gap: >-

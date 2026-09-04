@@ -7,15 +7,22 @@ and the project intends to follow [Semantic Versioning](https://semver.org/spec/
 once stable compatibility guarantees are defined.
 
 > [!WARNING]
-> AYTHER Runtime is in early development. The build currently reports version
-> `0.1.0`, but no supported release has been published from this repository.
-> Until the first tagged release, entries remain under **Unreleased** and may
-> describe interfaces that change without notice.
+> AYTHER Runtime is in early development. The build reports product version
+> `0.1.0-beta.1`; this is an internal prerelease and is not supported for
+> production use. The Runtime–Play process
+> protocol v1 is the exception: its documented wire fields, reason identifiers,
+> and exit codes are stable within v1.
 
 ## [Unreleased]
 
+## [0.1.0-beta.1] - 2026-09-03
+
 ### Changed
 
+- Declared the Runtime–Play process protocol v1 stable while keeping the
+  Runtime product explicitly in the beta prerelease channel.
+- Split the beta-hardening work into reviewable protocol, persistence, Vulkan,
+  quality, packaging, and documentation commits.
 - Advanced the verified AYTHER Engine dependency lock from `v0.1.0-rc.4` to
   `v0.1.0-rc.6`, pinning the official standard and VPX archives for Windows
   and Linux together with the published checksum manifest and release
@@ -66,6 +73,10 @@ once stable compatibility guarantees are defined.
 
 ### Added
 
+- Stable protocol negotiation, machine-readable error taxonomy and exit codes.
+- Transactional save-state and capture boundaries, strict player configuration,
+  Vulkan failure injection, a real validation-layer GPU smoke, clang-tidy,
+  ASan/UBSan, coverage, deterministic fuzzing, and an installed-package smoke.
 - Pull request CI for Windows and Linux using reproducible RelWithDebInfo CMake
   presets, the locked Engine `v0.1.0-rc.6` bootstrap, SHA-pinned GitHub Actions,
   least-privilege token permissions, and always-retained logs plus JUnit output.
@@ -117,4 +128,5 @@ once stable compatibility guarantees are defined.
 - Documented handling requirements for untrusted cores, ROMs, packs, patches,
   manifests, paths, and save states.
 
-[Unreleased]: https://github.com/Ayther-Dev/AYTHER-Runtime/commits/main
+[Unreleased]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.1...HEAD
+[0.1.0-beta.1]: https://github.com/Ayther-Dev/AYTHER-Runtime/releases/tag/v0.1.0-beta.1

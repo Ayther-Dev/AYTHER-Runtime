@@ -1,0 +1,200 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+-beta.[0-9]+'
+
+permissions:
+  attestations: read
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package-windows:
+    name: Release / Windows package
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 45
+    env:
+      CI_PRESET: windows-ci
+      ENGINE_PLATFORM: windows
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Bootstrap locked Engine
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $enginePrefix = & ./tools/bootstrap_ayther_engine.ps1 `
+              -Platform $env:ENGINE_PLATFORM `
+              -Architecture x86_64 `
+              -Variant engine `
+              -DestinationDirectory .deps/ayther-engine
+          "AYTHER_ENGINE_PREFIX=$([IO.Path]::GetFullPath([string]$enginePrefix))" |
+              Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+          if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) {
+              $vcpkgRoot = Split-Path -Parent `
+                  (Get-Command vcpkg -ErrorAction Stop).Source
+          }
+          "VCPKG_ROOT=$vcpkgRoot" |
+              Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Configure, build and test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & cmake --preset $env:CI_PRESET
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & cmake --build --preset $env:CI_PRESET
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & ctest --preset $env:CI_PRESET
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package Windows beta
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          & cpack --config out/build/windows-ci/CPackConfig.cmake `
+              -C RelWithDebInfo -G ZIP -B artifacts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $archives = @(Get-ChildItem artifacts -File -Filter *.zip)
+          if ($archives.Count -ne 1) {
+              throw "Expected one Windows ZIP, found $($archives.Count)."
+          }
+          $archives | ForEach-Object {
+              $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
+              "$hash  $($_.Name)"
+          } | Set-Content artifacts/SHA256SUMS-windows.txt
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-windows
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14
+
+  package-linux:
+    name: Release / Linux package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CI_PRESET: linux-ci
+      ENGINE_PLATFORM: linux
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Bootstrap locked Engine
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $enginePrefix = & ./tools/bootstrap_ayther_engine.ps1 `
+              -Platform $env:ENGINE_PLATFORM `
+              -Architecture x86_64 `
+              -Variant engine `
+              -DestinationDirectory .deps/ayther-engine
+          "AYTHER_ENGINE_PREFIX=$([IO.Path]::GetFullPath([string]$enginePrefix))" |
+              Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" |
+              Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Configure, build and test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & cmake --preset $env:CI_PRESET
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & cmake --build --preset $env:CI_PRESET
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & ctest --preset $env:CI_PRESET
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package Linux beta
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          & cpack --config out/build/linux-ci/CPackConfig.cmake `
+              -G TGZ -B artifacts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $archives = @(Get-ChildItem artifacts -File -Filter *.tar.gz)
+          if ($archives.Count -ne 1) {
+              throw "Expected one Linux TGZ, found $($archives.Count)."
+          }
+          $archives | ForEach-Object {
+              $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
+              "$hash  $($_.Name)"
+          } | Set-Content artifacts/SHA256SUMS-linux.txt
+
+      - name: Upload Linux package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-linux
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Release / Publish prerelease
+    needs:
+      - package-windows
+      - package-linux
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download release packages
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: release-*
+          path: artifacts
+          merge-multiple: true
+
+      - name: Validate tag and publish beta
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $project = Get-Content CMakeLists.txt -Raw
+          if ($project -notmatch `
+              'set\(AYTHER_RUNTIME_VERSION "([^"]+)"\)') {
+              throw "AYTHER_RUNTIME_VERSION is missing."
+          }
+          $expectedTag = "v$($Matches[1])"
+          if ($env:GITHUB_REF_NAME -cne $expectedTag) {
+              throw "Tag '$env:GITHUB_REF_NAME' does not match '$expectedTag'."
+          }
+          $notes = "docs/releases/$env:GITHUB_REF_NAME.md"
+          if (-not (Test-Path -LiteralPath $notes -PathType Leaf)) {
+              throw "Release notes are missing: $notes"
+          }
+          $assets = @(Get-ChildItem artifacts -File |
+              ForEach-Object { $_.FullName })
+          if ($assets.Count -ne 4) {
+              throw "Expected two archives and two checksum files; found $($assets.Count)."
+          }
+          & gh release create $env:GITHUB_REF_NAME @assets `
+              --verify-tag `
+              --prerelease `
+              --title "AYTHER Runtime $env:GITHUB_REF_NAME" `
+              --notes-file $notes
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
