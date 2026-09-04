@@ -78,11 +78,11 @@ if(NOT runtime_result EQUAL 64)
         "Packaged Runtime did not reach CLI parsing (exit=${runtime_result}).\n"
         "stdout:\n${runtime_stdout}\nstderr:\n${runtime_stderr}")
 endif()
-string(REGEX MATCH
-    "AYTHER_STATUS \\{[^\r\n]*\"protocol_version\":1[^\r\n]*\}"
-    status_line "${runtime_stdout}")
-if(status_line STREQUAL "" OR
-   NOT status_line MATCHES "\"reason\":\"cli.invalid_argument\"")
+string(FIND "${runtime_stdout}"
+    "AYTHER_STATUS {\"protocol_version\":1" status_prefix_at)
+string(FIND "${runtime_stdout}"
+    "\"reason\":\"cli.invalid_argument\"" status_reason_at)
+if(status_prefix_at EQUAL -1 OR status_reason_at EQUAL -1)
     message(FATAL_ERROR
         "Installed Runtime did not emit the protocol-v1 CLI error:\n"
         "${runtime_stdout}\n${runtime_stderr}")
