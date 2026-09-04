@@ -155,6 +155,17 @@ add_test(
             -DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cli_error_test.cmake
 )
+if(WIN32)
+    add_test(
+        NAME    runtime_package_smoke
+        COMMAND ${CMAKE_COMMAND}
+                -DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>
+                -DBUILD_DIR=${CMAKE_BINARY_DIR}
+                -DINSTALL_CONFIG=$<CONFIG>
+                -DSMOKE_DIR=${CMAKE_CURRENT_BINARY_DIR}/runtime-package-smoke
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/runtime_package_smoke_test.cmake
+    )
+endif()
 add_test(
     NAME    protocol_negotiation
     COMMAND ${CMAKE_COMMAND}
