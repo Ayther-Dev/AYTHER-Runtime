@@ -49,4 +49,3 @@ commits equivalentes (contrato de toolchain, parsing CLI, errores Vulkan y
 prueba de arranque); el único commit todavía exclusivo es `cf9df63`, el recurso
 de aplicación Windows. El recuento cambió al avanzar las referencias remotas y
 no representa pérdida de commits.
-
