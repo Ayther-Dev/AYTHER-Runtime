@@ -144,6 +144,12 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 add_test(
+    NAME    main_decomposition_contract
+    COMMAND ${CMAKE_COMMAND}
+            -DMAIN_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/../src/main.cpp
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/main_decomposition_test.cmake
+)
+add_test(
     NAME    cli_errors
     COMMAND ${CMAKE_COMMAND}
             -DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>
@@ -483,6 +489,7 @@ add_executable(vulkan_context_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_result.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vulkan_calls.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_context.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_swapchain.cpp
 )
 target_include_directories(vulkan_context_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
@@ -490,6 +497,7 @@ target_include_directories(vulkan_context_tests PRIVATE
 target_compile_definitions(vulkan_context_tests PRIVATE
     VMA_STATIC_VULKAN_FUNCTIONS=1
     VMA_DYNAMIC_VULKAN_FUNCTIONS=0
+    AYTHER_FORCE_VULKAN_VALIDATION=1
 )
 target_link_libraries(vulkan_context_tests PRIVATE
     Ayther::engine
@@ -506,6 +514,18 @@ add_test(
     COMMAND vulkan_context_tests
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
+if(AYTHER_ENABLE_GPU_TESTS)
+    add_test(
+        NAME    vulkan_gpu_smoke
+        COMMAND vulkan_context_tests --gpu
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    set_tests_properties(vulkan_gpu_smoke PROPERTIES
+        LABELS "gpu;vulkan"
+        SKIP_RETURN_CODE 77
+        TIMEOUT 30
+    )
+endif()
 
 # ------------------------------------------------------------------
 # vulkan_presentation_contract_tests — MIG-025 integration boundary.
@@ -548,6 +568,72 @@ add_test(
     COMMAND vulkan_presentation_contract_tests
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
+
+add_executable(vulkan_failure_injection_tests
+    vulkan_failure_injection_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/spirv_file.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_result.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vulkan_calls.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_context.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_swapchain.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/vk_postprocess.cpp
+)
+target_include_directories(vulkan_failure_injection_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend
+)
+target_compile_definitions(vulkan_failure_injection_tests PRIVATE
+    VMA_STATIC_VULKAN_FUNCTIONS=1
+    VMA_DYNAMIC_VULKAN_FUNCTIONS=0
+    AYTHER_TEST_VERT_SPV="${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/shaders/postprocess.vert.spv"
+    AYTHER_TEST_FRAG_SPV="${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/shaders/postprocess.frag.spv"
+)
+target_link_libraries(vulkan_failure_injection_tests PRIVATE
+    Ayther::engine
+    SDL3::SDL3
+    Vulkan::Vulkan
+    GPUOpen::VulkanMemoryAllocator
+    vk-bootstrap::vk-bootstrap
+)
+set_target_properties(vulkan_failure_injection_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    vulkan_failure_injection
+    COMMAND vulkan_failure_injection_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+if(AYTHER_ENABLE_FUZZING)
+    add_executable(runtime_fuzz
+        runtime_fuzz.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime_options.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/player_config.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/status_emitter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/capture.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/vulkan_backend/spirv_file.cpp
+    )
+    target_include_directories(runtime_fuzz PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    )
+    target_link_libraries(runtime_fuzz PRIVATE ayther_runtime_stb)
+    target_compile_options(runtime_fuzz PRIVATE -fsanitize=fuzzer)
+    target_link_options(runtime_fuzz PRIVATE -fsanitize=fuzzer)
+    set_target_properties(runtime_fuzz PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME runtime_fuzz_smoke
+        COMMAND runtime_fuzz
+                -runs=1000
+                -max_len=4096
+                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz_corpus
+    )
+    set_tests_properties(runtime_fuzz_smoke PROPERTIES
+        LABELS "fuzz;sanitizer"
+        TIMEOUT 30
+    )
+endif()
 
 # ------------------------------------------------------------------
 # probe_core — #589: el sondeo de cores que consume Play.

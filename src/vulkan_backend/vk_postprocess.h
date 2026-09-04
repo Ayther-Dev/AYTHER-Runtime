@@ -45,6 +45,7 @@
 
 class VkContext;
 class VkSwapchain;
+class AcquiredFrame;
 
 /// Output-profile destination rectangle in swapchain pixels (#296).
 ///
@@ -80,7 +81,7 @@ public:
                     const ayther::engine::RenderImageView& source);
 
     /// Recreate framebuffers after a swapchain resize.
-    void rebuild(VkContext& ctx, VkSwapchain& swap);
+    [[nodiscard]] bool rebuild(VkContext& ctx, VkSwapchain& swap);
 
     /// Destroy all Vulkan objects.
     void shutdown(VkContext& ctx);
@@ -113,7 +114,7 @@ public:
     ///
     /// @pre init() and set_source() succeeded, `swap` has an acquired image,
     ///      and its command buffer is recording.
-    void apply(VkContext& ctx, VkSwapchain& swap,
+    void apply(VkContext& ctx, const AcquiredFrame& frame,
                float scr_w, float scr_h, float emu_h, float time_s,
                const OutDestRect& dest, bool smooth,
                float crt_strength, float scan_strength, float vignette,
@@ -146,6 +147,9 @@ private:
                              const char* frag_spv_path);
     bool create_samplers    (VkContext& ctx);
     bool create_desc        (VkContext& ctx);   // pool + set (unbound; see set_source)
-    [[nodiscard]] bool create_framebuffers(VkContext& ctx, VkSwapchain& swap);
+    [[nodiscard]] bool create_framebuffers(
+        VkContext& ctx, VkSwapchain& swap,
+        std::vector<VkFramebuffer>& output) const;
     void destroy_framebuffers(VkContext& ctx);
+    void swap_state(VkPostProcess& other) noexcept;
 };

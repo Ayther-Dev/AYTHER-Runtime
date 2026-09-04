@@ -81,8 +81,59 @@ target_include_directories(ayther_runtime_stb SYSTEM INTERFACE
     "${Stb_INCLUDE_DIR}"
 )
 
+option(AYTHER_STRICT_WARNINGS "Treat first-party compiler warnings as errors" ON)
+option(AYTHER_ENABLE_CLANG_TIDY "Run clang-tidy while compiling" OFF)
+option(AYTHER_ENABLE_SANITIZERS "Enable AddressSanitizer and UBSan" OFF)
+option(AYTHER_ENABLE_COVERAGE "Instrument first-party code for gcovr" OFF)
+option(AYTHER_ENABLE_FUZZING "Build deterministic libFuzzer targets" OFF)
+
+if(AYTHER_STRICT_WARNINGS)
+    if(MSVC)
+        add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/W4>
+                            $<$<COMPILE_LANGUAGE:CXX>:/WX>
+                            $<$<COMPILE_LANGUAGE:CXX>:/permissive->
+                            $<$<COMPILE_LANGUAGE:CXX>:/EHsc>)
+    else()
+        add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wall>
+                            $<$<COMPILE_LANGUAGE:CXX>:-Wextra>
+                            $<$<COMPILE_LANGUAGE:CXX>:-Wpedantic>
+                            $<$<COMPILE_LANGUAGE:CXX>:-Werror>)
+    endif()
+endif()
+
+if(AYTHER_ENABLE_CLANG_TIDY)
+    find_program(AYTHER_CLANG_TIDY_EXECUTABLE NAMES clang-tidy REQUIRED)
+    set(AYTHER_CLANG_TIDY_COMMAND
+        "${AYTHER_CLANG_TIDY_EXECUTABLE};--config-file=${CMAKE_CURRENT_SOURCE_DIR}/.clang-tidy")
+    set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+endif()
+
+if(AYTHER_ENABLE_SANITIZERS)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+        message(FATAL_ERROR "ASan/UBSan require Clang or GCC")
+    endif()
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fsanitize=address,undefined>
+                        $<$<COMPILE_LANGUAGE:CXX>:-fno-omit-frame-pointer>)
+    add_link_options(-fsanitize=address,undefined)
+endif()
+
+if(AYTHER_ENABLE_COVERAGE)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+        message(FATAL_ERROR "Coverage instrumentation requires Clang or GCC")
+    endif()
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:--coverage>
+                        $<$<COMPILE_LANGUAGE:CXX>:-O0>
+                        $<$<COMPILE_LANGUAGE:CXX>:-g>)
+    add_link_options(--coverage)
+endif()
+
+if(AYTHER_ENABLE_FUZZING AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    message(FATAL_ERROR "AYTHER_ENABLE_FUZZING requires Clang/libFuzzer")
+endif()
+
 add_executable(ayther_runtime
     src/main.cpp
+    src/runtime_application.cpp # MAD-039: process composition and orchestration
     src/status_emitter.cpp     # MAD-007: typed line-delimited JSON events
     src/runtime_options.cpp     # MAD-006: typed, strict command-line parsing
     src/runtime_config.cpp      # MIG-020: Runtime-owned data/save/capture paths
@@ -105,6 +156,10 @@ add_executable(ayther_runtime
     src/vulkan_backend/vk_present.cpp
     src/vulkan_backend/vk_postprocess.cpp
 )
+if(AYTHER_ENABLE_CLANG_TIDY)
+    set_property(TARGET ayther_runtime PROPERTY
+        CXX_CLANG_TIDY "${AYTHER_CLANG_TIDY_COMMAND}")
+endif()
 
 target_include_directories(ayther_runtime PRIVATE
     src
@@ -229,4 +284,6 @@ target_compile_definitions(ayther_runtime PRIVATE
 
 # Runtime verification targets (ADR-004 section 3, E8) compile Runtime sources
 # and therefore belong to this repository's test tree.
+option(AYTHER_ENABLE_GPU_TESTS
+    "Run SDL/Vulkan presentation tests on a real GPU" OFF)
 add_subdirectory(tests)
