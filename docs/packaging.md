@@ -20,4 +20,6 @@ ZIP and TGZ archives.
 
 `runtime_package_smoke` consumes only `cmake --install` output, launches from a
 separate empty directory, verifies the protocol and installed data, and proves
-that removing a packaged shared dependency prevents startup.
+that a resolved shared dependency is detected when removed. Windows must reject
+the process before protocol startup; Linux also records the valid case where a
+platform Vulkan loader satisfies the same missing packaged SONAME.

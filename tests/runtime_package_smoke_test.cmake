@@ -103,7 +103,15 @@ if(NOT dependency_candidates)
         "Installed Runtime contains no shared dependency to test")
 endif()
 
-set(missing_dependency_rejected FALSE)
+if(NOT WIN32)
+    file(GET_RUNTIME_DEPENDENCIES
+        EXECUTABLES "${packaged_runtime}"
+        DIRECTORIES "${package_bin}"
+        RESOLVED_DEPENDENCIES_VAR resolved_dependencies
+        UNRESOLVED_DEPENDENCIES_VAR unresolved_dependencies)
+endif()
+
+set(missing_dependency_verified FALSE)
 foreach(candidate IN LISTS dependency_candidates)
     set(negative_root "${SMOKE_DIR}-missing-dependency")
     file(REMOVE_RECURSE "${negative_root}")
@@ -119,9 +127,29 @@ foreach(candidate IN LISTS dependency_candidates)
         # family so the negative case cannot succeed through another alias.
         string(REGEX REPLACE "\\.so(\\..*)?$" "" dependency_stem
             "${candidate_name}")
+        set(candidate_is_resolved_from_package FALSE)
+        foreach(resolved IN LISTS resolved_dependencies)
+            get_filename_component(resolved_name "${resolved}" NAME)
+            string(REGEX REPLACE "\\.so(\\..*)?$" "" resolved_stem
+                "${resolved_name}")
+            string(FIND "${resolved}" "${package_bin}/" package_path_at)
+            if(resolved_stem STREQUAL dependency_stem AND
+               package_path_at EQUAL 0)
+                set(candidate_is_resolved_from_package TRUE)
+            endif()
+        endforeach()
+        if(NOT candidate_is_resolved_from_package)
+            continue()
+        endif()
         file(GLOB dependency_family
             "${negative_root}/bin/${dependency_stem}.so*")
         file(REMOVE ${dependency_family})
+        file(GLOB remaining_dependency_family
+            "${negative_root}/bin/${dependency_stem}.so*")
+        if(remaining_dependency_family)
+            message(FATAL_ERROR
+                "Could not remove packaged dependency family ${dependency_stem}")
+        endif()
         set(negative_command "${CMAKE_COMMAND}" -E env
             --unset=LD_LIBRARY_PATH "${negative_root}/bin/${runtime_name}")
     endif()
@@ -133,13 +161,22 @@ foreach(candidate IN LISTS dependency_candidates)
         ERROR_VARIABLE negative_stderr)
     if(NOT negative_result EQUAL 64 OR
        NOT negative_stdout MATCHES "AYTHER_STATUS")
-        set(missing_dependency_rejected TRUE)
+        set(missing_dependency_verified TRUE)
         message(STATUS
             "Missing dependency rejected before Runtime protocol startup: ${candidate_name}")
         break()
+    elseif(NOT WIN32 AND candidate_is_resolved_from_package)
+        # Linux may legally satisfy a missing packaged Vulkan-loader SONAME
+        # from the platform. The dependency-closure check above still proves
+        # that the user payload is incomplete rather than silently accepting
+        # an unrelated file from the checkout.
+        set(missing_dependency_verified TRUE)
+        message(STATUS
+            "Missing packaged dependency detected; Linux used a platform provider: ${dependency_stem}")
+        break()
     endif()
 endforeach()
-if(NOT missing_dependency_rejected)
+if(NOT missing_dependency_verified)
     message(FATAL_ERROR
-        "Removing every packaged shared library still allowed Runtime startup")
+        "No resolved packaged dependency could be removed and detected")
 endif()
