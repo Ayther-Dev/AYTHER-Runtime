@@ -185,7 +185,8 @@ AYTHER Play normally launches Runtime. A direct development invocation is:
 build/bin/ayther_runtime.exe `
   --core C:/path/to/core.dll `
   --rom C:/path/to/game.rom `
-  --pack C:/path/to/optional-pack.ay
+  --pack C:/path/to/optional-pack.ay `
+  --input-map C:/path/to/controls.toml
 ```
 
 Probe a core without initializing SDL or loading a ROM:
@@ -207,6 +208,8 @@ integration; only `AYTHER_STATUS <json>` lines are machine-readable protocol.
   requirement language.
 - [Process and CLI contract](docs/process-protocol.md) — options, events, exit
   behavior, and integration rules.
+- [Runtime input map](docs/input-map.md) — TOML schema, defaults, validation,
+  and compatibility behavior.
 - [Development guide](docs/development.md) — local builds, tests, shaders, and
   debugging.
 - [Project status](docs/status.md) — maturity, known gaps, and release gates.

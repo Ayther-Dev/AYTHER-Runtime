@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <SDL3/SDL_keyboard.h>
+#include <utility>
 
 namespace ayther {
 
@@ -15,7 +16,34 @@ void set_button(engine::InputState& input, engine::JoypadButton button,
 }
 }  // namespace
 
-GameInput::GameInput() {
+engine::InputState compose_input_state(const InputMap& map,
+                                       const MappedInputState& state) noexcept {
+    engine::InputState input;
+    const auto keyboard = map.keyboard_bindings();
+    for (std::size_t index = 0; index < keyboard.size(); ++index) {
+        set_button(input, keyboard[index].action, state.keyboard[index]);
+    }
+
+    const auto gamepad = map.gamepad_bindings();
+    for (std::size_t index = 0; index < gamepad.size(); ++index) {
+        set_button(input, gamepad[index].action, state.gamepad[index]);
+    }
+
+    using engine::JoypadButton;
+    set_button(input, JoypadButton::up, state.dpad_up);
+    set_button(input, JoypadButton::down, state.dpad_down);
+    set_button(input, JoypadButton::left, state.dpad_left);
+    set_button(input, JoypadButton::right, state.dpad_right);
+
+    constexpr std::int16_t axis_deadzone = 16000;
+    set_button(input, JoypadButton::left, state.left_x < -axis_deadzone);
+    set_button(input, JoypadButton::right, state.left_x > axis_deadzone);
+    set_button(input, JoypadButton::up, state.left_y < -axis_deadzone);
+    set_button(input, JoypadButton::down, state.left_y > axis_deadzone);
+    return input;
+}
+
+GameInput::GameInput(InputMap input_map) : input_map_(std::move(input_map)) {
     // Community controller DB (optional). SDL3 ships a large built-in mapping DB,
     // so this only *augments* it for exotic pads; absence is not an error.
     if (SDL_AddGamepadMappingsFromFile("gamecontrollerdb.txt") < 0) {
@@ -69,85 +97,41 @@ void GameInput::handle_event(const SDL_Event& event) {
 engine::InputState GameInput::poll() const {
     using engine::JoypadButton;
 
-    engine::InputState input;
+    MappedInputState state;
 
     // --- Keyboard (always live) ----------------------------------------------
-    // Z = jump (Genesis A/B/C all jump in Sonic); arrows = D-pad; Enter = Start.
     if (const bool* keyboard_state = SDL_GetKeyboardState(nullptr)) {
-        set_button(input, JoypadButton::up, keyboard_state[SDL_SCANCODE_UP]);
-        set_button(input, JoypadButton::down,
-                   keyboard_state[SDL_SCANCODE_DOWN]);
-        set_button(input, JoypadButton::left,
-                   keyboard_state[SDL_SCANCODE_LEFT]);
-        set_button(input, JoypadButton::right,
-                   keyboard_state[SDL_SCANCODE_RIGHT]);
-        set_button(input, JoypadButton::b, keyboard_state[SDL_SCANCODE_Z]);
-        set_button(input, JoypadButton::a, keyboard_state[SDL_SCANCODE_X]);
-        set_button(input, JoypadButton::y, keyboard_state[SDL_SCANCODE_A]);
-        set_button(input, JoypadButton::x, keyboard_state[SDL_SCANCODE_S]);
-        set_button(input, JoypadButton::l, keyboard_state[SDL_SCANCODE_Q]);
-        set_button(input, JoypadButton::r, keyboard_state[SDL_SCANCODE_W]);
-        set_button(input, JoypadButton::start,
-                   keyboard_state[SDL_SCANCODE_RETURN]);
-        set_button(input, JoypadButton::select,
-                   keyboard_state[SDL_SCANCODE_RSHIFT] ||
-                       keyboard_state[SDL_SCANCODE_BACKSPACE]);
+        const auto bindings = input_map_.keyboard_bindings();
+        for (std::size_t index = 0; index < bindings.size(); ++index) {
+            state.keyboard[index] = keyboard_state[bindings[index].scancode];
+            if (input_map_.legacy_select_backspace() &&
+                bindings[index].action == JoypadButton::select) {
+                state.keyboard[index] = state.keyboard[index] ||
+                                        keyboard_state[SDL_SCANCODE_BACKSPACE];
+            }
+        }
     }
 
     // --- Gamepad (OR-ed in) --------------------------------------------------
     if (gamepad_) {
-        const auto is_gamepad_button_pressed =
-            [this](SDL_GamepadButton button) {
-                return SDL_GetGamepadButton(gamepad_, button);
-            };
-        set_button(input, JoypadButton::up,
-                   is_gamepad_button_pressed(SDL_GAMEPAD_BUTTON_DPAD_UP));
-        set_button(input, JoypadButton::down,
-                   is_gamepad_button_pressed(SDL_GAMEPAD_BUTTON_DPAD_DOWN));
-        set_button(input, JoypadButton::left,
-                   is_gamepad_button_pressed(SDL_GAMEPAD_BUTTON_DPAD_LEFT));
-        set_button(input, JoypadButton::right,
-                   is_gamepad_button_pressed(SDL_GAMEPAD_BUTTON_DPAD_RIGHT));
-        set_button(input, JoypadButton::b,
-                   is_gamepad_button_pressed(SDL_GAMEPAD_BUTTON_SOUTH));
-        set_button(input, JoypadButton::a,
-                   is_gamepad_button_pressed(SDL_GAMEPAD_BUTTON_EAST));
-        set_button(input, JoypadButton::y,
-                   is_gamepad_button_pressed(SDL_GAMEPAD_BUTTON_WEST));
-        set_button(input, JoypadButton::x,
-                   is_gamepad_button_pressed(SDL_GAMEPAD_BUTTON_NORTH));
-        set_button(input, JoypadButton::l,
-                   is_gamepad_button_pressed(
-                       SDL_GAMEPAD_BUTTON_LEFT_SHOULDER));
-        set_button(input, JoypadButton::r,
-                   is_gamepad_button_pressed(
-                       SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER));
-        set_button(input, JoypadButton::start,
-                   is_gamepad_button_pressed(SDL_GAMEPAD_BUTTON_START));
-        set_button(input, JoypadButton::select,
-                   is_gamepad_button_pressed(SDL_GAMEPAD_BUTTON_BACK));
-
-        // Left analog stick → D-pad (≈ 50% deadzone).
-        constexpr std::int16_t axis_deadzone = 16000;
-        const std::int16_t axis_x =
-            SDL_GetGamepadAxis(gamepad_, SDL_GAMEPAD_AXIS_LEFTX);
-        const std::int16_t axis_y =
-            SDL_GetGamepadAxis(gamepad_, SDL_GAMEPAD_AXIS_LEFTY);
-        if (axis_x < -axis_deadzone) {
-            set_button(input, JoypadButton::left, true);
+        const auto bindings = input_map_.gamepad_bindings();
+        for (std::size_t index = 0; index < bindings.size(); ++index) {
+            state.gamepad[index] =
+                SDL_GetGamepadButton(gamepad_, bindings[index].button);
         }
-        if (axis_x > axis_deadzone) {
-            set_button(input, JoypadButton::right, true);
-        }
-        if (axis_y < -axis_deadzone) {
-            set_button(input, JoypadButton::up, true);
-        }
-        if (axis_y > axis_deadzone) {
-            set_button(input, JoypadButton::down, true);
-        }
+        state.dpad_up =
+            SDL_GetGamepadButton(gamepad_, SDL_GAMEPAD_BUTTON_DPAD_UP);
+        state.dpad_down =
+            SDL_GetGamepadButton(gamepad_, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+        state.dpad_left =
+            SDL_GetGamepadButton(gamepad_, SDL_GAMEPAD_BUTTON_DPAD_LEFT);
+        state.dpad_right =
+            SDL_GetGamepadButton(gamepad_, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+        state.left_x = SDL_GetGamepadAxis(gamepad_, SDL_GAMEPAD_AXIS_LEFTX);
+        state.left_y = SDL_GetGamepadAxis(gamepad_, SDL_GAMEPAD_AXIS_LEFTY);
     }
 
-    return input;
+    return compose_input_state(input_map_, state);
 }
 
 }  // namespace ayther

@@ -77,6 +77,9 @@ once stable compatibility guarantees are defined.
 - Transactional save-state and capture boundaries, strict player configuration,
   Vulkan failure injection, a real validation-layer GPU smoke, clang-tidy,
   ASan/UBSan, coverage, deterministic fuzzing, and an installed-package smoke.
+- Startup-resolved `--input-map` TOML support for AYTHER Play keyboard and
+  gamepad bindings, with partial-map defaults, strict ambiguity checks, stable
+  `input.map_invalid` diagnostics, and no per-frame string parsing.
 - Pull request CI for Windows and Linux using reproducible RelWithDebInfo CMake
   presets, the locked Engine `v0.1.0-rc.6` bootstrap, SHA-pinned GitHub Actions,
   least-privilege token permissions, and always-retained logs plus JUnit output.

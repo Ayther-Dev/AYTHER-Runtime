@@ -45,6 +45,7 @@ struct RuntimeOptions {
     std::string saves_directory;
     std::string rom_crc32;
     std::string load_state;
+    std::string input_map_path;
     std::vector<std::pair<std::string, std::string>> core_options;
     std::optional<std::uint32_t> subsystems;
     std::optional<std::uint32_t> mute_buses;

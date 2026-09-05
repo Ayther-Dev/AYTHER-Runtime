@@ -204,6 +204,15 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char* const argv
             if (auto error = read_string(argument, options.load_state)) {
                 return RuntimeOptionsParseResult{std::move(*error)};
             }
+        } else if (argument == "--input-map") {
+            if (auto error = read_string(argument, options.input_map_path)) {
+                return RuntimeOptionsParseResult{std::move(*error)};
+            }
+            if (options.input_map_path.empty()) {
+                return RuntimeOptionsParseResult{make_error(
+                    RuntimeOptionErrorCode::empty_value, argument, {},
+                    static_cast<std::size_t>(index))};
+            }
         } else if (argument == "--rom-crc32") {
             if (auto error = read_string(argument, options.rom_crc32)) {
                 return RuntimeOptionsParseResult{std::move(*error)};

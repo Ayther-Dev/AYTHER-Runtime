@@ -15,6 +15,7 @@ enum class RuntimeExitCode : int {
     protocol_incompatible = 65,
     service_unavailable = 69,
     io_failure = 74,
+    configuration_invalid = 78,
 };
 
 [[nodiscard]] constexpr int exit_code(const RuntimeExitCode code) noexcept {
@@ -29,6 +30,7 @@ enum class ErrorDomain {
     vulkan,
     persistence,
     protocol,
+    input,
 };
 
 enum class ErrorSeverity {
@@ -55,6 +57,7 @@ enum class RuntimeErrorCode {
     persistence_io_failed,
     capture_failed,
     protocol_incompatible,
+    input_map_invalid,
 };
 
 [[nodiscard]] constexpr std::string_view
@@ -90,6 +93,8 @@ error_reason(const RuntimeErrorCode code) noexcept {
         return "persistence.capture_failed";
     case RuntimeErrorCode::protocol_incompatible:
         return "protocol.incompatible";
+    case RuntimeErrorCode::input_map_invalid:
+        return "input.map_invalid";
     }
     return "runtime.unknown";
 }
@@ -119,6 +124,8 @@ error_domain(const RuntimeErrorCode code) noexcept {
         return ErrorDomain::persistence;
     case RuntimeErrorCode::protocol_incompatible:
         return ErrorDomain::protocol;
+    case RuntimeErrorCode::input_map_invalid:
+        return ErrorDomain::input;
     }
     return ErrorDomain::protocol;
 }
@@ -139,6 +146,8 @@ error_severity(const RuntimeErrorCode code) noexcept {
     case RuntimeErrorCode::persistence_io_failed:
     case RuntimeErrorCode::capture_failed:
         return ErrorSeverity::recoverable;
+    case RuntimeErrorCode::input_map_invalid:
+        return ErrorSeverity::fatal;
     default:
         return ErrorSeverity::fatal;
     }

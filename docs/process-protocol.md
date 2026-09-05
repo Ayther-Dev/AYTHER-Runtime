@@ -30,6 +30,7 @@ backward compatibility. New callers SHOULD use named options.
 | `--rom` | path | Required game image for a normal session. |
 | `--pack` | path | Optional AYTHER pack. A rejected pack falls back to original gameplay. |
 | `--patch` | path | Optional IPS/BPS patch applied to the in-memory ROM buffer. |
+| `--input-map` | path | Optional TOML keyboard/gamepad map, parsed once before SDL initialization. Omitted entries inherit Runtime defaults. |
 | `--profile` | id | Engine content profile selected before the first frame. |
 | `--output` | id | Runtime presentation profile: `lcd`, `crt`, `pixel`, `smooth`, `cinema`, or `ntsc`. |
 | `--subsystems` | unsigned decimal `uint32_t` | Explicit subsystem mask applied after persisted settings; range `0..4294967295`. |
@@ -124,8 +125,11 @@ game identifier as the title fallback.
 {"protocol_version":1,"event":"warning","reason":"persistence.config_invalid","message":"..."}
 ```
 
-Reports a warning or recoverable degradation. `reason` is a stable machine code;
-`message`, when present, is explanatory text and may change or be localized.
+Reports a typed startup or runtime diagnostic, such as a loaded pack with no
+active subsystems, a failed resume, or an invalid input map. The `reason` field
+is a stable machine token and the optional `message` field is human-readable.
+An event named `warning` can precede a fatal startup exit; callers must use the
+process exit code rather than infer recoverability from the event name.
 The complete reason taxonomy and recovery classification is normative in
 [`runtime-play-protocol.md`](runtime-play-protocol.md).
 
@@ -160,10 +164,12 @@ upload or synchronization.
 | `65` | Explicit Runtime–Play protocol versions are incompatible. |
 | `69` | A required service is unavailable. |
 | `74` | A non-recoverable I/O operation failed. |
+| `78` | The file supplied through `--input-map` is unreadable or violates the input-map contract. |
 
 Codes and their identifiers are stable protocol-v1 values. CLI and negotiation
 errors occur before SDL initialization and include both a machine reason in the
-status stream and a human-readable diagnostic.
+status stream and a human-readable diagnostic. Code `78` follows the same
+pre-SDL behavior and emits stable reason `input.map_invalid`.
 
 ## Security and trust
 

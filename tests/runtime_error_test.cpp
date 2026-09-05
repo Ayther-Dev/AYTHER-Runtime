@@ -38,6 +38,11 @@ static_assert(ayther::runtime::error_reason(
 static_assert(ayther::runtime::error_reason(
                   ayther::runtime::RuntimeErrorCode::pack_no_active_subsystems) ==
               "pack.no_active_subsystems"sv);
+static_assert(ayther::runtime::exit_code(
+                  ayther::runtime::RuntimeExitCode::configuration_invalid) == 78);
+static_assert(ayther::runtime::error_reason(
+                  ayther::runtime::RuntimeErrorCode::input_map_invalid) ==
+              "input.map_invalid"sv);
 static_assert(ayther::runtime::error_reason(
                   ayther::runtime::RuntimeErrorCode::state_restore_failed) ==
               "state.restore_failed"sv);
@@ -76,5 +81,7 @@ static_assert(!ayther::runtime::is_recoverable(
     ayther::runtime::RuntimeErrorCode::core_invalid));
 static_assert(!ayther::runtime::is_recoverable(
     ayther::runtime::RuntimeErrorCode::protocol_incompatible));
+static_assert(!ayther::runtime::is_recoverable(
+    ayther::runtime::RuntimeErrorCode::input_map_invalid));
 
 int main() { return 0; }
