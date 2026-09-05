@@ -198,6 +198,41 @@ add_test(
     COMMAND runtime_options_tests
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
+
+# ------------------------------------------------------------------
+# input_map_tests — Play's --input-map contract and pure input folding.
+#
+# The TOML is parsed once at startup into SDL enums. The tests need no window,
+# initialized SDL subsystem, physical controller, or running core.
+# ------------------------------------------------------------------
+add_executable(input_map_tests
+    input_map_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/input_map.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/game_input.cpp
+)
+target_include_directories(input_map_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+target_link_libraries(input_map_tests PRIVATE
+    Ayther::engine
+    SDL3::SDL3
+    tomlplusplus::tomlplusplus
+)
+set_target_properties(input_map_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    input_map
+    COMMAND input_map_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    input_map_cli
+    COMMAND ${CMAKE_COMMAND}
+            -DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>
+            -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/input-map-cli
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/input_map_cli_test.cmake
+)
 add_test(
     NAME    main_decomposition_contract
     COMMAND ${CMAKE_COMMAND}
@@ -471,6 +506,7 @@ add_test(
 # ------------------------------------------------------------------
 add_executable(input_api_contract_tests
     input_api_contract_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/input_map.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/game_input.cpp
 )
 target_include_directories(input_api_contract_tests PRIVATE
@@ -479,6 +515,7 @@ target_include_directories(input_api_contract_tests PRIVATE
 target_link_libraries(input_api_contract_tests PRIVATE
     Ayther::engine
     SDL3::SDL3
+    tomlplusplus::tomlplusplus
 )
 set_target_properties(input_api_contract_tests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
