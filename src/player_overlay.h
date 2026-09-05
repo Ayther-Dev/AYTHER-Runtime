@@ -41,6 +41,7 @@
 #include "player_config.h"   // #299: preferences edited and persisted by the panel
 
 struct ImGuiContext;
+struct ImFont;
 class VkContext;
 class VkSwapchain;
 class AcquiredFrame;
@@ -119,6 +120,7 @@ private:
     uint32_t fb_w_ = 0, fb_h_ = 0;
 
     ImGuiContext* overlay_ctx_ = nullptr;   // independent context (multi-context safe)
+    ImFont*       title_font_  = nullptr;   // owned by the context's font atlas
     bool          paused_      = false;
     bool          imgui_ready_ = false;
     /// A configuration change is awaiting persistence; consumed by

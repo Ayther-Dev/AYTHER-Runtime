@@ -16,6 +16,8 @@
 #include <imgui_impl_vulkan.h>
 
 #include <SDL3/SDL.h>
+#include <algorithm>
+#include <cstring>
 #include <cstdint>
 #include <cstdio>
 #include <utility>
@@ -24,6 +26,27 @@
 #include <ayther/ayther_session.h>  // #299: el panel opera sobre la sesión
 
 namespace ayther {
+
+namespace {
+// AYTHER-Play-CE/ui/tokens.slint: keep the pause surface in the launcher palette.
+ImVec4 play_color(int r, int g, int b, int a = 255) {
+    return ImVec4(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
+}
+
+ImFont* load_play_font(ImGuiIO& io, const char* filename, float size) {
+    const char* base = SDL_GetBasePath();
+    if (!base) return nullptr;
+    const std::string path = std::string(base) + "fonts/" + filename;
+    size_t length = 0;
+    void* data = SDL_LoadFile(path.c_str(), &length);
+    if (!data) return nullptr;
+    // Transfer a copy to the atlas using its allocator (SDL owns the original).
+    void* owned = ImGui::MemAlloc(length);
+    std::memcpy(owned, data, length);
+    SDL_free(data);
+    return io.Fonts->AddFontFromMemoryTTF(owned, static_cast<int>(length), size);
+}
+} // namespace
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -164,20 +187,41 @@ bool PlayerOverlay::init(VkContext& ctx, VkSwapchain& swap, SDL_Window* window) 
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
     io.IniFilename  = nullptr;   // no persistent imgui.ini in the game session
 
-    // Dark style with amber hover/active (matches Ayther brand).
+    io.FontDefault = load_play_font(io, "IBMPlexSans-Regular.ttf", 18.0f);
+    if (!io.FontDefault) io.FontDefault = io.Fonts->AddFontDefault();
+    title_font_ = load_play_font(io, "Khand-SemiBold.ttf", 32.0f);
+
+    // Graphite surfaces, square controls and the Play CE yellow accent.
     ImGui::StyleColorsDark();
     ImGuiStyle& style = ImGui::GetStyle();
-    style.WindowRounding    = 8.0f;
-    style.FrameRounding     = 5.0f;
-    style.GrabRounding      = 5.0f;
-    style.WindowBorderSize  = 0.0f;
-    style.WindowPadding     = ImVec2(18, 14);
-    style.ItemSpacing       = ImVec2(10, 8);
-    style.Colors[ImGuiCol_WindowBg]      = ImVec4(0.08f, 0.08f, 0.10f, 0.92f);
-    style.Colors[ImGuiCol_Button]        = ImVec4(0.18f, 0.18f, 0.22f, 1.0f);
-    style.Colors[ImGuiCol_ButtonHovered] = ImVec4(0.85f, 0.55f, 0.05f, 1.0f);
-    style.Colors[ImGuiCol_ButtonActive]  = ImVec4(1.00f, 0.70f, 0.10f, 1.0f);
-    style.Colors[ImGuiCol_NavHighlight]  = ImVec4(0.85f, 0.55f, 0.05f, 1.0f);
+    style.WindowRounding = 6.0f;
+    style.FrameRounding = 0.0f;
+    style.GrabRounding = 0.0f;
+    style.WindowBorderSize = 1.0f;
+    style.FrameBorderSize = 1.0f;
+    style.WindowPadding = ImVec2(24, 20);
+    style.FramePadding = ImVec2(12, 6);
+    style.ItemSpacing = ImVec2(12, 8);
+    style.Colors[ImGuiCol_WindowBg] = play_color(42, 42, 47);
+    style.Colors[ImGuiCol_PopupBg] = play_color(50, 50, 56);
+    style.Colors[ImGuiCol_Text] = play_color(214, 214, 220);
+    style.Colors[ImGuiCol_TextDisabled] = play_color(165, 165, 174);
+    style.Colors[ImGuiCol_Border] = play_color(75, 75, 85);
+    style.Colors[ImGuiCol_Separator] = play_color(75, 75, 85);
+    style.Colors[ImGuiCol_FrameBg] = play_color(38, 38, 43);
+    style.Colors[ImGuiCol_FrameBgHovered] = play_color(72, 68, 44);
+    style.Colors[ImGuiCol_FrameBgActive] = play_color(94, 83, 38);
+    style.Colors[ImGuiCol_Button] = play_color(59, 59, 66);
+    style.Colors[ImGuiCol_ButtonHovered] = play_color(72, 68, 44);
+    style.Colors[ImGuiCol_ButtonActive] = play_color(94, 83, 38);
+    style.Colors[ImGuiCol_CheckMark] = play_color(250, 204, 45);
+    style.Colors[ImGuiCol_SliderGrab] = play_color(250, 204, 45);
+    style.Colors[ImGuiCol_SliderGrabActive] = play_color(252, 221, 111);
+    style.Colors[ImGuiCol_Header] = play_color(250, 204, 45, 26);
+    style.Colors[ImGuiCol_HeaderHovered] = play_color(250, 204, 45, 46);
+    style.Colors[ImGuiCol_HeaderActive] = play_color(250, 204, 45, 82);
+    style.Colors[ImGuiCol_NavHighlight] = play_color(250, 204, 45);
+    style.Colors[ImGuiCol_TextSelectedBg] = play_color(250, 204, 45, 82);
 
     // ---- SDL3 backend --------------------------------------------------------
     if (!ImGui_ImplSDL3_InitForVulkan(window)) {
@@ -300,45 +344,52 @@ void PlayerOverlay::render(VkContext&, const AcquiredFrame& frame,
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
 
-    // Semi-transparent dim over the entire game frame.
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    // Use logical viewport coordinates, including on high-DPI displays.
     ImGui::GetBackgroundDrawList()->AddRectFilled(
-        ImVec2(0, 0),
-        ImVec2(static_cast<float>(fb_w_), static_cast<float>(fb_h_)),
-        IM_COL32(0, 0, 0, 140));
+        vp->Pos,
+        ImVec2(vp->Pos.x + vp->Size.x, vp->Pos.y + vp->Size.y),
+        IM_COL32(20, 20, 23, 158));
 
     // ---- Pause menu ---------------------------------------------------------
-    const ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-    // #299: el panel de configuración necesita más ancho que el menú de pausa
-    // pelado, y los sliders de bus no entran en 280.
-    ImGui::SetNextWindowSize(ImVec2((session && cfg) ? 380.0f : 280.0f, 0),
+    const float width = std::min(480.0f, std::max(1.0f, vp->Size.x - 24.0f));
+    ImGui::SetNextWindowSizeConstraints(
+        ImVec2(width, 0), ImVec2(width, std::max(1.0f, vp->Size.y - 24.0f)));
+    ImGui::SetNextWindowSize(ImVec2(width, 0),
                              ImGuiCond_Always);
 
     constexpr ImGuiWindowFlags kWinFlags =
-        ImGuiWindowFlags_NoDecoration    |
+        ImGuiWindowFlags_NoTitleBar      |
+        ImGuiWindowFlags_NoResize        |
+        ImGuiWindowFlags_NoCollapse      |
         ImGuiWindowFlags_NoMove          |
         ImGuiWindowFlags_NoSavedSettings |
         ImGuiWindowFlags_AlwaysAutoResize;
 
     ImGui::Begin("##pause_overlay", nullptr, kWinFlags);
 
-    // Title (centered)
-    const char* kTitle = "PAUSED";
-    ImGui::SetCursorPosX(
-        (ImGui::GetWindowWidth() - ImGui::CalcTextSize(kTitle).x) * 0.5f);
-    ImGui::TextUnformatted(kTitle);
+    ImGui::TextColored(play_color(250, 204, 45), "AYTHER PLAY CE");
+    ImGui::PushFont(title_font_ ? title_font_ : ImGui::GetIO().FontDefault, 32.0f);
+    ImGui::TextColored(play_color(240, 240, 245), "EN PAUSA");
+    ImGui::PopFont();
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
 
-    // Resume (auto-focused on open — NavHighlight picks it up)
-    if (ImGui::Button("  Resume  ", ImVec2(-1, 0)))
+    // Primary action uses the same yellow fill and dark text as Play CE.
+    ImGui::PushStyleColor(ImGuiCol_Text, play_color(27, 26, 16));
+    ImGui::PushStyleColor(ImGuiCol_Button, play_color(250, 204, 45));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, play_color(252, 221, 111));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, play_color(201, 160, 6));
+    if (ImGui::Button("Continuar", ImVec2(-1, 40)))
         paused_ = false;
+    ImGui::PopStyleColor(4);
 
     ImGui::Spacing();
 
     // HD toggle
-    const char* hd_label = hd_on ? "  HD Mode: ON   " : "  HD Mode: OFF  ";
+    const char* hd_label = hd_on ? "Modo HD: activado" : "Modo HD: desactivado";
     if (ImGui::Button(hd_label, ImVec2(-1, 0))) {
         hd_on = !hd_on;
         std::fprintf(stdout, "[overlay] HD mode: %s\n", hd_on ? "ON" : "OFF");
@@ -413,7 +464,7 @@ void PlayerOverlay::render(VkContext&, const AcquiredFrame& frame,
 
         // -- Qué se sustituye ------------------------------------------------
         ImGui::Spacing();
-        ImGui::TextUnformatted("Sustituir");
+        ImGui::TextColored(play_color(165, 165, 174), "MEJORAS VISUALES");
         for (const auto& g : kVisual) {
             bool any_present = false, any_on = false;
             for (int i = 0; i < g.count; ++i) {
@@ -437,7 +488,7 @@ void PlayerOverlay::render(VkContext&, const AcquiredFrame& frame,
 
         // -- Audio ------------------------------------------------------------
         ImGui::Spacing();
-        ImGui::TextUnformatted("Audio");
+        ImGui::TextColored(play_color(165, 165, 174), "AUDIO");
         struct BusRow { const char* label; AudioBus bus; Subsystem sub; };
         const BusRow kBuses[] = {
             { "Música",  AudioBus::Music, Subsystem::Music },
@@ -446,19 +497,19 @@ void PlayerOverlay::render(VkContext&, const AcquiredFrame& frame,
         };
         for (const auto& b : kBuses) {
             ImGui::PushID(b.label);
-            bool m = session->bus_muted(b.bus);
-            if (ImGui::Checkbox("##mute", &m)) {
+            bool audible = !session->bus_muted(b.bus);
+            if (ImGui::Checkbox(b.label, &audible)) {
                 // La casilla dice «suena», no «silenciado»: el jugador razona
                 // en positivo y una casilla marcada que significa «apagado» se
                 // lee al revés la mitad de las veces.
-                session->set_bus_muted(b.bus, m);
-                cfg->bus_muted[static_cast<int>(b.bus)] = m;
+                session->set_bus_muted(b.bus, !audible);
+                cfg->bus_muted[static_cast<int>(b.bus)] = !audible;
                 cfg_dirty_ = true;
             }
-            ImGui::SameLine();
+            ImGui::SameLine(150.0f);
             float g = session->bus_volume(b.bus);
-            ImGui::SetNextItemWidth(150);
-            if (ImGui::SliderFloat(b.label, &g, 0.0f, 2.0f, "%.2f")) {
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::SliderFloat("##volume", &g, 0.0f, 2.0f, "%.2f")) {
                 session->set_bus_volume(b.bus, g);
                 cfg->bus_gain[static_cast<int>(b.bus)] = g;
                 cfg_dirty_ = true;
@@ -502,12 +553,9 @@ void PlayerOverlay::render(VkContext&, const AcquiredFrame& frame,
 
     ImGui::Spacing();
 
-    // Quit (red tint)
-    ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.55f, 0.10f, 0.10f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.80f, 0.15f, 0.15f, 1.0f));
-    if (ImGui::Button("  Quit to Launcher  ", ImVec2(-1, 0)))
+    // Returning to the library is a secondary navigation action.
+    if (ImGui::Button("Volver al launcher", ImVec2(-1, 40)))
         running = false;
-    ImGui::PopStyleColor(2);
 
     ImGui::Spacing();
     ImGui::End();

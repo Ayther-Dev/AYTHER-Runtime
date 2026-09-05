@@ -334,6 +334,14 @@ install(TARGETS ayther_runtime
     RUNTIME DESTINATION bin COMPONENT Runtime
     LIBRARY DESTINATION bin COMPONENT Runtime
 )
+add_custom_command(TARGET ayther_runtime POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/fonts"
+        "$<TARGET_FILE_DIR:ayther_runtime>/fonts"
+    COMMENT "Staging Play CE typography and font licenses"
+    VERBATIM)
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/resources/fonts/"
+        DESTINATION bin/fonts COMPONENT Runtime)
 install(DIRECTORY "${Ayther_SHADER_DIR}/"
         DESTINATION bin/shaders COMPONENT Runtime)
 install(FILES ${AYTHER_RUNTIME_SHADER_FILES}
