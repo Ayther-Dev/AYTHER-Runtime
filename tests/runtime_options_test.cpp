@@ -78,6 +78,8 @@ int main() {
             "1,42,18446744073709551615",
             "--play-protocol-version",
             "1",
+            "--input-map",
+            "controls.toml",
         });
         const auto* options = parsed.options();
         check(options != nullptr, "all numeric options accept valid values");
@@ -92,6 +94,8 @@ int main() {
                   "--capture-at parses a non-empty positive list");
             check(options->play_protocol_version == 1u,
                   "Play can negotiate the status protocol before startup");
+            check(options->input_map_path == "controls.toml",
+                  "Play can pass the per-session input map");
         }
     }
 
@@ -201,6 +205,13 @@ int main() {
     expect_error({"ayther_runtime", "--capture-at", "1,,2"},
                  RuntimeOptionErrorCode::malformed_list, "--capture-at",
                  "--capture-at rejects repeated commas");
+
+    expect_error({"ayther_runtime", "--input-map"},
+                 RuntimeOptionErrorCode::missing_value, "--input-map",
+                 "--input-map rejects a missing path");
+    expect_error({"ayther_runtime", "--input-map", ""},
+                 RuntimeOptionErrorCode::empty_value, "--input-map",
+                 "--input-map rejects an empty path");
 
     check(ayther::runtime::runtime_cli_error_exit_code == 64,
           "malformed CLI input has the stable documented exit code 64");
