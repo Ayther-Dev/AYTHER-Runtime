@@ -335,6 +335,11 @@ std::string_view input_action_key(const JoypadButton action) noexcept {
         return "start";
     case JoypadButton::select:
         return "select";
+    case JoypadButton::l2:
+    case JoypadButton::r2:
+    case JoypadButton::l3:
+    case JoypadButton::r3:
+        return {};
     }
     return {};
 }
