@@ -28,6 +28,7 @@
 #include <ayther/engine/capabilities.hpp>
 #include <ayther/engine/pack.hpp>
 #include "game_input.h"              // SDL keyboard/gamepad → RetroPad bitfield (M3)
+#include "input_map.h"               // Play --input-map → startup-resolved SDL bindings
 #include "vulkan_backend/aspect_fit.h"  // 4:3 canvas fit (pillarbox, no stretch)
 #include "player_overlay.h"         // in-game pause menu + HD↔Original toggle (M4)
 #include "player_config.h"          // #299: lo que el panel ajusta y se recuerda
@@ -177,6 +178,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     const auto& saves_dir_arg = options.saves_directory;
     const auto& rom_crc32_arg = options.rom_crc32;
     const auto& load_state_arg = options.load_state;
+    const auto& input_map_path = options.input_map_path;
     const auto& core_opts_arg = options.core_options;
     const auto& subsystems_arg = options.subsystems;
     const auto& mute_buses_arg = options.mute_buses;
@@ -247,6 +249,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
             "         [--subsystems <mask>] [--mute-buses <mask>] [--output <id>]\n"
             "         [--core-option key=value]... [--no-shaders|--shaders]\n"
             "         [--manifest <launch.toml>] [--saves-dir <dir>]\n"
+            "         [--input-map <controls.toml>]\n"
             "         [--rom-crc32 <hex>] [--load-state <estado.bin>]\n"
             "         [--play-protocol-version <N>]\n"
             "         [--frames N] [--capture-at N[,M...]] [--crash-test]\n"
@@ -254,6 +257,23 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
             "       ayther_runtime --probe-core <libretro.dll>\n"
             "         Sondea el core y emite un evento probe. Sin ROM.\n");
         return ayther::runtime::runtime_cli_error_exit_code;
+    }
+
+    ayther::InputMap input_map = ayther::InputMap::defaults();
+    if (!input_map_path.empty()) {
+        auto loaded_input_map = ayther::load_input_map(input_map_path);
+        if (const auto* error = loaded_input_map.error()) {
+            const std::string diagnostic = ayther::describe(*error);
+            std::fprintf(stderr, "[ayther_runtime] %s\n", diagnostic.c_str());
+            emit_status(ayther::runtime::WarningStatus{
+                ayther::runtime::RuntimeErrorCode::input_map_invalid,
+                diagnostic});
+            return ayther::runtime::exit_code(
+                ayther::runtime::RuntimeExitCode::configuration_invalid);
+        }
+        input_map = std::move(*loaded_input_map.map());
+        std::fprintf(stdout, "[input] loaded map: %s\n",
+                     input_map_path.c_str());
     }
 
     // -----------------------------------------------------------------------
@@ -678,7 +698,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
 
     // Input source (M3): SDL keyboard + gamepad → libretro RetroPad bitfield,
     // fed into the motor each frame via AytherSession::set_input.
-    ayther::GameInput input;
+    ayther::GameInput input{std::move(input_map)};
 
     // In-game pause overlay + HD↔Original toggle (M4).
     if (swap_ok) {

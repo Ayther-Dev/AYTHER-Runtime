@@ -3,7 +3,7 @@
 Status: protocol v1 is stable. Last reviewed: 2026-09-03.
 
 This wire contract is stable independently of the product release channel.
-AYTHER Runtime itself remains a prerelease at `0.1.0-beta.1`; its package, ABI, save-state,
+AYTHER Runtime itself remains a prerelease at `0.1.0-beta.2`; its package, ABI, save-state,
 and general product surfaces are not covered by the protocol-v1 guarantee.
 
 Runtime writes one record per line to stdout. A protocol record starts with

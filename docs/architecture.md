@@ -98,7 +98,8 @@ with `AYTHER_STATUS `.
 | Path | Responsibility |
 | --- | --- |
 | `src/main.cpp` | CLI parsing, lifecycle, session loop, protocol events, persistence, and orchestration. |
-| `src/game_input.*` | SDL keyboard/gamepad events to normalized RetroPad state. |
+| `src/input_map.*` | Startup-only TOML validation and resolved keyboard/gamepad binding ownership. |
+| `src/game_input.*` | Resolved SDL keyboard/gamepad state to normalized RetroPad state; no per-frame string parsing. |
 | `src/player_overlay.*` | In-game profile, subsystem, bus, shader, and HD controls. |
 | `src/player_config.*` | Per-game/per-pack player settings and tolerant local persistence. |
 | `src/capture.*` | Synchronized original/HD/comparison PNGs and non-content metadata. |
@@ -118,6 +119,7 @@ with `AYTHER_STATUS `.
 ```text
 parse arguments
   -> optional core probe and immediate exit
+  -> resolve and validate optional input map
   -> initialize SDL subsystems
   -> validate optional pack
   -> create AytherSession
@@ -194,6 +196,12 @@ user choice. Unknown ids fall through without invalidating the session.
 The `--manifest` path is correlation metadata only. Runtime deliberately does
 not parse it; AYTHER Play remains the single translator from a launch manifest
 to process arguments.
+
+The optional `--input-map` is different: Runtime owns the executable input
+contract and therefore parses the TOML once before SDL initialization. Partial
+maps inherit compiled defaults. The frame loop receives only resolved SDL enum
+values, and invalid or ambiguous maps fail startup instead of silently changing
+controls.
 
 `RuntimePaths` discovers Runtime's platform user-data root before core probing
 and before SDL initialization. `RuntimeConfig` resolves the effective save root,

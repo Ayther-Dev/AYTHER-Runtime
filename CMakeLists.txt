@@ -11,7 +11,7 @@
 #   cmake -S . -B build_rt -DCMAKE_PREFIX_PATH=<Engine bootstrap prefix>
 #   cmake --build build_rt
 # ---------------------------------------------------------------------------
-set(AYTHER_RUNTIME_VERSION "0.1.0-beta.1")
+set(AYTHER_RUNTIME_VERSION "0.1.0-beta.2")
 set(AYTHER_RUNTIME_PROJECT_VERSION "0.1.0")
 set(AYTHER_ENGINE_MIN_VERSION "0.1.0")
 set(AYTHER_ENGINE_MAX_VERSION_EXCLUSIVE "0.2.0")
@@ -178,6 +178,7 @@ add_executable(ayther_runtime
     src/status_emitter.cpp     # MAD-007: typed line-delimited JSON events
     src/runtime_options.cpp     # MAD-006: typed, strict command-line parsing
     src/runtime_config.cpp      # MIG-020: Runtime-owned data/save/capture paths
+    src/input_map.cpp           # Play --input-map TOML → validated SDL bindings
     src/game_input.cpp          # SDL keyboard/gamepad → RetroPad bitfield (M3)
     src/player_overlay.cpp      # in-game pause menu + HD toggle (M4)
     src/player_config.cpp       # #299: per-game-and-pack player preferences
