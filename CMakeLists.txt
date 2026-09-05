@@ -11,7 +11,7 @@
 #   cmake -S . -B build_rt -DCMAKE_PREFIX_PATH=<Engine bootstrap prefix>
 #   cmake --build build_rt
 # ---------------------------------------------------------------------------
-set(AYTHER_RUNTIME_VERSION "0.1.0-beta.1")
+set(AYTHER_RUNTIME_VERSION "0.1.0-beta.2")
 set(AYTHER_RUNTIME_PROJECT_VERSION "0.1.0")
 set(AYTHER_ENGINE_MIN_VERSION "0.1.0")
 set(AYTHER_ENGINE_MAX_VERSION_EXCLUSIVE "0.2.0")

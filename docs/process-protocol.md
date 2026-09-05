@@ -2,7 +2,7 @@
 
 > [!IMPORTANT]
 > The Runtime–Play wire protocol v1 is stable. AYTHER Runtime remains the
-> separate `0.1.0-beta.1` product; stability here does not extend to its
+> separate `0.1.0-beta.2` product; stability here does not extend to its
 > package, Engine ABI, configuration, or save-state formats.
 
 ## Invocation modes

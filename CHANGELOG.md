@@ -8,12 +8,20 @@ once stable compatibility guarantees are defined.
 
 > [!WARNING]
 > AYTHER Runtime is in early development. The build reports product version
-> `0.1.0-beta.1`; this is an internal prerelease and is not supported for
+> `0.1.0-beta.2`; this is an internal prerelease and is not supported for
 > production use. The Runtime–Play process
 > protocol v1 is the exception: its documented wire fields, reason identifiers,
 > and exit codes are stable within v1.
 
 ## [Unreleased]
+
+## [0.1.0-beta.2] - 2026-09-04
+
+### Added
+
+- Startup-resolved `--input-map` TOML support for AYTHER Play keyboard and
+  gamepad bindings, with partial-map defaults, strict ambiguity checks, stable
+  `input.map_invalid` diagnostics, and no per-frame string parsing.
 
 ## [0.1.0-beta.1] - 2026-09-03
 
@@ -77,9 +85,6 @@ once stable compatibility guarantees are defined.
 - Transactional save-state and capture boundaries, strict player configuration,
   Vulkan failure injection, a real validation-layer GPU smoke, clang-tidy,
   ASan/UBSan, coverage, deterministic fuzzing, and an installed-package smoke.
-- Startup-resolved `--input-map` TOML support for AYTHER Play keyboard and
-  gamepad bindings, with partial-map defaults, strict ambiguity checks, stable
-  `input.map_invalid` diagnostics, and no per-frame string parsing.
 - Pull request CI for Windows and Linux using reproducible RelWithDebInfo CMake
   presets, the locked Engine `v0.1.0-rc.6` bootstrap, SHA-pinned GitHub Actions,
   least-privilege token permissions, and always-retained logs plus JUnit output.
@@ -131,5 +136,6 @@ once stable compatibility guarantees are defined.
 - Documented handling requirements for untrusted cores, ROMs, packs, patches,
   manifests, paths, and save states.
 
-[Unreleased]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.1...HEAD
+[Unreleased]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.2...HEAD
+[0.1.0-beta.2]: https://github.com/Ayther-Dev/AYTHER-Runtime/releases/tag/v0.1.0-beta.2
 [0.1.0-beta.1]: https://github.com/Ayther-Dev/AYTHER-Runtime/releases/tag/v0.1.0-beta.1
