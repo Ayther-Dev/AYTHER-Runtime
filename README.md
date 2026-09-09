@@ -8,7 +8,7 @@ the original and HD-composed frame paths through Vulkan, and owns the in-game
 presentation and controls.
 
 > [!WARNING]
-> **Beta:** product version `0.1.0-beta.2` is an internal evaluation release.
+> **Beta:** product version `0.1.0-beta.3` is an internal evaluation release.
 > APIs, command-line options, package boundaries, configuration formats, and
 > saved-state compatibility may change without notice. The Runtime–Play process
 > protocol v1 is stable, but that narrow wire guarantee does not make the
@@ -44,6 +44,7 @@ zero-copy path between the engine frame view and the renderer.
 
 - Runs a Libretro session from explicit core and ROM paths.
 - Applies optional AYTHER packs and IPS/BPS patches in memory.
+- Opens signed packs with an explicit [trust registry](docs/trust-registry.md).
 - Presents aspect-correct Vulkan output with selectable output profiles.
 - Supports HD/original switching, rewind, fast-forward, subsystem controls,
   audio-bus controls, pack hot reload, diagnostics, and synchronized captures.

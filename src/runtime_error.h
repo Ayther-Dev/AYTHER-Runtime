@@ -11,6 +11,7 @@ enum class RuntimeExitCode : int {
     startup_failed = 1,
     core_load_failed = 2,
     invalid_core = 3,
+    pack_open_failed = 4,
     cli_usage = 64,
     protocol_incompatible = 65,
     service_unavailable = 69,
@@ -46,6 +47,8 @@ enum class RuntimeErrorCode {
     core_load_failed,
     core_invalid,
     pack_rejected,
+    pack_open_failed,
+    trust_registry_invalid,
     pack_no_active_subsystems,
     state_restore_failed,
     state_save_failed,
@@ -71,6 +74,10 @@ error_reason(const RuntimeErrorCode code) noexcept {
         return "core.invalid";
     case RuntimeErrorCode::pack_rejected:
         return "pack.rejected";
+    case RuntimeErrorCode::pack_open_failed:
+        return "pack.open_failed";
+    case RuntimeErrorCode::trust_registry_invalid:
+        return "pack.trust_registry_invalid";
     case RuntimeErrorCode::pack_no_active_subsystems:
         return "pack.no_active_subsystems";
     case RuntimeErrorCode::state_restore_failed:
@@ -109,6 +116,8 @@ error_domain(const RuntimeErrorCode code) noexcept {
         return ErrorDomain::core;
     case RuntimeErrorCode::pack_rejected:
     case RuntimeErrorCode::pack_no_active_subsystems:
+    case RuntimeErrorCode::pack_open_failed:
+    case RuntimeErrorCode::trust_registry_invalid:
         return ErrorDomain::pack;
     case RuntimeErrorCode::state_restore_failed:
     case RuntimeErrorCode::state_save_failed:

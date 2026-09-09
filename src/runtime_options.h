@@ -40,6 +40,7 @@ struct RuntimeOptions {
     std::string core_path;
     std::string rom_path;
     std::string pack_path;
+    std::string trust_registry_path;
     std::string patch_path;
     std::string profile;
     std::string saves_directory;

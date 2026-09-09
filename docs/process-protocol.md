@@ -28,7 +28,8 @@ backward compatibility. New callers SHOULD use named options.
 | --- | --- | --- |
 | `--core` | path | Required core library for a normal session. |
 | `--rom` | path | Required game image for a normal session. |
-| `--pack` | path | Optional AYTHER pack. A rejected pack falls back to original gameplay. |
+| `--pack` | path | Explicit AYTHER pack. Failure to open, validate or activate it exits with code 4. |
+| `--trust-registry` | path | Public-key TOML registry, resolved relative to the launch working directory before session creation; retained for pack reloads. See [format](trust-registry.md). |
 | `--patch` | path | Optional IPS/BPS patch applied to the in-memory ROM buffer. |
 | `--input-map` | path | Optional TOML keyboard/gamepad map, parsed once before SDL initialization. Omitted entries inherit Runtime defaults. |
 | `--profile` | id | Engine content profile selected before the first frame. |
@@ -160,16 +161,17 @@ upload or synchronization.
 | `0` | Core loaded and required Libretro information symbols were read. |
 | `2` | Dynamic library could not be loaded. |
 | `3` | Required Libretro symbols were not found. |
+| `4` | Explicit pack could not be opened, validated, activated or reloaded. |
 | `64` | Invalid command line: a required session argument or option value is missing, malformed, out of range, or outside its documented domain. |
 | `65` | Explicit Runtime–Play protocol versions are incompatible. |
 | `69` | A required service is unavailable. |
 | `74` | A non-recoverable I/O operation failed. |
-| `78` | The file supplied through `--input-map` is unreadable or violates the input-map contract. |
+| `78` | The file supplied through `--input-map` or `--trust-registry` is unreadable or violates its configuration contract. |
 
 Codes and their identifiers are stable protocol-v1 values. CLI and negotiation
 errors occur before SDL initialization and include both a machine reason in the
 status stream and a human-readable diagnostic. Code `78` follows the same
-pre-SDL behavior and emits stable reason `input.map_invalid`.
+pre-SDL behavior and emits stable reason `input.map_invalid` or `pack.trust_registry_invalid`.
 
 ## Security and trust
 

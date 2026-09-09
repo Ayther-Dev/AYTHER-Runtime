@@ -1,0 +1,9 @@
+version = 1
+[[keys]]
+id = "runtime-test-only"
+algorithm = "ed25519"
+public_key = "4d01fcfe151b9e7d4af956be1d98795f9305f9b68c5a84256e7ca5130a55be0e"
+not_before_unix = 0
+not_after_unix = 4102444800
+revoked = false
+games = ["runtime-test"]

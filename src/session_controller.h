@@ -3,6 +3,7 @@
 #include <ayther/ayther_session.h>
 
 #include <memory>
+#include <string>
 #include <utility>
 
 namespace ayther::runtime {
@@ -33,6 +34,13 @@ public:
         return session_.get();
     }
     void reset() noexcept { session_.reset(); }
+
+    [[nodiscard]] ayther::Result<void> reload_pack(std::string pack_path) {
+        // rc.6 reload_pack() aliases the path that set_pack() clears on close.
+        // Runtime owns a stable copy; set_pack retains Config::trust_registry
+        // and reopens through Engine's trusted API, including current revocation.
+        return session_->set_pack(pack_path);
+    }
 
 private:
     std::unique_ptr<ayther::AytherSession> session_;
