@@ -121,6 +121,8 @@ private:
 
     ImGuiContext* overlay_ctx_ = nullptr;   // independent context (multi-context safe)
     ImFont*       title_font_  = nullptr;   // owned by the context's font atlas
+    ImFont*       volume_font_ = nullptr;  // IBM Plex Mono 600, owned by the atlas
+    ImFont*       volume_label_font_ = nullptr; // Inter 400, owned by the atlas
     bool          paused_      = false;
     bool          imgui_ready_ = false;
     /// A configuration change is awaiting persistence; consumed by

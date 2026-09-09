@@ -33,6 +33,71 @@ ImVec4 play_color(int r, int g, int b, int a = 255) {
     return ImVec4(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
 }
 
+bool play_checkbox(const char* label, bool* value) {
+    // Compact pause-menu row: 28px box, 12px gap, 24px label.
+    // Keep ImGui's checkbox interaction, disabled state and keyboard/gamepad nav.
+    ImGui::PushFont(ImGui::GetIO().FontDefault, 24.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 2));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(12, 0));
+    constexpr ImGuiCol hidden_colors[] = {
+        ImGuiCol_Text, ImGuiCol_FrameBg, ImGuiCol_FrameBgHovered,
+        ImGuiCol_FrameBgActive, ImGuiCol_CheckMark, ImGuiCol_Border,
+        ImGuiCol_BorderShadow, ImGuiCol_CheckboxSelectedBg,
+    };
+    for (const auto color : hidden_colors)
+        ImGui::PushStyleColor(color, ImVec4(0, 0, 0, 0));
+    const bool changed = ImGui::Checkbox(label, value);
+    ImGui::PopStyleColor(8);
+    ImGui::PopStyleVar(2);
+
+    const ImVec2 origin = ImGui::GetItemRectMin();
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    const ImVec2 box = origin;
+    draw->AddRectFilled(box, ImVec2(box.x + 28, box.y + 28),
+                        ImGui::GetColorU32(play_color(38, 38, 43)));
+    draw->AddRect(ImVec2(box.x + 0.5f, box.y + 0.5f),
+                  ImVec2(box.x + 27.5f, box.y + 27.5f),
+                  ImGui::GetColorU32(ImGui::IsItemHovered()
+                      ? play_color(250, 204, 45) : play_color(75, 75, 85)));
+    if (*value) {
+        // Exact check-bold outline exported from Q28ru/GrNOx (14-unit viewBox).
+        // Scale the source path into the design's centered 20px icon.
+        const auto point = [box](float x, float y) {
+            return ImVec2(box.x + 4 + x * 20 / 14, box.y + 4 + y * 20 / 14);
+        };
+        ImVec2 pen(5.6875f, 10.71875f);
+        const auto line = [&](float x, float y) {
+            pen.x += x; pen.y += y;
+            draw->PathLineTo(point(pen.x, pen.y));
+        };
+        const auto curve = [&](float cx, float cy, float x, float y) {
+            draw->PathBezierQuadraticCurveTo(point(pen.x + cx, pen.y + cy),
+                                             point(pen.x + x, pen.y + y));
+            pen.x += x; pen.y += y;
+        };
+        draw->PathLineTo(point(pen.x, pen.y));
+        curve(-0.27344f, 0, -0.4375f, -0.21875f);
+        line(-3.0625f, -3.0625f);
+        curve(-0.21875f, -0.16406f, -0.21875f, -0.4375f);
+        curve(0, -0.27344f, 0.19141f, -0.46484f);
+        curve(0.19141f, -0.19141f, 0.46484f, -0.19141f);
+        curve(0.27344f, 0, 0.49219f, 0.21875f);
+        line(2.57031f, 2.57031f);
+        line(5.6875f, -5.6875f);
+        curve(0.16406f, -0.16406f, 0.4375f, -0.16406f);
+        curve(0.27344f, 0, 0.46484f, 0.19141f);
+        curve(0.19141f, 0.19141f, 0.19141f, 0.46484f);
+        curve(0, 0.27344f, -0.16406f, 0.49219f);
+        line(-6.125f, 6.07031f);
+        curve(-0.21875f, 0.21875f, -0.49219f, 0.21875f);
+        draw->PathFillConcave(ImGui::GetColorU32(play_color(250, 204, 45)));
+    }
+    draw->AddText(ImVec2(origin.x + 40, origin.y + 2),
+                  ImGui::GetColorU32(play_color(214, 214, 220)), label);
+    ImGui::PopFont();
+    return changed;
+}
+
 ImFont* load_play_font(ImGuiIO& io, const char* filename, float size) {
     const char* base = SDL_GetBasePath();
     if (!base) return nullptr;
@@ -45,6 +110,114 @@ ImFont* load_play_font(ImGuiIO& io, const char* filename, float size) {
     std::memcpy(owned, data, length);
     SDL_free(data);
     return io.Fonts->AddFontFromMemoryTTF(owned, static_cast<int>(length), size);
+}
+
+struct VolumeEdit {
+    bool mute_changed;
+    bool gain_changed;
+};
+
+VolumeEdit play_volume(const char* label, float& gain, bool& muted,
+                       ImFont* value_font, ImFont* label_font) {
+    // Updated I5GINs: full-width transparent row, inline Inter label, 12px gaps.
+    const float width = ImGui::GetContentRegionAvail().x;
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    const auto point = [origin](float x, float y) {
+        return ImVec2(origin.x + x, origin.y + y);
+    };
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    const ImU32 background = ImGui::GetColorU32(play_color(38, 38, 43));
+    const ImU32 border = ImGui::GetColorU32(play_color(75, 75, 85));
+    const ImU32 accent = ImGui::GetColorU32(play_color(250, 204, 45));
+
+    ImGui::PushFont(label_font ? label_font : ImGui::GetIO().FontDefault, 16);
+    // Use one label column so tracks line up across the three audio buses.
+    const float label_width = std::max({ImGui::CalcTextSize("Música").x,
+        ImGui::CalcTextSize("Efectos").x, ImGui::CalcTextSize("Voces").x});
+    draw->AddText(point(16, 16), ImGui::GetColorU32(play_color(255, 255, 255)), label);
+    ImGui::PopFont();
+    const float icon_start = 16 + label_width + 12;
+
+    ImGui::BeginGroup();
+    ImGui::SetCursorScreenPos(point(icon_start - 4, 0));
+    const bool mute_changed = ImGui::InvisibleButton(
+        "##mute", ImVec2(32, 48), ImGuiButtonFlags_EnableNav);
+    if (mute_changed) muted = !muted;
+    if (ImGui::IsItemHovered() || ImGui::IsItemFocused())
+        ImGui::SetTooltip(muted ? "Activar sonido" : "Silenciar");
+
+    // Lucide volume-2 outline, in its original 24px coordinate system.
+    const auto icon = [&](float x, float y) { return point(icon_start + x, 12 + y); };
+    const ImU32 ink = ImGui::GetColorU32(muted
+        ? play_color(165, 165, 174) : play_color(214, 214, 220));
+    draw->PathLineTo(icon(11, 4.702f));
+    draw->PathBezierQuadraticCurveTo(icon(11, 3.705f), icon(9.797f, 4.204f));
+    draw->PathLineTo(icon(6.413f, 7.587f));
+    draw->PathBezierQuadraticCurveTo(icon(6, 8), icon(5.416f, 8));
+    draw->PathLineTo(icon(3, 8));
+    draw->PathBezierQuadraticCurveTo(icon(2, 8), icon(2, 9));
+    draw->PathLineTo(icon(2, 15));
+    draw->PathBezierQuadraticCurveTo(icon(2, 16), icon(3, 16));
+    draw->PathLineTo(icon(5.416f, 16));
+    draw->PathBezierQuadraticCurveTo(icon(6, 16), icon(6.413f, 16.413f));
+    draw->PathLineTo(icon(9.797f, 19.797f));
+    draw->PathBezierQuadraticCurveTo(icon(11, 20.295f), icon(11, 19.298f));
+    draw->PathStroke(ink, 2.0f, ImDrawFlags_Closed);
+    if (muted) {
+        draw->AddLine(icon(16, 9), icon(22, 15), ink, 2);
+        draw->AddLine(icon(22, 9), icon(16, 15), ink, 2);
+    } else {
+        draw->PathArcTo(icon(12, 12), 5, -0.6435011f, 0.6435011f);
+        draw->PathStroke(ink, 2.0f);
+        draw->PathArcTo(icon(13, 12), 9, -0.7853982f, 0.7853982f);
+        draw->PathStroke(ink, 2.0f);
+        for (const ImVec2 end : {icon(16, 9), icon(16, 15),
+                                 icon(19.364f, 5.636f), icon(19.364f, 18.364f)})
+            draw->AddCircleFilled(end, 1, ink);
+    }
+
+    const float track_start = icon_start + 24 + 12;
+    // Reserve four characters for the existing 0–200% gain range.
+    ImGui::PushFont(value_font ? value_font : ImGui::GetIO().FontDefault, 16);
+    const float value_width = ImGui::CalcTextSize("200%").x;
+    ImGui::PopFont();
+    const float value_start = width - 16 - value_width;
+    const float track_end = std::max(track_start + 1, value_start - 12);
+    // ImGui reserves 2px padding + half the 14px grab at either end.
+    // Compensate so the hit positions agree with the visible track endpoints.
+    ImGui::SetCursorScreenPos(point(track_start - 9, 0));
+    ImGui::SetNextItemWidth(track_end - track_start + 18);
+    ImGui::PushFont(ImGui::GetIO().FontDefault, 18);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 15));
+    ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, 14);
+    constexpr ImGuiCol hidden[] = {
+        ImGuiCol_FrameBg, ImGuiCol_FrameBgHovered, ImGuiCol_FrameBgActive,
+        ImGuiCol_SliderGrab, ImGuiCol_SliderGrabActive, ImGuiCol_Border,
+        ImGuiCol_BorderShadow, ImGuiCol_Text,
+    };
+    for (const auto color : hidden)
+        ImGui::PushStyleColor(color, ImVec4(0, 0, 0, 0));
+    const bool gain_changed = ImGui::SliderFloat(
+        "##gain", &gain, 0, 2, "%.2f", ImGuiSliderFlags_NoInput);
+    ImGui::PopStyleColor(8);
+    ImGui::PopStyleVar(2);
+    ImGui::PopFont();
+    const float thumb = track_start + (track_end - track_start)
+        * std::clamp(gain / 2, 0.0f, 1.0f);
+    draw->AddRectFilled(point(track_start, 22.5f), point(track_end, 25.5f), border);
+    draw->AddRectFilled(point(track_start, 22), point(thumb, 26), accent, 2);
+    draw->AddCircleFilled(point(thumb, 24), 9, background);
+    draw->AddCircleFilled(point(thumb, 24), 7, accent);
+    char percent[16];
+    std::snprintf(percent, sizeof(percent), "%.0f%%", gain * 100);
+    ImGui::PushFont(value_font ? value_font : ImGui::GetIO().FontDefault, 16);
+    draw->AddText(point(value_start, 16),
+                  ImGui::GetColorU32(play_color(240, 240, 245)), percent);
+    ImGui::PopFont();
+    ImGui::SetCursorScreenPos(origin);
+    ImGui::Dummy(ImVec2(width, 48));
+    ImGui::EndGroup();
+    return {mute_changed, gain_changed};
 }
 } // namespace
 
@@ -190,6 +363,8 @@ bool PlayerOverlay::init(VkContext& ctx, VkSwapchain& swap, SDL_Window* window) 
     io.FontDefault = load_play_font(io, "IBMPlexSans-Regular.ttf", 18.0f);
     if (!io.FontDefault) io.FontDefault = io.Fonts->AddFontDefault();
     title_font_ = load_play_font(io, "Khand-SemiBold.ttf", 32.0f);
+    volume_font_ = load_play_font(io, "IBMPlexMono-SemiBold.ttf", 16.0f);
+    volume_label_font_ = load_play_font(io, "Inter.ttf", 16.0f);
 
     // Graphite surfaces, square controls and the Play CE yellow accent.
     ImGui::StyleColorsDark();
@@ -474,7 +649,7 @@ void PlayerOverlay::render(VkContext&, const AcquiredFrame& frame,
             }
             ImGui::BeginDisabled(!any_present);
             bool v = any_on;
-            if (ImGui::Checkbox(g.label, &v)) {
+            if (play_checkbox(g.label, &v)) {
                 for (int i = 0; i < g.count; ++i)
                     session->set_subsystem_enabled(g.members[i], v);
                 cfg->subsystems      = session->subsystems_enabled_mask();
@@ -497,19 +672,15 @@ void PlayerOverlay::render(VkContext&, const AcquiredFrame& frame,
         };
         for (const auto& b : kBuses) {
             ImGui::PushID(b.label);
-            bool audible = !session->bus_muted(b.bus);
-            if (ImGui::Checkbox(b.label, &audible)) {
-                // La casilla dice «suena», no «silenciado»: el jugador razona
-                // en positivo y una casilla marcada que significa «apagado» se
-                // lee al revés la mitad de las veces.
-                session->set_bus_muted(b.bus, !audible);
-                cfg->bus_muted[static_cast<int>(b.bus)] = !audible;
+            bool muted = session->bus_muted(b.bus);
+            float g = session->bus_volume(b.bus);
+            const auto edit = play_volume(b.label, g, muted, volume_font_, volume_label_font_);
+            if (edit.mute_changed) {
+                session->set_bus_muted(b.bus, muted);
+                cfg->bus_muted[static_cast<int>(b.bus)] = muted;
                 cfg_dirty_ = true;
             }
-            ImGui::SameLine(150.0f);
-            float g = session->bus_volume(b.bus);
-            ImGui::SetNextItemWidth(-1);
-            if (ImGui::SliderFloat("##volume", &g, 0.0f, 2.0f, "%.2f")) {
+            if (edit.gain_changed) {
                 session->set_bus_volume(b.bus, g);
                 cfg->bus_gain[static_cast<int>(b.bus)] = g;
                 cfg_dirty_ = true;
@@ -521,7 +692,7 @@ void PlayerOverlay::render(VkContext&, const AcquiredFrame& frame,
         if (shaders_on) {
             ImGui::Spacing();
             bool sh = *shaders_on;
-            if (ImGui::Checkbox("Shaders de presentación", &sh)) {
+            if (play_checkbox("Shaders de presentación", &sh)) {
                 *shaders_on     = sh;
                 cfg->shaders_on = sh;
                 cfg_dirty_      = true;
