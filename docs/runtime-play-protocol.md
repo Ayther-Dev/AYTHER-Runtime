@@ -3,7 +3,7 @@
 Status: protocol v1 is stable. Last reviewed: 2026-09-03.
 
 This wire contract is stable independently of the product release channel.
-AYTHER Runtime itself remains a prerelease at `0.1.0-beta.2`; its package, ABI, save-state,
+AYTHER Runtime itself remains a prerelease at `0.1.0-beta.4`; its package, ABI, save-state,
 and general product surfaces are not covered by the protocol-v1 guarantee.
 
 Runtime writes one record per line to stdout. A protocol record starts with
@@ -45,10 +45,12 @@ explicit contract and only the documented current version is accepted.
 | 1 | `startup_failed` | General startup failure. |
 | 2 | `core_load_failed` | Core could not be loaded. |
 | 3 | `invalid_core` | File loaded but is not a compatible core. |
+| 4 | `pack_open_failed` | An explicitly requested pack could not be opened, validated, activated or reloaded. |
 | 64 | `cli_usage` | Invalid command-line contract. |
 | 65 | `protocol_incompatible` | Play and Runtime declared incompatible protocol versions. |
 | 69 | `service_unavailable` | Required service unavailable. |
 | 74 | `io_failure` | Non-recoverable I/O failure. |
+| 78 | `configuration_invalid` | Invalid input map or trust registry configuration. |
 
 ## Error taxonomy
 
@@ -59,7 +61,9 @@ be used for branching.
 | --- | --- | --- |
 | CLI | `cli.invalid_argument` | Fatal; fix invocation. |
 | Core | `core.load_failed`, `core.invalid` | Fatal for the requested launch. |
-| Pack | `pack.rejected` | Recoverable; continue original. |
+| Pack | `pack.rejected` | Recoverable only for a pack discovered by convention, without explicit `--pack`. |
+| Pack | `pack.open_failed` | Fatal; requested pack unavailable, incompatible or rejected by Engine trust policy. |
+| Pack | `pack.trust_registry_invalid` | Fatal; fix the missing, unreadable or malformed registry. |
 | Pack | `pack.no_active_subsystems` | Warning; continue original. |
 | State | `state.restore_failed` | Recoverable; start from the beginning. |
 | State | `state.save_failed` | Recoverable for the session; save was not published. |

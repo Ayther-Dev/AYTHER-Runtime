@@ -19,7 +19,7 @@ function(expect_rejected label expected)
             "${label}: expected rejection matching '${expected}':\n${_message}")
     endif()
     foreach(field IN ITEMS "Found package=" "Required AYTHER Engine package:"
-                           "Use the locked v0.1.0-rc.6 archive")
+                           "Use the locked v0.1.0-rc.8 archive")
         if(NOT _message MATCHES "${field}")
             message(FATAL_ERROR "${label}: diagnostic omitted '${field}'")
         endif()

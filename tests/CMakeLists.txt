@@ -9,6 +9,21 @@
 # encontró runtime/CMakeLists.txt— (E8.1); nada de acá incluye `engine/src`.
 # ---------------------------------------------------------------------------
 find_program(AYTHER_PWSH_EXECUTABLE NAMES pwsh)
+add_library(trust_session_core SHARED trust_session_core.cpp)
+add_executable(capture_acceptance_screens EXCLUDE_FROM_ALL capture_acceptance_screens.cpp)
+target_link_libraries(capture_acceptance_screens PRIVATE Ayther::engine)
+set_target_properties(capture_acceptance_screens PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+add_executable(trust_registry_tests trust_registry_test.cpp ../src/trust_registry.cpp)
+target_include_directories(trust_registry_tests PRIVATE ../src)
+target_link_libraries(trust_registry_tests PRIVATE Ayther::engine tomlplusplus::tomlplusplus)
+set_target_properties(trust_registry_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+add_test(NAME trust_registry COMMAND trust_registry_tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/trust $<TARGET_FILE:trust_session_core> ${CMAKE_CURRENT_BINARY_DIR}/trust-session)
+add_test(NAME trust_registry_cli COMMAND ${CMAKE_COMMAND}
+    -DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime> -DCORE=$<TARGET_FILE:trust_session_core>
+    -DFIXTURES=${CMAKE_CURRENT_SOURCE_DIR}/trust -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/trust-cli
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/trust_registry_cli_test.cmake)
+set_tests_properties(trust_registry_cli PROPERTIES ENVIRONMENT "SDL_VIDEO_DRIVER=dummy;SDL_AUDIO_DRIVER=dummy")
 if(AYTHER_PWSH_EXECUTABLE)
     add_test(
         NAME ayther_engine_lock

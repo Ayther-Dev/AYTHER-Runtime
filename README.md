@@ -8,7 +8,7 @@ the original and HD-composed frame paths through Vulkan, and owns the in-game
 presentation and controls.
 
 > [!WARNING]
-> **Beta:** product version `0.1.0-beta.2` is an internal evaluation release.
+> **Beta:** product version `0.1.0-beta.4` is an internal evaluation release.
 > APIs, command-line options, package boundaries, configuration formats, and
 > saved-state compatibility may change without notice. The Runtime–Play process
 > protocol v1 is stable, but that narrow wire guarantee does not make the
@@ -44,6 +44,7 @@ zero-copy path between the engine frame view and the renderer.
 
 - Runs a Libretro session from explicit core and ROM paths.
 - Applies optional AYTHER packs and IPS/BPS patches in memory.
+- Opens signed packs with an explicit [trust registry](docs/trust-registry.md).
 - Presents aspect-correct Vulkan output with selectable output profiles.
 - Supports HD/original switching, rewind, fast-forward, subsystem controls,
   audio-bus controls, pack hot reload, diagnostics, and synchronized captures.
@@ -78,7 +79,7 @@ or cloud synchronization. Those responsibilities belong to AYTHER Play.
 ### Prerequisites
 
 - CMake 3.21 or newer and a C++20 compiler. On Windows, the published
-  `v0.1.0-rc.6` archive supports either Microsoft `cl` or LLVM `clang-cl` as
+  `v0.1.0-rc.8` archive supports either Microsoft `cl` or LLVM `clang-cl` as
   the compiler frontend, but both must use the MSVC ABI, STL and linker from
   toolset v145 14.51 or newer (Visual Studio 2026). The archive was produced
   with `clang-cl` 20.1.8 over that toolset. MinGW/GNU is not compatible with
@@ -106,7 +107,7 @@ $enginePrefix = & ./tools/bootstrap_ayther_engine.ps1
 Pass `-Variant engine-vpx` only when VP9 decoding is required. The downloader
 never overwrites an existing archive or prefix. It validates the locked and
 published checksums, verifies SLSA provenance against Engine's release workflow
-and exact `rc.6` tag, extracts the package below `.deps/`, and returns its
+and exact `rc.8` tag, extracts the package below `.deps/`, and returns its
 absolute CMake prefix.
 
 ### Configure, build, and test
@@ -131,7 +132,7 @@ targets; Runtime does not duplicate their `find_package` calls.
 On Windows, configuration detects the compiler frontend and the underlying
 Visual C++ toolset separately. It then compiles and links a small executable
 against `Ayther::engine`; an unsupported frontend, a toolset older than 14.51,
-or an ABI/link failure stops configuration with the detected values, the rc.6
+or an ABI/link failure stops configuration with the detected values, the rc.8
 requirement, and remediation guidance.
 
 Runtime resolves stb directly through `find_package(Stb)` and links its local
@@ -167,7 +168,7 @@ any working directory in an independent Runtime clone:
   -ToolchainFile "$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 
 & ./tools/runtime_oot_smoke.ps1 `
-  -EngineArchive C:/downloads/ayther-engine-v0.1.0-rc.6-windows-x86_64.zip `
+  -EngineArchive C:/downloads/ayther-engine-v0.1.0-rc.8-windows-x86_64.zip `
   -ToolchainFile "$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 ```
 
