@@ -2,7 +2,7 @@
 # probe_core — launcher-facing core metadata and failure contract.
 #
 # The positive fixture is built in this repository and exposes only the two
-# Libretro symbols consumed by Engine rc.6's CoreProbe. The negative library is
+# Libretro symbols consumed by Engine's CoreProbe (rc.6 onward). The negative library is
 # loadable but deliberately exports neither symbol. No downloaded core or
 # external lock participates in this test.
 # ---------------------------------------------------------------------------

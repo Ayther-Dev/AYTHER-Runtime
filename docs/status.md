@@ -30,7 +30,7 @@ assembly, typed pack/watcher APIs, bounded game telemetry, diagnostic decisions,
 and the real core-probe process contract. The
 standalone smoke bootstraps the pinned, attested Engine release and proves its
 CMake configuration and public-header contract without an Engine or monorepo
-checkout. The pinned `v0.1.0-rc.6` package configures successfully and Runtime
+checkout. The pinned `v0.1.0-rc.8` package configures successfully and Runtime
 sources compile and link against its installed public surface.
 
 A clean vcpkg manifest installation resolves the complete native dependency
@@ -48,6 +48,15 @@ toolset. PowerShell 7.5.2 enabled the complete test inventory, and CTest passed
 local smoke log is retained at
 `build-mad001-d924f4b/mad-001-smoke.log` (995,642 bytes; SHA-256
 `014338932bb1f8c1cea012598f522d5adb538348286fd307f5302d77950a7ab0`).
+
+On 2026-09-12, the Engine lock moved to `v0.1.0-rc.8`. From the beta.3
+checkout, the bootstrap downloaded and verified both Windows x86-64 archives
+(`engine` and `engine-vpx`) against the locked and published SHA-256 values
+and the release workflow's SLSA provenance. The `windows-ci` preset (Visual
+Studio 2026, MSVC 19.51.36256.0, toolset v145 14.51.36231) configured against
+the `engine-vpx` prefix with the toolchain, package and link contracts passing,
+built the RelWithDebInfo configuration, and CTest passed 50/50 tests, including
+the CI workflow, package and toolchain contract tests updated to rc.8.
 
 These checks do not prove broad GPU, driver, operating-system, core, or game
 compatibility.

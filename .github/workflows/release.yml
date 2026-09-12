@@ -35,7 +35,7 @@ jobs:
           $enginePrefix = & ./tools/bootstrap_ayther_engine.ps1 `
               -Platform $env:ENGINE_PLATFORM `
               -Architecture x86_64 `
-              -Variant engine `
+              -Variant engine-vpx `
               -DestinationDirectory .deps/ayther-engine
           "AYTHER_ENGINE_PREFIX=$([IO.Path]::GetFullPath([string]$enginePrefix))" |
               Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8

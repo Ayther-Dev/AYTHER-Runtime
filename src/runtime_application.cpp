@@ -24,6 +24,7 @@
 #include "runtime_application.h"
 #include "status_emitter.h"
 #include "runtime_options.h"
+#include "trust_registry.h"
 #include <ayther/ayther_session.h>    // the motor facade (R2.3) — replaces direct host/audio
 #include <ayther/engine/capabilities.hpp>
 #include <ayther/engine/pack.hpp>
@@ -250,6 +251,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
             "         [--core-option key=value]... [--no-shaders|--shaders]\n"
             "         [--manifest <launch.toml>] [--saves-dir <dir>]\n"
             "         [--input-map <controls.toml>]\n"
+            "         [--trust-registry <file.toml>]\n"
             "         [--rom-crc32 <hex>] [--load-state <estado.bin>]\n"
             "         [--play-protocol-version <N>]\n"
             "         [--frames N] [--capture-at N[,M...]] [--crash-test]\n"
@@ -257,6 +259,35 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
             "       ayther_runtime --probe-core <libretro.dll>\n"
             "         Sondea el core y emite un evento probe. Sin ROM.\n");
         return ayther::runtime::runtime_cli_error_exit_code;
+    }
+
+    const auto trust_registry = ayther::runtime::resolve_trust_registry(
+        options.trust_registry_path);
+    if (!trust_registry) {
+        std::fprintf(stderr, "[pack] %s\n", trust_registry.diagnostic.c_str());
+        emit_status(ayther::runtime::WarningStatus{
+            ayther::runtime::RuntimeErrorCode::trust_registry_invalid,
+            trust_registry.diagnostic});
+        return ayther::runtime::exit_code(
+            ayther::runtime::RuntimeExitCode::configuration_invalid);
+    }
+    // Trusted inspection delegates signature, time, revocation, game scope and
+    // integrity verification to Engine. Never turn an explicit failed pack into
+    // a successful original-ROM launch. This also catches missing files before SDL.
+    if (!pack_path_arg.empty()) {
+        const auto inspected = ayther::engine::inspect_pack(
+            pack_path_arg, trust_registry.path);
+        if (!inspected) {
+            const auto diagnostic = "cannot open pack '" + pack_path_arg +
+                                    "': " + inspected.error.message +
+                (trust_registry.path.empty() ? " (Engine authoring policy)"
+                    : " (Engine trust registry: '" + trust_registry.path + "')");
+            std::fprintf(stderr, "[pack] %s\n", diagnostic.c_str());
+            emit_status(ayther::runtime::WarningStatus{
+                ayther::runtime::RuntimeErrorCode::pack_open_failed, diagnostic});
+            return ayther::runtime::exit_code(
+                ayther::runtime::RuntimeExitCode::pack_open_failed);
+        }
     }
 
     ayther::InputMap input_map = ayther::InputMap::defaults();
@@ -410,10 +441,8 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
 
     // #295: validar el pack ANTES de armar la sesión.
     //
-    // Con errores se arranca SIN pack en vez de abortar: el juego original
-    // tiene que correr igual. Un pack de otro juego no puede dejar al usuario
-    // sin poder jugar — y decirlo por qué es la mitad del arreglo, porque el
-    // que descarga un pack equivocado no tiene forma de saberlo mirando.
+    // Explicit requests are mandatory; only convention-discovered packs may
+    // fall back to original mode after a diagnostic.
     //
     // Las advertencias se imprimen y se sigue: son degradación opcional (un
     // subsistema que este build no conoce, un core distinto del que lo horneó).
@@ -443,8 +472,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
             }
             if (validation->has_errors()) {
                 std::fprintf(stderr,
-                    "[pack] el pack NO se carga por lo de arriba — el juego "
-                    "corre igual, en original\n");
+                    "[pack] el pack NO se carga por lo de arriba\n");
                 pack_path.clear();
                 pack_rejected = true;
             }
@@ -452,6 +480,13 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     }
 
     if (pack_rejected) {
+        if (!pack_path_arg.empty()) {
+            emit_status(ayther::runtime::WarningStatus{
+                ayther::runtime::RuntimeErrorCode::pack_open_failed,
+                "el pack solicitado fue rechazado por validacion"});
+            return ayther::runtime::exit_code(
+                ayther::runtime::RuntimeExitCode::pack_open_failed);
+        }
         emit_status(ayther::runtime::WarningStatus{
             ayther::runtime::RuntimeErrorCode::pack_rejected,
             "el pack fue rechazado; la sesion continua en modo original"});
@@ -461,6 +496,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     scfg.core_path    = core_path_str;
     scfg.rom_path     = rom_path_str;
     scfg.pack_path    = pack_path;     // explicit → watcher shares this exact path
+    scfg.trust_registry = trust_registry.path; // Engine retains it for reload_pack().
     scfg.enable_audio = true;
     // Si la validación descartó el pack, NO buscar otro por convención. Sin
     // esto, rechazar un pack incompatible caía en el `<core>.ay` de al lado y
@@ -481,11 +517,18 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
         emit_status(ayther::runtime::WarningStatus{
             ayther::runtime::RuntimeErrorCode::core_load_failed,
             sess_r.error.message});
-        SDL_DestroyWindow(window);
-        SDL_Quit();
         return 1;
     }
     ayther::runtime::SessionController sess{std::move(*sess_r)};
+    // Engine rc.6 create() may succeed even when its internal set_pack fails.
+    // Check activation before emitting ready or advancing any ROM frame.
+    if (!pack_path_arg.empty() && !sess->has_pack()) {
+        emit_status(ayther::runtime::WarningStatus{
+            ayther::runtime::RuntimeErrorCode::pack_open_failed,
+            "Engine no activo el pack solicitado; la sesion se cancela"});
+        return ayther::runtime::exit_code(
+            ayther::runtime::RuntimeExitCode::pack_open_failed);
+    }
     sess->enable_rewind(true, 10);   // R6: 10 s rewind window (Backspace to rewind)
 
     // #293: el perfil pedido. Sin `--profile`, el pack ya arrancó en el suyo
@@ -800,6 +843,8 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     // while paused, so the previous frame's pointers remain valid).
     static const ayther::FrameView kEmptyFrame{};
     const ayther::FrameView* last_fv = nullptr;
+    std::uint64_t video_decoded_frames = 0;
+    std::uint64_t last_video_sequence = 0;
 
     // #604 - reanudar, si Play dijo desde donde.
     //
@@ -978,7 +1023,16 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
             // The session re-opens the pack from disk and rewires the script +
             // substitutors (and reloads scripts/init.lua). The frontend only had
             // to evict its GPU caches above.
-            if (auto rr = sess->reload_pack(); rr) {
+            const auto rr = sess.reload_pack(pack_path);
+            if (!pack_path_arg.empty() && (!rr || !sess->has_pack())) {
+                emit_status(ayther::runtime::WarningStatus{
+                    ayther::runtime::RuntimeErrorCode::pack_open_failed,
+                    rr ? "el pack solicitado desaparecio durante la recarga"
+                       : rr.error.message});
+                return ayther::runtime::exit_code(
+                    ayther::runtime::RuntimeExitCode::pack_open_failed);
+            }
+            if (rr) {
                 if (sess->has_pack()) {
                     // #140: el reload re-abre el pack (tier default = el más
                     // alto) → re-activar el tier del canvas vigente.
@@ -1054,6 +1108,10 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
                          "[main] --frames %" PRIu64 " reached; exiting cleanly.\n",
                          frames_limit);
             running = false;   // the authoritative exit status is emitted post-loop
+        }
+        if (fv.video_y != nullptr && fv.video_seq != last_video_sequence) {
+            ++video_decoded_frames;
+            last_video_sequence = fv.video_seq;
         }
 
         // ----------------------------------------------------------------
@@ -1397,6 +1455,9 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     // -----------------------------------------------------------------------
     // Shutdown
     // -----------------------------------------------------------------------
+
+    std::fprintf(stdout, "[main] Playback completed: has_pack=%d video_decoded_frames=%" PRIu64 "\n",
+                 static_cast<int>(sess->has_pack()), video_decoded_frames);
 
     // ---- Cloud save: serialize state before teardown (M7) -------------------
     // Saves the full emulator savestate to the platform data directory so the
