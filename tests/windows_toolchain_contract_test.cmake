@@ -26,7 +26,7 @@ function(expect_rejected label expected_pattern)
             "Detected compiler frontend:"
             "Detected MSVC toolset:"
             "Minimum required toolset: MSVC v145 14.51"
-            "Engine artifact: AYTHER Engine v0.1.0-rc.6"
+            "Engine artifact: AYTHER Engine v0.1.0-rc.8"
             "Solution:")
         if(NOT _message MATCHES "${_required_pattern}")
             message(FATAL_ERROR
@@ -37,7 +37,7 @@ function(expect_rejected label expected_pattern)
 endfunction()
 
 set(_common
-    ENGINE_RELEASE "v0.1.0-rc.6"
+    ENGINE_RELEASE "v0.1.0-rc.8"
     MIN_TOOLSET_VERSION "14.51"
 )
 

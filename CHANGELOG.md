@@ -15,6 +15,17 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+### Changed
+
+- The Engine lock moves from `v0.1.0-rc.6` to `v0.1.0-rc.8`: plane sets are
+  tried by complexity, so a larger multi-tile element keeps its replacement
+  when the one-tile elements it contains receive an asset, and a 1x1 plane
+  sub under a glyph no longer claims the cell of another plane (rc.7). The
+  lock carries the published rc.8 checksums and SLSA provenance; CI, the
+  contract tests and the documentation follow the lock. The rc.6 reload
+  path workaround is unchanged. Package version stays `0.1.0`, so the
+  supported range `>=0.1.0,<0.2.0` is unaffected.
+
 ## [0.1.0-beta.3] - 2026-09-09
 
 ### Added

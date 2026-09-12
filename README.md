@@ -79,7 +79,7 @@ or cloud synchronization. Those responsibilities belong to AYTHER Play.
 ### Prerequisites
 
 - CMake 3.21 or newer and a C++20 compiler. On Windows, the published
-  `v0.1.0-rc.6` archive supports either Microsoft `cl` or LLVM `clang-cl` as
+  `v0.1.0-rc.8` archive supports either Microsoft `cl` or LLVM `clang-cl` as
   the compiler frontend, but both must use the MSVC ABI, STL and linker from
   toolset v145 14.51 or newer (Visual Studio 2026). The archive was produced
   with `clang-cl` 20.1.8 over that toolset. MinGW/GNU is not compatible with
@@ -107,7 +107,7 @@ $enginePrefix = & ./tools/bootstrap_ayther_engine.ps1
 Pass `-Variant engine-vpx` only when VP9 decoding is required. The downloader
 never overwrites an existing archive or prefix. It validates the locked and
 published checksums, verifies SLSA provenance against Engine's release workflow
-and exact `rc.6` tag, extracts the package below `.deps/`, and returns its
+and exact `rc.8` tag, extracts the package below `.deps/`, and returns its
 absolute CMake prefix.
 
 ### Configure, build, and test
@@ -132,7 +132,7 @@ targets; Runtime does not duplicate their `find_package` calls.
 On Windows, configuration detects the compiler frontend and the underlying
 Visual C++ toolset separately. It then compiles and links a small executable
 against `Ayther::engine`; an unsupported frontend, a toolset older than 14.51,
-or an ABI/link failure stops configuration with the detected values, the rc.6
+or an ABI/link failure stops configuration with the detected values, the rc.8
 requirement, and remediation guidance.
 
 Runtime resolves stb directly through `find_package(Stb)` and links its local
@@ -168,7 +168,7 @@ any working directory in an independent Runtime clone:
   -ToolchainFile "$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 
 & ./tools/runtime_oot_smoke.ps1 `
-  -EngineArchive C:/downloads/ayther-engine-v0.1.0-rc.6-windows-x86_64.zip `
+  -EngineArchive C:/downloads/ayther-engine-v0.1.0-rc.8-windows-x86_64.zip `
   -ToolchainFile "$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 ```
 
