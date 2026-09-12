@@ -215,6 +215,13 @@ int main() {
 
     check(ayther::runtime::runtime_cli_error_exit_code == 64,
           "malformed CLI input has the stable documented exit code 64");
+    expect_error({"ayther_runtime", "--trust-registry"},
+                 RuntimeOptionErrorCode::missing_value, "--trust-registry", "registry needs a path");
+    expect_error({"ayther_runtime", "--trust-registry", ""},
+                 RuntimeOptionErrorCode::empty_value, "--trust-registry", "registry path cannot be empty");
+    const auto trusted = parse({"ayther_runtime", "--trust-registry", "trust files/keys.toml"});
+    check(trusted.options() && trusted.options()->trust_registry_path == "trust files/keys.toml",
+          "registry path with spaces is preserved");
 
     std::printf("\n%d passed, %d failed\n", passed, failed);
     return failed == 0 ? 0 : 1;

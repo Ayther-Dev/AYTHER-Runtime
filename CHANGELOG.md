@@ -8,12 +8,48 @@ once stable compatibility guarantees are defined.
 
 > [!WARNING]
 > AYTHER Runtime is in early development. The build reports product version
-> `0.1.0-beta.2`; this is an internal prerelease and is not supported for
+> `0.1.0-beta.4`; this is an internal prerelease and is not supported for
 > production use. The Runtime–Play process
 > protocol v1 is the exception: its documented wire fields, reason identifiers,
 > and exit codes are stable within v1.
 
 ## [Unreleased]
+
+## [0.1.0-beta.4] - 2026-09-12
+
+### Changed
+
+- The Engine lock moves from `v0.1.0-rc.6` to `v0.1.0-rc.8`: plane sets are
+  tried by complexity, so a larger multi-tile element keeps its replacement
+  when the one-tile elements it contains receive an asset, and a 1x1 plane
+  sub under a glyph no longer claims the cell of another plane (rc.7). The
+  lock carries the published rc.8 checksums and SLSA provenance; CI, the
+  contract tests and the documentation follow the lock. The rc.6 reload
+  path workaround is unchanged. Package version stays `0.1.0`, so the
+  supported range `>=0.1.0,<0.2.0` is unaffected.
+
+The beta.3 release and assets remain unchanged as historical reference.
+
+## [0.1.0-beta.3] - 2026-09-09
+
+### Added
+
+- `--trust-registry <file.toml>` with pre-session path resolution and clear
+  missing, unreadable and malformed configuration diagnostics.
+- Deterministic test-only signed pack fixtures, CLI trust failure tests, and
+  session reload/revocation coverage.
+- Windows playback acceptance script requiring verified inputs, `has_pack=1`,
+  600 frames, exit 0, and optional positive decoded VP9 frame count.
+
+### Fixed
+
+- Engine rc.6 receives the trust registry at creation and retains it for reloads.
+  Runtime supplies an owned path on reload to avoid rc.6's path-aliasing bug.
+- Explicit packs now fail with `pack.open_failed` and exit 4 instead of silently
+  succeeding in original-ROM mode. Invalid registries exit 78.
+- Windows release packages select the locked Engine VPX variant for VP9.
+
+The beta.2 release and assets remain unchanged as historical reference.
 
 ## [0.1.0-beta.2] - 2026-09-04
 

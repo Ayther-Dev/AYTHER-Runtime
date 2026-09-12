@@ -11,11 +11,11 @@
 #   cmake -S . -B build_rt -DCMAKE_PREFIX_PATH=<Engine bootstrap prefix>
 #   cmake --build build_rt
 # ---------------------------------------------------------------------------
-set(AYTHER_RUNTIME_VERSION "0.1.0-beta.2")
+set(AYTHER_RUNTIME_VERSION "0.1.0-beta.4")
 set(AYTHER_RUNTIME_PROJECT_VERSION "0.1.0")
 set(AYTHER_ENGINE_MIN_VERSION "0.1.0")
 set(AYTHER_ENGINE_MAX_VERSION_EXCLUSIVE "0.2.0")
-set(AYTHER_ENGINE_LOCKED_RELEASE "v0.1.0-rc.6")
+set(AYTHER_ENGINE_LOCKED_RELEASE "v0.1.0-rc.8")
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     cmake_minimum_required(VERSION 3.21)
@@ -46,7 +46,7 @@ configure_file(
 if(WIN32)
     include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/AytherWindowsToolchain.cmake")
     ayther_validate_windows_engine_toolchain(
-        ENGINE_RELEASE "v0.1.0-rc.6"
+        ENGINE_RELEASE "v0.1.0-rc.8"
         MIN_TOOLSET_VERSION "14.51"
     )
     enable_language(RC)
@@ -91,11 +91,11 @@ if(NOT IS_DIRECTORY "${Ayther_SHADER_DIR}")
         "${Ayther_SHADER_DIR}")
 endif()
 
-# The rc.6 Windows archive is built with clang-cl over the MSVC v145 14.51
+# The rc.8 Windows archive is built with clang-cl over the MSVC v145 14.51
 # ABI/STL. Prove compatibility with a real executable link against the package.
 if(WIN32)
     ayther_verify_windows_engine_link(
-        ENGINE_RELEASE "v0.1.0-rc.6"
+        ENGINE_RELEASE "v0.1.0-rc.8"
         MIN_TOOLSET_VERSION "14.51"
         TARGET Ayther::engine
     )
@@ -177,6 +177,7 @@ add_executable(ayther_runtime
     src/runtime_application.cpp # MAD-039: process composition and orchestration
     src/status_emitter.cpp     # MAD-007: typed line-delimited JSON events
     src/runtime_options.cpp     # MAD-006: typed, strict command-line parsing
+    src/trust_registry.cpp
     src/runtime_config.cpp      # MIG-020: Runtime-owned data/save/capture paths
     src/input_map.cpp           # Play --input-map TOML → validated SDL bindings
     src/game_input.cpp          # SDL keyboard/gamepad → RetroPad bitfield (M3)
@@ -334,6 +335,14 @@ install(TARGETS ayther_runtime
     RUNTIME DESTINATION bin COMPONENT Runtime
     LIBRARY DESTINATION bin COMPONENT Runtime
 )
+add_custom_command(TARGET ayther_runtime POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/fonts"
+        "$<TARGET_FILE_DIR:ayther_runtime>/fonts"
+    COMMENT "Staging Play CE typography and font licenses"
+    VERBATIM)
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/resources/fonts/"
+        DESTINATION bin/fonts COMPONENT Runtime)
 install(DIRECTORY "${Ayther_SHADER_DIR}/"
         DESTINATION bin/shaders COMPONENT Runtime)
 install(FILES ${AYTHER_RUNTIME_SHADER_FILES}

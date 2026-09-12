@@ -188,6 +188,20 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char* const argv
             if (auto error = read_string(argument, options.pack_path)) {
                 return RuntimeOptionsParseResult{std::move(*error)};
             }
+            if (options.pack_path.empty()) {
+                return RuntimeOptionsParseResult{make_error(
+                    RuntimeOptionErrorCode::empty_value, argument, {},
+                    static_cast<std::size_t>(index))};
+            }
+        } else if (argument == "--trust-registry") {
+            if (auto error = read_string(argument, options.trust_registry_path)) {
+                return RuntimeOptionsParseResult{std::move(*error)};
+            }
+            if (options.trust_registry_path.empty()) {
+                return RuntimeOptionsParseResult{make_error(
+                    RuntimeOptionErrorCode::empty_value, argument, {},
+                    static_cast<std::size_t>(index))};
+            }
         } else if (argument == "--patch") {
             if (auto error = read_string(argument, options.patch_path)) {
                 return RuntimeOptionsParseResult{std::move(*error)};
