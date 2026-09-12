@@ -8,12 +8,14 @@ once stable compatibility guarantees are defined.
 
 > [!WARNING]
 > AYTHER Runtime is in early development. The build reports product version
-> `0.1.0-beta.3`; this is an internal prerelease and is not supported for
+> `0.1.0-beta.4`; this is an internal prerelease and is not supported for
 > production use. The Runtime–Play process
 > protocol v1 is the exception: its documented wire fields, reason identifiers,
 > and exit codes are stable within v1.
 
 ## [Unreleased]
+
+## [0.1.0-beta.4] - 2026-09-12
 
 ### Changed
 
@@ -25,6 +27,8 @@ once stable compatibility guarantees are defined.
   contract tests and the documentation follow the lock. The rc.6 reload
   path workaround is unchanged. Package version stays `0.1.0`, so the
   supported range `>=0.1.0,<0.2.0` is unaffected.
+
+The beta.3 release and assets remain unchanged as historical reference.
 
 ## [0.1.0-beta.3] - 2026-09-09
 
