@@ -15,6 +15,22 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+### Changed
+
+- The Engine lock moves from `v0.1.0-rc.8` to `v0.1.0-rc.9`, which teaches the
+  runtime to read a Sequence's SEGMENTATION STEP from the pack. Until now an
+  `[[event]]` of `audio_events.toml` could only state its window, so the
+  playing runtime segmented by that: a Sequence whose HD is longer than its
+  musical phrase never re-anchored on its own period, and a phrase whose last
+  note rings past the loop point swallowed the pass that starts there. The new
+  `span` key is optional and its absence keeps the previous behaviour, so every
+  pack built before it plays exactly as it did; the correction reaches a pack
+  when its author re-exports it. The lock carries the published rc.9 checksums
+  and SLSA provenance, and CI, the contract tests and the documentation follow
+  the lock. Package version stays `0.1.0`, so the supported range
+  `>=0.1.0,<0.2.0` is unaffected, and the C ABI revision stays at 7 because the
+  new field reuses padding that was already in the struct.
+
 ## [0.1.0-beta.4] - 2026-09-12
 
 ### Changed

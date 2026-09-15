@@ -15,7 +15,7 @@ set(AYTHER_RUNTIME_VERSION "0.1.0-beta.4")
 set(AYTHER_RUNTIME_PROJECT_VERSION "0.1.0")
 set(AYTHER_ENGINE_MIN_VERSION "0.1.0")
 set(AYTHER_ENGINE_MAX_VERSION_EXCLUSIVE "0.2.0")
-set(AYTHER_ENGINE_LOCKED_RELEASE "v0.1.0-rc.8")
+set(AYTHER_ENGINE_LOCKED_RELEASE "v0.1.0-rc.9")
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     cmake_minimum_required(VERSION 3.21)
@@ -46,7 +46,7 @@ configure_file(
 if(WIN32)
     include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/AytherWindowsToolchain.cmake")
     ayther_validate_windows_engine_toolchain(
-        ENGINE_RELEASE "v0.1.0-rc.8"
+        ENGINE_RELEASE "v0.1.0-rc.9"
         MIN_TOOLSET_VERSION "14.51"
     )
     enable_language(RC)
@@ -91,11 +91,11 @@ if(NOT IS_DIRECTORY "${Ayther_SHADER_DIR}")
         "${Ayther_SHADER_DIR}")
 endif()
 
-# The rc.8 Windows archive is built with clang-cl over the MSVC v145 14.51
+# The rc.9 Windows archive is built with clang-cl over the MSVC v145 14.51
 # ABI/STL. Prove compatibility with a real executable link against the package.
 if(WIN32)
     ayther_verify_windows_engine_link(
-        ENGINE_RELEASE "v0.1.0-rc.8"
+        ENGINE_RELEASE "v0.1.0-rc.9"
         MIN_TOOLSET_VERSION "14.51"
         TARGET Ayther::engine
     )

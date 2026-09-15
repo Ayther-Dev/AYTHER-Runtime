@@ -1,7 +1,7 @@
 # Signed packs and trust registries
 
 Runtime beta.3 connects `--trust-registry <file.toml>` to Engine's
-`AytherSession::Config::trust_registry` (rc.6 onward; the lock now pins rc.8).
+`AytherSession::Config::trust_registry` (rc.6 onward; the lock now pins rc.9).
 Relative paths resolve against the launch working directory before SDL or session creation. Quote paths containing
 spaces. AYTHER Play must pass this option explicitly; `--manifest` remains
 session metadata and does not supply configuration implicitly.

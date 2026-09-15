@@ -32,7 +32,7 @@ function(_ayther_evaluate_engine_package_contract out_ok out_message)
         set(${out_ok} FALSE PARENT_SCOPE)
         set(${out_message}
             "${reason}\n${_found}\n${_requirement}\n"
-            "Use the locked v0.1.0-rc.8 archive for this platform, or rebuild "
+            "Use the locked v0.1.0-rc.9 archive for this platform, or rebuild "
             "both Engine and Runtime with one documented ABI."
             PARENT_SCOPE)
         return()
