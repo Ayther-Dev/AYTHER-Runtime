@@ -9,6 +9,13 @@
 # encontró runtime/CMakeLists.txt— (E8.1); nada de acá incluye `engine/src`.
 # ---------------------------------------------------------------------------
 find_program(AYTHER_PWSH_EXECUTABLE NAMES pwsh)
+add_executable(file_reservation_tests file_reservation_test.cpp)
+target_include_directories(file_reservation_tests PRIVATE ../src)
+add_test(NAME file_reservation COMMAND file_reservation_tests)
+add_test(NAME file_reservation_cli COMMAND ${CMAKE_COMMAND}
+    "-DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>"
+    "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/reservation-cli"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/file_reservation_cli_test.cmake)
 add_library(trust_session_core SHARED trust_session_core.cpp)
 add_executable(capture_acceptance_screens EXCLUDE_FROM_ALL capture_acceptance_screens.cpp)
 target_link_libraries(capture_acceptance_screens PRIVATE Ayther::engine)

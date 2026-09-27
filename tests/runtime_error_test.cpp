@@ -85,6 +85,10 @@ static_assert(!ayther::runtime::is_recoverable(
     ayther::runtime::RuntimeErrorCode::input_map_invalid));
 
 int main() { return 0; }
+static_assert(ayther::runtime::error_reason(
+    ayther::runtime::RuntimeErrorCode::reservation_failed) == "runtime.reservation_failed"sv);
+static_assert(!ayther::runtime::is_recoverable(
+    ayther::runtime::RuntimeErrorCode::reservation_failed));
 static_assert(ayther::runtime::exit_code(ayther::runtime::RuntimeExitCode::pack_open_failed) == 4);
 static_assert(ayther::runtime::error_reason(ayther::runtime::RuntimeErrorCode::pack_open_failed) == "pack.open_failed"sv);
 static_assert(!ayther::runtime::is_recoverable(ayther::runtime::RuntimeErrorCode::pack_open_failed));

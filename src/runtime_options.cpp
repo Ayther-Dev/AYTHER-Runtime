@@ -184,6 +184,17 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char* const argv
             if (auto error = read_string(argument, options.rom_path)) {
                 return RuntimeOptionsParseResult{std::move(*error)};
             }
+        } else if (argument == "--rom-revision" || argument == "--pack-revision") {
+            auto& revision = argument == "--rom-revision"
+                ? options.rom_revision : options.pack_revision;
+            if (auto error = read_string(argument, revision)) {
+                return RuntimeOptionsParseResult{std::move(*error)};
+            }
+            if (revision.empty()) {
+                return RuntimeOptionsParseResult{make_error(
+                    RuntimeOptionErrorCode::empty_value, argument, {},
+                    static_cast<std::size_t>(index))};
+            }
         } else if (argument == "--pack") {
             if (auto error = read_string(argument, options.pack_path)) {
                 return RuntimeOptionsParseResult{std::move(*error)};

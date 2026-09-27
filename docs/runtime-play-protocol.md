@@ -3,7 +3,7 @@
 Status: protocol v1 is stable. Last reviewed: 2026-09-03.
 
 This wire contract is stable independently of the product release channel.
-AYTHER Runtime itself remains a prerelease at `0.1.0-beta.5`; its package, ABI, save-state,
+AYTHER Runtime itself remains a prerelease at `0.1.0-beta.6`; its package, ABI, save-state,
 and general product surfaces are not covered by the protocol-v1 guarantee.
 
 Runtime writes one record per line to stdout. A protocol record starts with
@@ -23,6 +23,12 @@ meaning. Runtime emits machine-readable `reason` values separately from the
 optional, localizable human `message`.
 
 ## Negotiation
+
+### Reservas opcionales de archivos (beta.6)
+
+Play puede enviar --rom-revision y --pack-revision con los tokens de los archivos que mantiene reservados. En Windows, Runtime adquiere sus propias reservas, comprueba las revisiones y emite la línea adicional `AYTHER_RESERVATION 1` antes de continuar. Play puede liberar entonces sus handles. La confirmación no es un evento AYTHER_STATUS ni cambia el protocolo v1; los consumidores que no utilizan reservas la ignoran.
+
+Una reserva rechazada emite `runtime.reservation_failed`, devuelve 74 y no emite confirmación. Sin las opciones nuevas, se conserva el lanzamiento anterior y no se emite confirmación. En plataformas sin soporte se rechaza toda solicitud explícita. El formato y los criterios están en [el contrato de reservas](specs/runtime-reservations.md).
 
 Play should pass `--play-protocol-version N` before starting a session.
 
