@@ -61,6 +61,7 @@ enum class RuntimeErrorCode {
     capture_failed,
     protocol_incompatible,
     input_map_invalid,
+    reservation_failed,
 };
 
 [[nodiscard]] constexpr std::string_view
@@ -102,6 +103,8 @@ error_reason(const RuntimeErrorCode code) noexcept {
         return "protocol.incompatible";
     case RuntimeErrorCode::input_map_invalid:
         return "input.map_invalid";
+    case RuntimeErrorCode::reservation_failed:
+        return "runtime.reservation_failed";
     }
     return "runtime.unknown";
 }
@@ -132,6 +135,7 @@ error_domain(const RuntimeErrorCode code) noexcept {
     case RuntimeErrorCode::capture_failed:
         return ErrorDomain::persistence;
     case RuntimeErrorCode::protocol_incompatible:
+    case RuntimeErrorCode::reservation_failed:
         return ErrorDomain::protocol;
     case RuntimeErrorCode::input_map_invalid:
         return ErrorDomain::input;
