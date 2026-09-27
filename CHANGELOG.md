@@ -8,12 +8,20 @@ once stable compatibility guarantees are defined.
 
 > [!WARNING]
 > AYTHER Runtime is in early development. The build reports product version
-> `0.1.0-beta.5`; this is an internal prerelease and is not supported for
+> `0.1.0-beta.6`; this is an internal prerelease and is not supported for
 > production use. The Runtime–Play process
 > protocol v1 is the exception: its documented wire fields, reason identifiers,
 > and exit codes are stable within v1.
 
 ## [Unreleased]
+
+## [0.1.0-beta.6] - 2026-09-27
+
+### Compatibilidad
+
+- Reservas opcionales de ROM y pack para Play CE, con validación de revisiones y confirmación antes del arranque.
+- Pruebas de bloqueo, liberación, rechazo y conservación del lanzamiento sin reservas. Engine permanece en rc.9; sin cambios de audio.
+
 
 ## [0.1.0-beta.5] - 2026-09-15
 

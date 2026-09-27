@@ -1,3 +1,4 @@
+#include "file_reservation.h"
 #include <SDL3/SDL.h>
 #include <cctype>
 #include <cstddef>
@@ -253,6 +254,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
             "         [--input-map <controls.toml>]\n"
             "         [--trust-registry <file.toml>]\n"
             "         [--rom-crc32 <hex>] [--load-state <estado.bin>]\n"
+            "         [--rom-revision <token>] [--pack-revision <token>]\n"
             "         [--play-protocol-version <N>]\n"
             "         [--frames N] [--capture-at N[,M...]] [--crash-test]\n"
             "         [--hd-compose]  (retirado en #345: se acepta y avisa)\n"
@@ -261,6 +263,23 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
         return ayther::runtime::runtime_cli_error_exit_code;
     }
 
+    std::unique_ptr<ayther::runtime::FileReservation> rom_reservation;
+    std::unique_ptr<ayther::runtime::FileReservation> pack_reservation;
+    if (!options.rom_revision.empty() || !options.pack_revision.empty()) {
+        try {
+            rom_reservation = std::make_unique<ayther::runtime::FileReservation>(
+                rom_path_str, options.rom_revision);
+            pack_reservation = std::make_unique<ayther::runtime::FileReservation>(
+                pack_path_arg, options.pack_revision);
+        } catch (const std::exception& error) {
+            emit_status(ayther::runtime::WarningStatus{
+                ayther::runtime::RuntimeErrorCode::reservation_failed, error.what()});
+            return ayther::runtime::exit_code(
+                ayther::runtime::RuntimeExitCode::io_failure);
+        }
+        std::fprintf(stdout, "AYTHER_RESERVATION 1\n");
+        std::fflush(stdout);
+    }
     const auto trust_registry = ayther::runtime::resolve_trust_registry(
         options.trust_registry_path);
     if (!trust_registry) {

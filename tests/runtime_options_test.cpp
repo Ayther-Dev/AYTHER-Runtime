@@ -61,6 +61,18 @@ int main() {
 
     std::printf("== runtime_options_test (MAD-006) ==\n");
 
+    const auto revisions = parse({"ayther_runtime", "--rom-revision", "rom-token",
+                                  "--pack-revision", "pack-token"});
+    check(revisions.options() && revisions.options()->rom_revision == "rom-token" &&
+              revisions.options()->pack_revision == "pack-token",
+          "reservation tokens are preserved independently");
+    expect_error({"ayther_runtime", "--rom-revision"},
+                 RuntimeOptionErrorCode::missing_value, "--rom-revision",
+                 "a requested ROM reservation requires a token");
+    expect_error({"ayther_runtime", "--pack-revision", ""},
+                 RuntimeOptionErrorCode::empty_value, "--pack-revision",
+                 "an empty pack token cannot silently disable reservation");
+
     {
         const auto parsed = parse({
             "ayther_runtime",
