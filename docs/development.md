@@ -58,7 +58,7 @@ path.
 ## Pinned AYTHER Engine artifact
 
 [`dependencies/ayther-engine.lock.json`](../dependencies/ayther-engine.lock.json)
-pins AYTHER Engine `v0.1.0-rc.8` for Linux and Windows x86_64, with and without
+pins AYTHER Engine `v0.1.0-rc.9` for Linux and Windows x86_64, with and without
 VPX. URLs and SHA-256 values are pinned from the official GitHub release assets.
 
 Validate the complete lock without network access:
@@ -82,7 +82,7 @@ An existing archive can be checked without downloading it:
 ```powershell
 $enginePrefix = & ./tools/bootstrap_ayther_engine.ps1 `
   -Platform windows `
-  -ArchivePath C:/downloads/ayther-engine-v0.1.0-rc.8-windows-x86_64.zip
+  -ArchivePath C:/downloads/ayther-engine-v0.1.0-rc.9-windows-x86_64.zip
 ```
 
 The bootstrap fails if the filename, locked SHA-256, published release checksum,
@@ -108,7 +108,7 @@ by adding private engine source paths.
 
 ### Windows compiler and ABI contract
 
-The Windows `v0.1.0-rc.8` package has two independent compatibility axes:
+The Windows `v0.1.0-rc.9` package has two independent compatibility axes:
 
 - **Frontend:** Microsoft `cl` or LLVM `clang-cl` is accepted. Engine itself
   was built with `clang-cl` 20.1.8, but Runtime does not require that exact
@@ -121,7 +121,7 @@ During configure, `cmake/AytherWindowsToolchain.cmake` reports the detected
 frontend and toolset. After validating the minimum version, it performs a real
 `try_compile` executable link against `Ayther::engine`; merely compiling an
 Engine header is not considered sufficient. A failure names the detected
-toolset, the 14.51 minimum, Engine `v0.1.0-rc.8`, and the supported remedies.
+toolset, the 14.51 minimum, Engine `v0.1.0-rc.9`, and the supported remedies.
 
 For the reference setup, launch a Visual Studio 2026 Developer PowerShell or
 Developer Command Prompt with v145 14.51+ selected before configuring. To use
@@ -143,7 +143,7 @@ declared closure without accessing the network:
 `CMakePresets.json` provides the two RelWithDebInfo presets used by pull request
 CI: `windows-ci` selects Visual Studio 2026 with the v145 toolset, while
 `linux-ci` selects Ninja. They require CMake 3.25+, PowerShell 7, `VCPKG_ROOT`,
-and an Engine prefix produced from the locked `v0.1.0-rc.8` artifact:
+and an Engine prefix produced from the locked `v0.1.0-rc.9` artifact:
 
 ```powershell
 $env:AYTHER_ENGINE_PREFIX = & ./tools/bootstrap_ayther_engine.ps1 `
@@ -233,7 +233,7 @@ verification followed by extraction:
 
 ```powershell
 & ./tools/runtime_oot_smoke.ps1 `
-  -EngineArchive C:/downloads/ayther-engine-v0.1.0-rc.8-windows-x86_64.zip `
+  -EngineArchive C:/downloads/ayther-engine-v0.1.0-rc.9-windows-x86_64.zip `
   -ToolchainFile "$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 ```
 
