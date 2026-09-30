@@ -6,8 +6,11 @@ endif()
 
 file(READ "${RUNTIME_SOURCE_DIR}/CMakeLists.txt" cmake_text)
 file(READ "${RUNTIME_SOURCE_DIR}/tests/CMakeLists.txt" tests_cmake_text)
-string(APPEND cmake_text "\n${tests_cmake_text}")
+file(READ "${RUNTIME_SOURCE_DIR}/tests/audio_qa/CMakeLists.txt"
+    audio_qa_cmake_text)
+string(APPEND cmake_text "\n${tests_cmake_text}\n${audio_qa_cmake_text}")
 file(READ "${RUNTIME_SOURCE_DIR}/CMakePresets.json" presets_text)
+file(READ "${RUNTIME_SOURCE_DIR}/.clang-format" format_text)
 file(READ "${RUNTIME_SOURCE_DIR}/.clang-tidy" tidy_text)
 file(READ "${RUNTIME_SOURCE_DIR}/.github/workflows/ci.yml" ci_text)
 
@@ -17,6 +20,23 @@ foreach(token IN ITEMS
     string(FIND "${cmake_text}" "${token}" position)
     if(position EQUAL -1)
         message(FATAL_ERROR "strict warning contract omits '${token}'")
+    endif()
+endforeach()
+
+foreach(token IN ITEMS
+        "BasedOnStyle: LLVM" "IndentWidth: 4" "ColumnLimit: 100")
+    string(FIND "${format_text}" "${token}" position)
+    if(position EQUAL -1)
+        message(FATAL_ERROR "clang-format contract omits '${token}'")
+    endif()
+endforeach()
+
+foreach(token IN ITEMS
+        "set(CMAKE_CXX_CLANG_TIDY" "audio_qa_build_targets"
+        "run_clang_format_changed.sh" "Check modified C++ formatting")
+    string(FIND "${cmake_text}\n${ci_text}" "${token}" position)
+    if(position EQUAL -1)
+        message(FATAL_ERROR "audio QA quality contract omits '${token}'")
     endif()
 endforeach()
 

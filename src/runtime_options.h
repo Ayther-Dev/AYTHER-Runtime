@@ -12,8 +12,7 @@
 
 namespace ayther::runtime {
 
-inline constexpr int runtime_cli_error_exit_code =
-    exit_code(RuntimeExitCode::cli_usage);
+inline constexpr int runtime_cli_error_exit_code = exit_code(RuntimeExitCode::cli_usage);
 
 enum class RuntimeOptionErrorCode {
     missing_value,
@@ -61,23 +60,28 @@ struct RuntimeOptions {
     std::string manifest_path;
     bool hd_compose{};
     std::optional<std::uint32_t> play_protocol_version;
+    bool qa_capabilities{};
+    bool qa_session{};
+    std::string qa_control_channel;
+    std::string qa_data_channel;
+    std::string qa_run_id;
 
-    [[nodiscard]] static RuntimeOptionsParseResult parse(int argc, char* const argv[]);
+    [[nodiscard]] static RuntimeOptionsParseResult parse(int argc, char *const argv[]);
 };
 
 class RuntimeOptionsParseResult final {
-public:
+  public:
     explicit RuntimeOptionsParseResult(RuntimeOptions options);
     explicit RuntimeOptionsParseResult(RuntimeOptionError error);
 
-    [[nodiscard]] RuntimeOptions* options() noexcept;
-    [[nodiscard]] const RuntimeOptions* options() const noexcept;
-    [[nodiscard]] const RuntimeOptionError* error() const noexcept;
+    [[nodiscard]] RuntimeOptions *options() noexcept;
+    [[nodiscard]] const RuntimeOptions *options() const noexcept;
+    [[nodiscard]] const RuntimeOptionError *error() const noexcept;
 
-private:
+  private:
     std::variant<RuntimeOptions, RuntimeOptionError> result_;
 };
 
-[[nodiscard]] std::string describe(const RuntimeOptionError& error);
+[[nodiscard]] std::string describe(const RuntimeOptionError &error);
 
-}  // namespace ayther::runtime
+} // namespace ayther::runtime

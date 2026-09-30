@@ -26,6 +26,7 @@ jobs:
       - name: Check out Runtime
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha }}
 
@@ -90,6 +91,19 @@ jobs:
               Tee-Object -FilePath artifacts/configure.log
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) { exit $exitCode }
+
+      - name: Verify required CTest families
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & cmake `
+              "-DQA_BUILD_DIRECTORY=$($PWD.Path)/out/build/$env:CI_PRESET" `
+              "-DQA_CTEST_COMMAND=$((Get-Command ctest -ErrorAction Stop).Source)" `
+              -DQA_CONFIGURATION=RelWithDebInfo `
+              -DQA_REQUIRED_FAMILIES=audio_qa,unit,contract,integration,limits,protocol,fixture `
+              -P tools/check_ctest_families.cmake 2>&1 |
+              Tee-Object -FilePath artifacts/ctest-families.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build
         shell: pwsh
@@ -157,6 +171,7 @@ jobs:
       - name: Check out Runtime
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha }}
 
@@ -193,7 +208,14 @@ jobs:
         shell: pwsh
         run: |
           sudo apt-get update
-          sudo apt-get install --yes clang-tidy gcovr llvm
+          sudo apt-get install --yes clang-format clang-tidy gcovr llvm
+
+      - name: Check modified C++ formatting
+        if: ${{ matrix.preset == 'linux-quality' }}
+        shell: bash
+        env:
+          BASE_REVISION: ${{ github.event.pull_request.base.sha }}
+        run: bash tools/run_clang_format_changed.sh "${BASE_REVISION}" HEAD
 
       - name: Bootstrap locked Engine rc.10
         shell: pwsh
@@ -228,6 +250,18 @@ jobs:
               Tee-Object -FilePath artifacts/configure.log
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) { exit $exitCode }
+
+      - name: Verify required CTest families
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & cmake `
+              "-DQA_BUILD_DIRECTORY=$($PWD.Path)/out/build/$env:CI_PRESET" `
+              "-DQA_CTEST_COMMAND=$((Get-Command ctest -ErrorAction Stop).Source)" `
+              -DQA_REQUIRED_FAMILIES=audio_qa,unit,contract,integration,limits,protocol,fixture `
+              -P tools/check_ctest_families.cmake 2>&1 |
+              Tee-Object -FilePath artifacts/ctest-families.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build
         shell: pwsh

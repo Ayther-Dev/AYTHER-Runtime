@@ -779,6 +779,23 @@ endif()
 # neither of them.
 # ------------------------------------------------------------------
 add_library(synthetic_libretro_core SHARED synthetic_libretro_core.cpp)
+target_compile_definitions(synthetic_libretro_core PRIVATE
+    AYTHER_SYNTHETIC_CORE_BUILD)
+target_include_directories(synthetic_libretro_core PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_features(synthetic_libretro_core PRIVATE cxx_std_20)
+set_target_properties(synthetic_libretro_core PROPERTIES CXX_EXTENSIONS OFF)
+if(AYTHER_CLANG_TIDY_COMMAND)
+    set_target_properties(synthetic_libretro_core PROPERTIES
+        CXX_CLANG_TIDY "${AYTHER_CLANG_TIDY_COMMAND}")
+endif()
+if(MSVC)
+    target_compile_options(synthetic_libretro_core PRIVATE
+        /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(synthetic_libretro_core PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+endif()
 add_library(non_libretro_library SHARED non_libretro_library.cpp)
 set_target_properties(
     synthetic_libretro_core
@@ -795,3 +812,5 @@ add_test(
             "-DNON_CORE_DLL=$<TARGET_FILE:non_libretro_library>"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/probe_core_test.cmake
 )
+
+add_subdirectory(audio_qa)

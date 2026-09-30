@@ -1,0 +1,62 @@
+cmake_minimum_required(VERSION 3.25)
+
+if(NOT DEFINED FIXTURE_EXE OR NOT DEFINED OUTPUT_ROOT)
+    message(FATAL_ERROR "FIXTURE_EXE and OUTPUT_ROOT are required")
+endif()
+if(NOT MODE STREQUAL "block" AND NOT MODE STREQUAL "errors")
+    message(FATAL_ERROR "MODE must be block or errors")
+endif()
+
+# A fresh directory preserves previous runs and permits parallel CTest runs.
+string(RANDOM LENGTH 20 ALPHABET 0123456789abcdef run_id)
+set(run_dir "${OUTPUT_ROOT}/${MODE}-${run_id}")
+file(MAKE_DIRECTORY "${run_dir}")
+
+if(MODE STREQUAL "errors")
+    execute_process(COMMAND "${FIXTURE_EXE}"
+        RESULT_VARIABLE result ERROR_VARIABLE error TIMEOUT 5)
+    if(NOT result EQUAL 2 OR NOT error MATCHES "invalid_arguments")
+        message(FATAL_ERROR "Missing output argument was not rejected")
+    endif()
+    file(WRITE "${run_dir}/not-a-directory" "sentinel")
+    execute_process(COMMAND "${FIXTURE_EXE}" "${run_dir}/not-a-directory/block.pcm"
+        RESULT_VARIABLE result ERROR_VARIABLE error TIMEOUT 5)
+    if(NOT result EQUAL 1 OR NOT error MATCHES "pcm_write_failed")
+        message(FATAL_ERROR "An unwritable destination was not rejected")
+    endif()
+    file(READ "${run_dir}/not-a-directory" sentinel)
+    if(NOT sentinel STREQUAL "sentinel")
+        message(FATAL_ERROR "The failed write changed the existing file")
+    endif()
+    execute_process(COMMAND "${FIXTURE_EXE}" "${run_dir}/not-a-directory"
+        RESULT_VARIABLE result ERROR_VARIABLE error TIMEOUT 5)
+    file(READ "${run_dir}/not-a-directory" sentinel)
+    if(NOT result EQUAL 1 OR NOT error MATCHES "output_exists" OR NOT sentinel STREQUAL "sentinel")
+        message(FATAL_ERROR "An existing output was not preserved")
+    endif()
+    return()
+endif()
+
+# Golden bytes fixed independently from the C++ generator. Changes require a new fixture ID.
+set(expected_sha256 "5d764a90b6ae1b6606aa95bbd343c54fd1a7b3aa7f7f20e116afc53423081602")
+set(expected_metadata "schema_version = 1\nfixture_id = \"known-pcm-v1\"\nrole = \"controlled_input\"\nformat = \"s16le\"\nsample_rate = 44100\nchannels = 2\nchannel_order = \"left,right\"\nsample_begin = 0\nsample_count = 1024\n")
+foreach(run IN ITEMS first repeat)
+    set(pcm "${run_dir}/${run}.s16le.pcm")
+    execute_process(COMMAND "${FIXTURE_EXE}" "${pcm}"
+        RESULT_VARIABLE result OUTPUT_VARIABLE metadata ERROR_VARIABLE error TIMEOUT 5)
+    if(NOT result EQUAL 0 OR NOT EXISTS "${pcm}")
+        message(FATAL_ERROR "PCM generation failed: ${result}: ${error}")
+    endif()
+    string(REPLACE "\r\n" "\n" metadata "${metadata}")
+    if(NOT metadata STREQUAL expected_metadata)
+        message(FATAL_ERROR "Unexpected PCM identity or format: ${metadata}")
+    endif()
+    file(SIZE "${pcm}" size)
+    file(SHA256 "${pcm}" sha256)
+    if(NOT size EQUAL 4096 OR NOT sha256 STREQUAL expected_sha256)
+        message(FATAL_ERROR "PCM bytes differ from the fixed golden block: ${size}, ${sha256}")
+    endif()
+    file(WRITE "${run_dir}/${run}.toml"
+        "${metadata}byte_count = ${size}\nsha256 = \"${sha256}\"\nfile = \"${run}.s16le.pcm\"\n")
+endforeach()
+message(STATUS "Known PCM verified: ${run_dir}/first.toml")
