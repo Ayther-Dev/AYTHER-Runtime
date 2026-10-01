@@ -8,12 +8,28 @@ once stable compatibility guarantees are defined.
 
 > [!WARNING]
 > AYTHER Runtime is in early development. The build reports product version
-> `0.1.0-beta.6`; this is an internal prerelease and is not supported for
+> `0.1.0-beta.7`; this is an internal prerelease and is not supported for
 > production use. The Runtime–Play process
 > protocol v1 is the exception: its documented wire fields, reason identifiers,
 > and exit codes are stable within v1.
 
 ## [Unreleased]
+
+## [0.1.0-beta.7] - 2026-10-01
+
+### Changed
+
+- The Engine lock moves from `v0.1.0-rc.9` to `v0.1.0-rc.10`, which teaches the
+  pose matcher the RELATIVE flip of each member sprite. Two poses that differ
+  only in the flip of one member (a character whose head faces away from its
+  body) are now told apart: when both match the same sprites, the one whose
+  flips agree wins, a whole-pose mirror is still the same pose, and a tween
+  between the two variants fires. In a left-right symmetric layout a mirrored
+  instance now resolves to the right variant and is drawn mirrored. Packs
+  already carried the per-member `flips`, so every existing pack plays as
+  before except in those cases. The lock carries the published rc.10 checksums
+  and SLSA provenance, and CI, the contract tests and the documentation follow
+  the lock. Package version stays `0.1.0` and the C ABI revision stays at 7.
 
 ## [0.1.0-beta.6] - 2026-09-27
 
