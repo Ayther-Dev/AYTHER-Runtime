@@ -8,12 +8,33 @@ once stable compatibility guarantees are defined.
 
 > [!WARNING]
 > AYTHER Runtime is in early development. The build reports product version
-> `0.1.0-beta.7`; this is an internal prerelease and is not supported for
+> `0.1.0-beta.8`; this is an internal prerelease and is not supported for
 > production use. The Runtime–Play process
 > protocol v1 is the exception: its documented wire fields, reason identifiers,
 > and exit codes are stable within v1.
 
 ## [Unreleased]
+
+## [0.1.0-beta.8] - 2026-10-02
+
+### Added
+
+- RF-18 music continuity integration, including sequence state snapshots,
+  transactional restoration, backend drain handling, discontinuity evidence,
+  three-consumer semantics and reproducible audio QA tracing.
+
+### Changed
+
+- The reproducible Engine lock moves from `v0.1.0-rc.10` to
+  `v0.1.0-rc.13`, with published SHA-256 values and SLSA provenance for all
+  four supported packages.
+- The secret-scanning action moves from TruffleHog `3.97.2` to `3.97.9` while
+  remaining pinned to an immutable commit SHA.
+
+### Fixed
+
+- Linux quality and sanitizer builds now enforce clang-tidy consistently for
+  every Audio QA target and compile all RF-18 test fixtures without warnings.
 
 ## [0.1.0-beta.7] - 2026-10-01
 
