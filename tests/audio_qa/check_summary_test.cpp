@@ -71,8 +71,8 @@ bool validation_and_formatting() {
 } // namespace
 
 int main() {
-    const std::array unevaluated{
-        qa::TakeTechnicalResult{"main", qa::CheckTechnicalOutcome::complete, "complete"}};
+    const std::array unevaluated{qa::TakeTechnicalResult{
+        "main", qa::CheckTechnicalOutcome::complete, "complete", std::nullopt, std::nullopt}};
     const auto summary = qa::summarize_check_results(unevaluated);
     if (!summary || qa::format_check_summary(*summary).find(
                         "audible_restart_observed=not_evaluated") == std::string::npos)
