@@ -50,7 +50,6 @@ int main() {
         const auto expected = identity(0x11, 4096);
         const auto changed = identity(0x22, 4096);
         const auto initial = initial_reference(expected);
-        const auto initial_copy = initial;
 
         const auto rejected =
             qa::check_material_consumption(initial, "golden-axe-pack", observation(changed));
@@ -72,7 +71,7 @@ int main() {
                     blocked->diagnostic.last_confirmed_frame.value == 119 &&
                     qa::well_formed(blocked->diagnostic),
                 "changed_material_diagnostic_lost_context");
-        require(initial == initial_copy &&
+        require(initial == initial_reference(expected) &&
                     initial.materials.front().consumed.value == std::nullopt &&
                     initial.materials.front().stability == qa::Stability::unverified,
                 "initial_reference_was_rewritten_with_changed_bytes");
