@@ -15,7 +15,7 @@ namespace {
 constexpr std::string_view status_prefix = "AYTHER_STATUS ";
 constexpr char hex_digits[] = "0123456789abcdef";
 
-void append_json_string(std::string& output, const std::string_view value) {
+void append_json_string(std::string &output, const std::string_view value) {
     output.push_back('"');
     for (const unsigned char code_unit : value) {
         switch (code_unit) {
@@ -55,7 +55,7 @@ void append_json_string(std::string& output, const std::string_view value) {
 }
 
 class JsonObject final {
-public:
+  public:
     JsonObject() { json_.push_back('{'); }
 
     void field(const std::string_view name, const std::string_view value) {
@@ -63,7 +63,7 @@ public:
         append_json_string(json_, value);
     }
 
-    void field(const std::string_view name, const char* value) {
+    void field(const std::string_view name, const char *value) {
         field(name, std::string_view{value});
     }
 
@@ -77,12 +77,17 @@ public:
         json_ += std::to_string(value);
     }
 
+    void field(const std::string_view name, const std::uint64_t value) {
+        append_name(name);
+        json_ += std::to_string(value);
+    }
+
     [[nodiscard]] std::string finish() {
         json_.push_back('}');
         return std::move(json_);
     }
 
-private:
+  private:
     void append_name(const std::string_view name) {
         if (!first_) {
             json_.push_back(',');
@@ -96,11 +101,11 @@ private:
     bool first_{true};
 };
 
-[[nodiscard]] std::string serialize_json(const StatusEvent& event) {
+[[nodiscard]] std::string serialize_json(const StatusEvent &event) {
     JsonObject json;
     json.field("protocol_version", status_protocol_version);
     std::visit(
-        [&json](const auto& status) {
+        [&json](const auto &status) {
             using Status = std::decay_t<decltype(status)>;
             if constexpr (std::is_same_v<Status, ProbeSucceededStatus>) {
                 json.field("event", "probe");
@@ -133,6 +138,21 @@ private:
                 if (!status.message.empty()) {
                     json.field("message", status.message);
                 }
+            } else if constexpr (std::is_same_v<Status, AudioWarningStatus>) {
+                const auto &diagnostic = status.aggregate.diagnostic;
+                json.field("event", "warning");
+                json.field("reason", audio_diagnostic_code(diagnostic.code));
+                if (!status.message.empty()) {
+                    json.field("message", status.message);
+                }
+                json.field("logical_identity", diagnostic.logical_identity);
+                json.field("track", diagnostic.track);
+                json.field("cause", diagnostic.cause);
+                json.field("runtime_version", diagnostic.runtime_version);
+                json.field("engine_version", diagnostic.engine_version);
+                json.field("count", status.aggregate.count);
+                json.field("period_ns", status.aggregate.period_ns);
+                json.field("monotonic_ns", diagnostic.monotonic_ns);
             } else if constexpr (std::is_same_v<Status, CrashTestStatus>) {
                 json.field("event", "crash-test");
             } else if constexpr (std::is_same_v<Status, ExitStatus>) {
@@ -146,11 +166,11 @@ private:
     return json.finish();
 }
 
-}  // namespace
+} // namespace
 
-StatusEmitter::StatusEmitter(std::FILE& output) noexcept : output_(&output) {}
+StatusEmitter::StatusEmitter(std::FILE &output) noexcept : output_(&output) {}
 
-std::string StatusEmitter::format_line(const StatusEvent& event) {
+std::string StatusEmitter::format_line(const StatusEvent &event) {
     const std::string json = serialize_json(event);
     std::string line;
     line.reserve(status_prefix.size() + json.size() + 1U);
@@ -160,11 +180,11 @@ std::string StatusEmitter::format_line(const StatusEvent& event) {
     return line;
 }
 
-bool StatusEmitter::emit(const StatusEvent& event) const {
+bool StatusEmitter::emit(const StatusEvent &event) const {
     const std::string line = format_line(event);
     const std::size_t written = std::fwrite(line.data(), 1U, line.size(), output_);
     const int flush_result = std::fflush(output_);
     return written == line.size() && flush_result == 0;
 }
 
-}  // namespace ayther::runtime
+} // namespace ayther::runtime

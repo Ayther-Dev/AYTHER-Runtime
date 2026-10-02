@@ -13,7 +13,7 @@ namespace {
 int passed = 0;
 int failed = 0;
 
-void check(const bool condition, const char* description) {
+void check(const bool condition, const char *description) {
     if (condition) {
         ++passed;
     } else {
@@ -45,7 +45,7 @@ std::vector<ayther::runtime::StatusEvent> fixture_events() {
 
 int emit_fixture() {
     ayther::runtime::StatusEmitter emitter{*stdout};
-    for (const auto& event : fixture_events()) {
+    for (const auto &event : fixture_events()) {
         if (!emitter.emit(event)) {
             return 1;
         }
@@ -53,9 +53,9 @@ int emit_fixture() {
     return 0;
 }
 
-}  // namespace
+} // namespace
 
-int main(const int argc, char* argv[]) {
+int main(const int argc, char *argv[]) {
     using namespace ayther::runtime;
 
     if (argc == 2 && std::string_view{argv[1]} == "--json-fixture") {
@@ -66,8 +66,7 @@ int main(const int argc, char* argv[]) {
 
     const std::string escaped = StatusEmitter::format_line(
         ReadyStatus{hostile_text(), true, std::string{"manifest"} + '\x02'});
-    check(escaped.starts_with(
-              "AYTHER_STATUS {\"protocol_version\":1,\"event\":\"ready\","),
+    check(escaped.starts_with("AYTHER_STATUS {\"protocol_version\":1,\"event\":\"ready\","),
           "record has the protocol prefix and typed event name");
     check(escaped.ends_with("}\n"), "record ends in exactly one line terminator");
     check(std::count(escaped.begin(), escaped.end(), '\n') == 1,
@@ -77,23 +76,20 @@ int main(const int argc, char* argv[]) {
     check(escaped.find("control\\u0001") != std::string::npos &&
               escaped.find("manifest\\u0002") != std::string::npos,
           "control bytes use JSON unicode escapes");
-    check(escaped.find("newline\\n") != std::string::npos,
-          "newlines use a JSON escape sequence");
-    check(escaped.find("español 日本") != std::string::npos,
-          "valid UTF-8 is preserved");
+    check(escaped.find("newline\\n") != std::string::npos, "newlines use a JSON escape sequence");
+    check(escaped.find("español 日本") != std::string::npos, "valid UTF-8 is preserved");
     check(escaped.find("\"has_pack\":true") != std::string::npos,
           "boolean fields are emitted as JSON booleans");
 
-    check(StatusEmitter::format_line(
-              ProbeSucceededStatus{1, "core", "v1", "md", true, false}) ==
+    check(StatusEmitter::format_line(ProbeSucceededStatus{1, "core", "v1", "md", true, false}) ==
               "AYTHER_STATUS {\"protocol_version\":1,\"event\":\"probe\","
               "\"ok\":true,\"api\":1,"
               "\"library_name\":\"core\",\"library_version\":\"v1\","
               "\"valid_extensions\":\"md\",\"need_fullpath\":true,"
               "\"block_extract\":false}\n",
           "successful probe contains typed metadata");
-    check(StatusEmitter::format_line(ProbeFailedStatus{
-              RuntimeErrorCode::core_load_failed, "no se pudo cargar"}) ==
+    check(StatusEmitter::format_line(
+              ProbeFailedStatus{RuntimeErrorCode::core_load_failed, "no se pudo cargar"}) ==
               "AYTHER_STATUS {\"protocol_version\":1,\"event\":\"probe\","
               "\"ok\":false,\"reason\":\"core.load_failed\","
               "\"message\":\"no se pudo cargar\"}\n",
@@ -103,43 +99,56 @@ int main(const int argc, char* argv[]) {
               "\"game_id\":\"id\","
               "\"title\":\"title\"}\n",
           "now-playing contains identity and title");
-    check(StatusEmitter::format_line(WarningStatus{
-              RuntimeErrorCode::state_restore_failed, "warning"}) ==
+    check(StatusEmitter::format_line(
+              WarningStatus{RuntimeErrorCode::state_restore_failed, "warning"}) ==
               "AYTHER_STATUS {\"protocol_version\":1,\"event\":\"warning\","
               "\"reason\":\"state.restore_failed\",\"message\":\"warning\"}\n",
           "warning contains stable reason and separate message");
+    const AudioDiagnosticAggregate audio_warning{
+        AudioDiagnostic{AudioDiagnosticCode::unexpected_restart, "music:stage-1", "music",
+                        "decoder-reset", "0.1.0-beta.6", "0.1.0", 4'200'000'000ULL},
+        3U, 1'000'000'000ULL};
+    check(StatusEmitter::format_line(
+              AudioWarningStatus{audio_warning, "La pista se reinicio antes de tiempo."}) ==
+              "AYTHER_STATUS {\"protocol_version\":1,\"event\":\"warning\","
+              "\"reason\":\"audio.unexpected_restart\","
+              "\"message\":\"La pista se reinicio antes de tiempo.\","
+              "\"logical_identity\":\"music:stage-1\",\"track\":\"music\","
+              "\"cause\":\"decoder-reset\",\"runtime_version\":\"0.1.0-beta.6\","
+              "\"engine_version\":\"0.1.0\",\"count\":3,"
+              "\"period_ns\":1000000000,\"monotonic_ns\":4200000000}\n",
+          "audio warning extends protocol v1 with stable diagnostic context");
     check(StatusEmitter::format_line(CrashTestStatus{}) ==
               "AYTHER_STATUS {\"protocol_version\":1,\"event\":\"crash-test\"}\n",
           "crash-test has no invented fields");
     check(StatusEmitter::format_line(ExitStatus{std::nullopt}) ==
               "AYTHER_STATUS {\"protocol_version\":1,\"event\":\"exit\"}\n",
           "exit omits an absent savestate");
+    check(StatusEmitter::format_line(ExitStatus{std::nullopt}).find("audio.") == std::string::npos,
+          "normal exit is never inferred as an audio diagnostic");
     check(StatusEmitter::format_line(ExitStatus{"C:\\save\".bin"}) ==
               "AYTHER_STATUS {\"protocol_version\":1,\"event\":\"exit\","
               "\"savestate\":\"C:\\\\save\\\".bin\"}\n",
           "exit preserves and escapes the savestate path");
 
-    std::FILE* temporary_file = nullptr;
+    std::FILE *temporary_file = nullptr;
 #ifdef _WIN32
     (void)tmpfile_s(&temporary_file);
 #else
     temporary_file = std::tmpfile();
 #endif
-    std::unique_ptr<std::FILE, decltype(&std::fclose)> output{temporary_file,
-                                                              &std::fclose};
+    std::unique_ptr<std::FILE, decltype(&std::fclose)> output{temporary_file, &std::fclose};
     check(output != nullptr, "temporary output stream is available");
     if (output != nullptr) {
-        const StatusEvent event = WarningStatus{
-            RuntimeErrorCode::state_restore_failed, hostile_text()};
+        const StatusEvent event =
+            WarningStatus{RuntimeErrorCode::state_restore_failed, hostile_text()};
         const std::string expected = StatusEmitter::format_line(event);
         StatusEmitter emitter{*output};
         check(emitter.emit(event), "emitter writes and flushes one complete record");
         std::rewind(output.get());
         std::vector<char> bytes(expected.size());
-        const std::size_t read =
-            std::fread(bytes.data(), 1, bytes.size(), output.get());
-        check(read == expected.size() &&
-                  std::string{bytes.begin(), bytes.end()} == expected,
+        const std::size_t read = std::fread(bytes.data(), 1, bytes.size(), output.get());
+        check(read == expected.size() && std::string{bytes.begin(), bytes.end()} == expected,
               "emitted bytes exactly match the formatted record");
     }
 
@@ -149,8 +158,7 @@ int main(const int argc, char* argv[]) {
     check(status_protocol_compatibility(status_protocol_version + 1U) ==
               StatusProtocolCompatibility::unsupported_newer,
           "a future protocol version is rejected before session startup");
-    check(status_protocol_compatibility(0U) ==
-              StatusProtocolCompatibility::unsupported_older,
+    check(status_protocol_compatibility(0U) == StatusProtocolCompatibility::unsupported_older,
           "an unsupported old protocol version is rejected");
 
     std::fprintf(stderr, "\n%d passed, %d failed\n", passed, failed);

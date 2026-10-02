@@ -27,37 +27,31 @@ struct SwapFrame {
 /// it. Presentation consumes it; rebuild and shutdown invalidate it. Consumers
 /// therefore cannot index swapchain images or synchronization arrays directly.
 class AcquiredFrame final {
-public:
+  public:
     AcquiredFrame() noexcept = default;
-    AcquiredFrame(const AcquiredFrame&) = delete;
-    AcquiredFrame& operator=(const AcquiredFrame&) = delete;
-    AcquiredFrame(AcquiredFrame&& source) noexcept;
-    AcquiredFrame& operator=(AcquiredFrame&& source) = delete;
+    AcquiredFrame(const AcquiredFrame &) = delete;
+    AcquiredFrame &operator=(const AcquiredFrame &) = delete;
+    AcquiredFrame(AcquiredFrame &&source) noexcept;
+    AcquiredFrame &operator=(AcquiredFrame &&source) = delete;
 
     [[nodiscard]] bool valid() const noexcept;
-    [[nodiscard]] std::uint32_t image_index() const noexcept {
-        return image_index_;
-    }
-    [[nodiscard]] VkCommandBuffer command_buffer() const noexcept {
-        return command_buffer_;
-    }
+    [[nodiscard]] std::uint32_t image_index() const noexcept { return image_index_; }
+    [[nodiscard]] VkCommandBuffer command_buffer() const noexcept { return command_buffer_; }
     [[nodiscard]] VkImage image() const noexcept { return image_; }
     [[nodiscard]] VkImageView image_view() const noexcept { return image_view_; }
     [[nodiscard]] VkExtent2D extent() const noexcept { return extent_; }
-    [[nodiscard]] std::optional<VkFramebuffer> framebuffer(
-        std::span<const VkFramebuffer> framebuffers) const noexcept;
+    [[nodiscard]] std::optional<VkFramebuffer>
+    framebuffer(std::span<const VkFramebuffer> framebuffers) const noexcept;
 
-private:
+  private:
     friend class VkSwapchain;
 
-    AcquiredFrame(VkSwapchain* owner, std::uint64_t generation,
-                  std::uint64_t serial, std::uint32_t frame_slot,
-                  std::uint32_t image_index, const SwapFrame& frame,
-                  VkImage image, VkImageView image_view,
-                  VkExtent2D extent) noexcept;
+    AcquiredFrame(VkSwapchain *owner, std::uint64_t generation, std::uint64_t serial,
+                  std::uint32_t frame_slot, std::uint32_t image_index, const SwapFrame &frame,
+                  VkImage image, VkImageView image_view, VkExtent2D extent) noexcept;
     void invalidate() noexcept;
 
-    VkSwapchain* owner_ = nullptr;
+    VkSwapchain *owner_ = nullptr;
     std::uint64_t generation_ = 0;
     std::uint64_t serial_ = 0;
     std::uint32_t frame_slot_ = 0;
@@ -73,22 +67,20 @@ private:
 
 /// Runtime-owned swapchain and per-frame synchronization.
 class VkSwapchain final {
-public:
+  public:
     static constexpr std::uint32_t kMaxFrames = 2;
 
     VkSwapchain() = default;
     ~VkSwapchain() { shutdown(); }
 
-    VkSwapchain(const VkSwapchain&) = delete;
-    VkSwapchain& operator=(const VkSwapchain&) = delete;
+    VkSwapchain(const VkSwapchain &) = delete;
+    VkSwapchain &operator=(const VkSwapchain &) = delete;
 
     /// Transactionally creates the swapchain, image views and sync resources.
-    [[nodiscard]] bool init(VkContext& ctx, std::uint32_t width,
-                            std::uint32_t height);
+    [[nodiscard]] bool init(VkContext &ctx, std::uint32_t width, std::uint32_t height);
 
     /// Builds a complete replacement before retiring the current state.
-    [[nodiscard]] bool rebuild(VkContext& ctx, std::uint32_t width,
-                               std::uint32_t height);
+    [[nodiscard]] bool rebuild(VkContext &ctx, std::uint32_t width, std::uint32_t height);
 
     /// Idempotent reverse-order teardown, valid after partial construction.
     void shutdown() noexcept;
@@ -98,15 +90,13 @@ public:
                state_.images.size() == state_.image_views.size();
     }
 
-    [[nodiscard]] std::optional<AcquiredFrame> begin_frame(VkContext& ctx);
+    [[nodiscard]] std::optional<AcquiredFrame> begin_frame(VkContext &ctx);
 
     /// Ends, submits and presents exactly the image represented by `frame`.
     /// The token is invalidated after every attempt, including failures.
-    [[nodiscard]] bool end_frame(VkContext& ctx, AcquiredFrame& frame);
+    [[nodiscard]] bool end_frame(VkContext &ctx, AcquiredFrame &frame);
 
-    [[nodiscard]] VkSwapchainKHR swapchain() const noexcept {
-        return state_.swapchain;
-    }
+    [[nodiscard]] VkSwapchainKHR swapchain() const noexcept { return state_.swapchain; }
     [[nodiscard]] VkFormat format() const noexcept { return state_.format; }
     [[nodiscard]] VkExtent2D extent() const noexcept { return state_.extent; }
     [[nodiscard]] std::uint32_t image_count() const noexcept {
@@ -116,7 +106,7 @@ public:
         return state_.image_views;
     }
 
-private:
+  private:
     friend class AcquiredFrame;
     friend struct VkSwapchainTestAccess;
 
@@ -130,17 +120,13 @@ private:
         std::array<SwapFrame, kMaxFrames> frames{};
     };
 
-    [[nodiscard]] bool create_swapchain(VkContext& ctx, std::uint32_t width,
-                                        std::uint32_t height,
-                                        VkSwapchainKHR old_swapchain,
-                                        OwnedState& output);
-    [[nodiscard]] bool create_image_views(VkContext& ctx, OwnedState& output);
-    [[nodiscard]] bool create_sync(VkContext& ctx, OwnedState& output);
-    static void destroy_owned(
-        VkDevice device,
-        const ayther::runtime::vulkan::VulkanCalls& calls,
-        OwnedState& state) noexcept;
-    [[nodiscard]] bool accepts(const AcquiredFrame& frame) const noexcept;
+    [[nodiscard]] bool create_swapchain(VkContext &ctx, std::uint32_t width, std::uint32_t height,
+                                        VkSwapchainKHR old_swapchain, OwnedState &output);
+    [[nodiscard]] bool create_image_views(VkContext &ctx, OwnedState &output);
+    [[nodiscard]] bool create_sync(VkContext &ctx, OwnedState &output);
+    static void destroy_owned(VkDevice device, const ayther::runtime::vulkan::VulkanCalls &calls,
+                              OwnedState &state) noexcept;
+    [[nodiscard]] bool accepts(const AcquiredFrame &frame) const noexcept;
 
     VkDevice device_ = VK_NULL_HANDLE;
     ayther::runtime::vulkan::VulkanCalls calls_{};

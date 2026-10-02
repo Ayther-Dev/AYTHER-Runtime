@@ -211,6 +211,11 @@ integration; only `AYTHER_STATUS <json>` lines are machine-readable protocol.
   behavior, and integration rules.
 - [Runtime input map](docs/input-map.md) — TOML schema, defaults, validation,
   and compatibility behavior.
+- [Audio QA fact format](docs/audio-qa-fact-format.md) — framed batch limits
+  and compatible TOML record versions.
+- [Audio QA evidence and recovery](docs/audio-qa-evidence.md) — stored fact and
+  PCM formats, checkpoints, partial recovery, version rejection, and original
+  preservation.
 - [Development guide](docs/development.md) — local builds, tests, shaders, and
   debugging.
 - [Project status](docs/status.md) — maturity, known gaps, and release gates.

@@ -26,6 +26,7 @@ jobs:
       - name: Check out Runtime
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha }}
 
@@ -57,13 +58,13 @@ jobs:
           }
           "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: Bootstrap locked Engine rc.10
+      - name: Bootstrap locked Engine rc.13
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $lock = Get-Content dependencies/ayther-engine.lock.json -Raw | ConvertFrom-Json
-          if ($lock.release.tag -cne "v0.1.0-rc.10") {
-              throw "MAD-005 only accepts Engine v0.1.0-rc.10; lock contains '$($lock.release.tag)'."
+          if ($lock.release.tag -cne "v0.1.0-rc.13") {
+              throw "RF-18 requires Engine v0.1.0-rc.13; lock contains '$($lock.release.tag)'."
           }
 
           Start-Transcript -Path artifacts/bootstrap.log
@@ -91,6 +92,19 @@ jobs:
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) { exit $exitCode }
 
+      - name: Verify required CTest families
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & cmake `
+              "-DQA_BUILD_DIRECTORY=$($PWD.Path)/out/build/$env:CI_PRESET" `
+              "-DQA_CTEST_COMMAND=$((Get-Command ctest -ErrorAction Stop).Source)" `
+              -DQA_CONFIGURATION=RelWithDebInfo `
+              '-DQA_REQUIRED_FAMILIES=audio_qa,unit,contract,integration,limits,protocol,fixture' `
+              -P tools/check_ctest_families.cmake 2>&1 |
+              Tee-Object -FilePath artifacts/ctest-families.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Build
         shell: pwsh
         run: |
@@ -99,6 +113,14 @@ jobs:
               Tee-Object -FilePath artifacts/build.log
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) { exit $exitCode }
+
+      - name: Verify RF-18 CTest registration
+        shell: pwsh
+        run: |
+          $listing = & ctest --preset $env:CI_PRESET -N -R "^music_(evidence_bundle|warning|three_consumer_semantics|product_flow)$" 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "RF-18 CTest enumeration failed" }
+          $count = ([regex]::Matches($listing, 'Test\s+#\d+:')).Count
+          if ($count -ne 4) { throw "No RF-18 Runtime tests registered: expected 4, got $count" }
 
       - name: Verify build is up to date
         shell: pwsh
@@ -157,6 +179,7 @@ jobs:
       - name: Check out Runtime
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha }}
 
@@ -193,15 +216,22 @@ jobs:
         shell: pwsh
         run: |
           sudo apt-get update
-          sudo apt-get install --yes clang-tidy gcovr llvm
+          sudo apt-get install --yes clang-format clang-tidy gcovr llvm
 
-      - name: Bootstrap locked Engine rc.10
+      - name: Check modified C++ formatting
+        if: ${{ matrix.preset == 'linux-quality' }}
+        shell: bash
+        env:
+          BASE_REVISION: ${{ github.event.pull_request.base.sha }}
+        run: bash tools/run_clang_format_changed.sh "${BASE_REVISION}" HEAD
+
+      - name: Bootstrap locked Engine rc.13
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $lock = Get-Content dependencies/ayther-engine.lock.json -Raw | ConvertFrom-Json
-          if ($lock.release.tag -cne "v0.1.0-rc.10") {
-              throw "MAD-005 only accepts Engine v0.1.0-rc.10; lock contains '$($lock.release.tag)'."
+          if ($lock.release.tag -cne "v0.1.0-rc.13") {
+              throw "RF-18 requires Engine v0.1.0-rc.13; lock contains '$($lock.release.tag)'."
           }
 
           Start-Transcript -Path artifacts/bootstrap.log
@@ -228,6 +258,18 @@ jobs:
               Tee-Object -FilePath artifacts/configure.log
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) { exit $exitCode }
+
+      - name: Verify required CTest families
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & cmake `
+              "-DQA_BUILD_DIRECTORY=$($PWD.Path)/out/build/$env:CI_PRESET" `
+              "-DQA_CTEST_COMMAND=$((Get-Command ctest -ErrorAction Stop).Source)" `
+              '-DQA_REQUIRED_FAMILIES=audio_qa,unit,contract,integration,limits,protocol,fixture' `
+              -P tools/check_ctest_families.cmake 2>&1 |
+              Tee-Object -FilePath artifacts/ctest-families.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build
         shell: pwsh

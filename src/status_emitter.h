@@ -1,5 +1,6 @@
 #pragma once
 
+#include "audio_diagnostic.h"
 #include "runtime_error.h"
 
 #include <cstdint>
@@ -23,9 +24,8 @@ status_protocol_compatibility(const std::uint32_t peer_version) noexcept {
     if (peer_version == status_protocol_version) {
         return StatusProtocolCompatibility::compatible;
     }
-    return peer_version < status_protocol_version
-               ? StatusProtocolCompatibility::unsupported_older
-               : StatusProtocolCompatibility::unsupported_newer;
+    return peer_version < status_protocol_version ? StatusProtocolCompatibility::unsupported_older
+                                                  : StatusProtocolCompatibility::unsupported_newer;
 }
 
 struct ProbeSucceededStatus {
@@ -58,6 +58,11 @@ struct WarningStatus {
     std::string message;
 };
 
+struct AudioWarningStatus {
+    AudioDiagnosticAggregate aggregate;
+    std::string message;
+};
+
 struct CrashTestStatus {};
 
 struct ExitStatus {
@@ -66,21 +71,21 @@ struct ExitStatus {
 
 using StatusEvent =
     std::variant<ProbeSucceededStatus, ProbeFailedStatus, ReadyStatus, NowPlayingStatus,
-                 WarningStatus, CrashTestStatus, ExitStatus>;
+                 WarningStatus, AudioWarningStatus, CrashTestStatus, ExitStatus>;
 
 class StatusEmitter final {
-public:
-    explicit StatusEmitter(std::FILE& output) noexcept;
+  public:
+    explicit StatusEmitter(std::FILE &output) noexcept;
 
     /// Formats the complete line-delimited process record, including prefix
     /// and trailing newline. All event text is encoded by the same JSON writer.
-    [[nodiscard]] static std::string format_line(const StatusEvent& event);
+    [[nodiscard]] static std::string format_line(const StatusEvent &event);
 
     /// Writes one complete record with one fwrite call, then flushes the stream.
-    [[nodiscard]] bool emit(const StatusEvent& event) const;
+    [[nodiscard]] bool emit(const StatusEvent &event) const;
 
-private:
-    std::FILE* output_;
+  private:
+    std::FILE *output_;
 };
 
-}  // namespace ayther::runtime
+} // namespace ayther::runtime

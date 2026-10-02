@@ -64,8 +64,7 @@ enum class RuntimeErrorCode {
     reservation_failed,
 };
 
-[[nodiscard]] constexpr std::string_view
-error_reason(const RuntimeErrorCode code) noexcept {
+[[nodiscard]] constexpr std::string_view error_reason(const RuntimeErrorCode code) noexcept {
     switch (code) {
     case RuntimeErrorCode::cli_invalid_argument:
         return "cli.invalid_argument";
@@ -109,8 +108,7 @@ error_reason(const RuntimeErrorCode code) noexcept {
     return "runtime.unknown";
 }
 
-[[nodiscard]] constexpr ErrorDomain
-error_domain(const RuntimeErrorCode code) noexcept {
+[[nodiscard]] constexpr ErrorDomain error_domain(const RuntimeErrorCode code) noexcept {
     switch (code) {
     case RuntimeErrorCode::cli_invalid_argument:
         return ErrorDomain::cli;
@@ -143,8 +141,7 @@ error_domain(const RuntimeErrorCode code) noexcept {
     return ErrorDomain::protocol;
 }
 
-[[nodiscard]] constexpr ErrorSeverity
-error_severity(const RuntimeErrorCode code) noexcept {
+[[nodiscard]] constexpr ErrorSeverity error_severity(const RuntimeErrorCode code) noexcept {
     switch (code) {
     case RuntimeErrorCode::pack_no_active_subsystems:
     case RuntimeErrorCode::postprocess_degraded:
@@ -166,9 +163,8 @@ error_severity(const RuntimeErrorCode code) noexcept {
     }
 }
 
-[[nodiscard]] constexpr bool
-is_recoverable(const RuntimeErrorCode code) noexcept {
+[[nodiscard]] constexpr bool is_recoverable(const RuntimeErrorCode code) noexcept {
     return error_severity(code) != ErrorSeverity::fatal;
 }
 
-}  // namespace ayther::runtime
+} // namespace ayther::runtime

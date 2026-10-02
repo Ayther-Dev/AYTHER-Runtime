@@ -1,0 +1,27 @@
+schema_version = 1
+schema_minor = 0
+kind = "event_audio_query_index"
+
+[[entries]]
+basis = "explicit_cause"
+mix_span_id = "mix-17"
+output_timeline = "captured-output"
+output_sample_rate = 48000
+output_begin = "100"
+output_end = "132"
+relation_reason = "cause_ids"
+
+[entries.origin]
+run_id = "run-query"
+producer_id = "detector"
+sequence = "1"
+
+[[entries.fact_path]]
+run_id = "run-query"
+producer_id = "detector"
+sequence = "1"
+
+[[entries.fact_path]]
+run_id = "run-query"
+producer_id = "selection"
+sequence = "2"

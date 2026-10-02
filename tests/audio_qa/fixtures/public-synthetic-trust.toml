@@ -1,0 +1,9 @@
+version = 1
+[[keys]]
+id = "audio-qa-public-test-only"
+algorithm = "ed25519"
+public_key = "81487feb65dba7e488305c9c8cf6867cc92526b81c69ba473dc3ee5bd639531b"
+not_before_unix = 0
+not_after_unix = 4102444800
+revoked = false
+games = ["ayther-public-synthetic-v1"]

@@ -1,55 +1,59 @@
+#include "runtime_application.h"
 #include "file_reservation.h"
+#include "runtime_config.h"
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_vulkan.h>
+#include <algorithm>
 #include <cctype>
+#include <chrono>
+#include <cinttypes>
 #include <cstddef>
 #include <cstdint>
-#include <chrono>
-#include <string>
-#include <vector>
-#include <unordered_map>
-#include <algorithm>
-#include <filesystem>
-#include <SDL3/SDL_vulkan.h>
 #include <cstdio>
+#include <cstdlib> // std::abort (--crash-test)
+#include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <ios>
 #include <memory>
 #include <optional>
 #include <span>
+#include <string>
 #include <system_error>
+#include <unordered_map>
 #include <utility>
-#include <cstdlib>                   // std::abort (--crash-test)
-#include <cinttypes>
-#include <ctime>
-#include "runtime_config.h"
-#include "runtime_application.h"
-#include "status_emitter.h"
-#include "runtime_options.h"
-#include "trust_registry.h"
-#include <ayther/ayther_session.h>    // the motor facade (R2.3) — replaces direct host/audio
-#include <ayther/engine/capabilities.hpp>
-#include <ayther/engine/pack.hpp>
-#include "game_input.h"              // SDL keyboard/gamepad → RetroPad bitfield (M3)
-#include "input_map.h"               // Play --input-map → startup-resolved SDL bindings
-#include "vulkan_backend/aspect_fit.h"  // 4:3 canvas fit (pillarbox, no stretch)
-#include "player_overlay.h"         // in-game pause menu + HD↔Original toggle (M4)
-#include "player_config.h"          // #299: lo que el panel ajusta y se recuerda
-#include "capture.h"                // #300: captura comparativa sincronizada
+#include <vector>
+#ifdef AYTHER_RUNTIME_AUDIO_QA
+#include "audio_qa_runtime_session.h"
+#endif
+#include "capture.h" // #300: captura comparativa sincronizada
 #include "capture_service.h"
+#include "diagnostics.h"    // #302: asistente de diagnostico
+#include "game_input.h"     // SDL keyboard/gamepad → RetroPad bitfield (M3)
+#include "input_map.h"      // Play --input-map → startup-resolved SDL bindings
+#include "output_profile.h" // #296: perfiles de salida (CRT/LCD/pixel)
+#include "pack_layers.h"    // #561: el stack de Acetatos del pack
+#include "player_config.h"  // #299: lo que el panel ajusta y se recuerda
+#include "player_overlay.h" // in-game pause menu + HD↔Original toggle (M4)
 #include "presentation_controller.h"
+#include "qa_capabilities.h"
+#include "runtime_options.h"
 #include "save_state_store.h"
 #include "session_controller.h"
-#include <ayther/engine/core_probe.hpp>  // MIG-022: sondeo RAII publico del Engine
-#include "output_profile.h"         // #296: perfiles de salida (CRT/LCD/pixel)
-#include "diagnostics.h"            // #302: asistente de diagnostico
+#include "sonic_telemetry.h" // Runtime-owned game-specific diagnostics
+#include "status_emitter.h"
+#include "trust_registry.h"
+#include "version_info.h"              // Runtime build version + linked Engine version
+#include "vulkan_backend/aspect_fit.h" // 4:3 canvas fit (pillarbox, no stretch)
 #include "vulkan_backend/vk_context.h"
-#include "vulkan_backend/vk_swapchain.h"
+#include "vulkan_backend/vk_postprocess.h" // CRT presentation pass (samples the offscreen)
 #include "vulkan_backend/vk_present.h"
-#include "vulkan_backend/vk_postprocess.h"   // CRT presentation pass (samples the offscreen)
-#include <ayther/ayther_renderer.h>    // the motor's HD render layer (R3.1)
-#include "pack_layers.h"           // #561: el stack de Acetatos del pack
-#include "sonic_telemetry.h"       // Runtime-owned game-specific diagnostics
-#include "version_info.h"          // Runtime build version + linked Engine version
+#include "vulkan_backend/vk_swapchain.h"
+#include <ayther/ayther_renderer.h> // the motor's HD render layer (R3.1)
+#include <ayther/ayther_session.h>  // the motor facade (R2.3) — replaces direct host/audio
+#include <ayther/engine/capabilities.hpp>
+#include <ayther/engine/core_probe.hpp> // MIG-022: sondeo RAII publico del Engine
+#include <ayther/engine/pack.hpp>
 // (vk_postprocess + the HD-tile cache + emu texture moved into the renderer;
 //  capture.cpp owns Runtime's private stb PNG-writer implementation.)
 
@@ -62,38 +66,36 @@
 namespace {
 
 class SdlLifetime final {
-public:
+  public:
     SdlLifetime() = default;
     ~SdlLifetime() { SDL_Quit(); }
-    SdlLifetime(const SdlLifetime&) = delete;
-    SdlLifetime& operator=(const SdlLifetime&) = delete;
+    SdlLifetime(const SdlLifetime &) = delete;
+    SdlLifetime &operator=(const SdlLifetime &) = delete;
 };
 
 class SdlWindowOwner final {
-public:
-    explicit SdlWindowOwner(SDL_Window* window) noexcept : window_(window) {}
+  public:
+    explicit SdlWindowOwner(SDL_Window *window) noexcept : window_(window) {}
     ~SdlWindowOwner() {
         if (window_ != nullptr) {
             SDL_DestroyWindow(window_);
         }
     }
-    SdlWindowOwner(const SdlWindowOwner&) = delete;
-    SdlWindowOwner& operator=(const SdlWindowOwner&) = delete;
+    SdlWindowOwner(const SdlWindowOwner &) = delete;
+    SdlWindowOwner &operator=(const SdlWindowOwner &) = delete;
 
-private:
-    SDL_Window* window_{};
+  private:
+    SDL_Window *window_{};
 };
 
-}  // namespace
+} // namespace
 
-
-int ayther::runtime::run_runtime(const int argc, char* argv[]) {
+int ayther::runtime::run_runtime(const int argc, char *argv[]) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     std::setvbuf(stderr, nullptr, _IONBF, 0);
 
     ayther::runtime::StatusEmitter status_emitter{*stdout};
-    const auto emit_status = [&status_emitter](
-                                 const ayther::runtime::StatusEvent& event) {
+    const auto emit_status = [&status_emitter](const ayther::runtime::StatusEvent &event) {
         if (!status_emitter.emit(event)) {
             std::fprintf(stderr, "[status] no se pudo emitir el evento\n");
         }
@@ -102,26 +104,39 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     const std::string version_report = ayther::runtime::version_report();
     std::fprintf(stdout, "[main] %s\n", version_report.c_str());
 
+    auto parsed_options = ayther::runtime::RuntimeOptions::parse(argc, argv);
+    if (const auto *error = parsed_options.error()) {
+        const std::string diagnostic = ayther::runtime::describe(*error);
+        std::fprintf(stderr, "[ayther_runtime] %s\n", diagnostic.c_str());
+        emit_status(ayther::runtime::WarningStatus{
+            ayther::runtime::RuntimeErrorCode::cli_invalid_argument, diagnostic});
+        return ayther::runtime::runtime_cli_error_exit_code;
+    }
+    ayther::runtime::RuntimeOptions options = std::move(*parsed_options.options());
+
+    if (options.qa_capabilities) {
+        const std::string report = ayther::runtime::qa_capabilities_report();
+        std::fprintf(stdout, "%s%s\n", ayther::runtime::qa_capabilities_marker, report.c_str());
+        return 0;
+    }
+
     // #627 — el cronometro del arranque. Entre apretar «Jugar» y ver el juego
     // pasaban MINUTOS y no habia forma de saber en cual de los diez tramos: la
     // sesion imprime lo que hizo, no cuanto tardo. Con esto, el log de una
     // sesion lenta dice donde se fue el tiempo — que es la unica manera de
     // arreglarlo en la maquina de otro.
     const auto startup_begin_time = std::chrono::steady_clock::now();
-    const auto log_startup_milestone =
-        [startup_begin_time](const char* milestone) {
-            const auto elapsed_ms =
-                std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::steady_clock::now() - startup_begin_time)
-                    .count();
-            std::fprintf(stdout, "[tiempo] %6lld ms  %s\n",
-                         static_cast<long long>(elapsed_ms), milestone);
-        };
+    const auto log_startup_milestone = [startup_begin_time](const char *milestone) {
+        const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                    std::chrono::steady_clock::now() - startup_begin_time)
+                                    .count();
+        std::fprintf(stdout, "[tiempo] %6lld ms  %s\n", static_cast<long long>(elapsed_ms),
+                     milestone);
+    };
 
     // Resolve Runtime-owned storage before core probing or SDL initialization.
     // Engine authoring configuration is intentionally outside this process.
-    const ayther::runtime::RuntimePaths runtime_paths =
-        ayther::runtime::RuntimePaths::discover();
+    const ayther::runtime::RuntimePaths runtime_paths = ayther::runtime::RuntimePaths::discover();
     std::fprintf(stdout, "[Config] Runtime data: %s\n",
                  runtime_paths.user_data_directory().string().c_str());
 
@@ -142,58 +157,53 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     //                  [--profile <id>]
     // Back-compat: `ayther_runtime <core> <rom>` (positional) still works.
     // -----------------------------------------------------------------------
-    auto parsed_options = ayther::runtime::RuntimeOptions::parse(argc, argv);
-    if (const auto* error = parsed_options.error()) {
-        const std::string diagnostic = ayther::runtime::describe(*error);
-        std::fprintf(stderr, "[ayther_runtime] %s\n", diagnostic.c_str());
-        emit_status(ayther::runtime::WarningStatus{
-            ayther::runtime::RuntimeErrorCode::cli_invalid_argument,
-            diagnostic});
-        return ayther::runtime::runtime_cli_error_exit_code;
+    if (options.qa_session) {
+#ifdef AYTHER_RUNTIME_AUDIO_QA
+        return ayther::runtime::run_audio_qa_session(options);
+#else
+        std::fprintf(stdout, "AYTHER_QA_SESSION {\"schema\":\"1.0\","
+                             "\"status\":\"unavailable\","
+                             "\"reason\":\"qa.engine_contract_unavailable\"}\n");
+        return 65;
+#endif
     }
-    ayther::runtime::RuntimeOptions options =
-        std::move(*parsed_options.options());
 
     if (options.play_protocol_version &&
-        ayther::runtime::status_protocol_compatibility(
-            *options.play_protocol_version) !=
+        ayther::runtime::status_protocol_compatibility(*options.play_protocol_version) !=
             ayther::runtime::StatusProtocolCompatibility::compatible) {
         const bool play_is_newer =
-            *options.play_protocol_version >
-            ayther::runtime::status_protocol_version;
+            *options.play_protocol_version > ayther::runtime::status_protocol_version;
         emit_status(ayther::runtime::WarningStatus{
             ayther::runtime::RuntimeErrorCode::protocol_incompatible,
-            play_is_newer
-                ? "Play requiere una version de protocolo mas nueva"
-                : "Play anuncio una version de protocolo no soportada"});
-        return ayther::runtime::exit_code(
-            ayther::runtime::RuntimeExitCode::protocol_incompatible);
+            play_is_newer ? "Play requiere una version de protocolo mas nueva"
+                          : "Play anuncio una version de protocolo no soportada"});
+        return ayther::runtime::exit_code(ayther::runtime::RuntimeExitCode::protocol_incompatible);
     }
 
     // Keep the established names below while the CLI contract and conversion
     // live in the independently testable RuntimeOptions boundary.
-    const auto& core_path_str = options.core_path;
-    const auto& rom_path_str = options.rom_path;
-    const auto& pack_path_arg = options.pack_path;
-    const auto& patch_path_arg = options.patch_path;
-    const auto& profile_arg = options.profile;
-    const auto& saves_dir_arg = options.saves_directory;
-    const auto& rom_crc32_arg = options.rom_crc32;
-    const auto& load_state_arg = options.load_state;
-    const auto& input_map_path = options.input_map_path;
-    const auto& core_opts_arg = options.core_options;
-    const auto& subsystems_arg = options.subsystems;
-    const auto& mute_buses_arg = options.mute_buses;
-    const auto& shaders_arg = options.shaders;
-    const auto& output_arg = options.output;
+    const auto &core_path_str = options.core_path;
+    const auto &rom_path_str = options.rom_path;
+    const auto &pack_path_arg = options.pack_path;
+    const auto &patch_path_arg = options.patch_path;
+    const auto &profile_arg = options.profile;
+    const auto &saves_dir_arg = options.saves_directory;
+    const auto &rom_crc32_arg = options.rom_crc32;
+    const auto &load_state_arg = options.load_state;
+    const auto &input_map_path = options.input_map_path;
+    const auto &core_opts_arg = options.core_options;
+    const auto &subsystems_arg = options.subsystems;
+    const auto &mute_buses_arg = options.mute_buses;
+    const auto &shaders_arg = options.shaders;
+    const auto &output_arg = options.output;
     const std::uint64_t frames_limit = options.frames_limit;
-    const auto& capture_at = options.capture_at;
+    const auto &capture_at = options.capture_at;
     const bool crash_test = options.crash_test;
-    const auto& probe_core = options.probe_core;
-    const auto& manifest_path = options.manifest_path;
+    const auto &probe_core = options.probe_core;
+    const auto &manifest_path = options.manifest_path;
     const bool hd_compose = options.hd_compose;
-    const ayther::runtime::RuntimeConfig runtime_config(
-        runtime_paths, std::filesystem::path{saves_dir_arg});
+    const ayther::runtime::RuntimeConfig runtime_config(runtime_paths,
+                                                        std::filesystem::path{saves_dir_arg});
     const ayther::runtime::SaveStateStore save_state_store;
     const ayther::runtime::CaptureService capture_service;
     // #230 EM-7.4: el parche del usuario. Deja de ser un `(void)`: se aplica
@@ -213,10 +223,8 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     if (!probe_core.empty()) {
         auto probed = ayther::engine::probe_core(probe_core);
         if (!probed) {
-            const bool invalid_core =
-                probed.error.code == ayther::ErrorCode::BadFormat;
-            std::fprintf(stderr, "[core-probe] %s\n",
-                         probed.error.message.c_str());
+            const bool invalid_core = probed.error.code == ayther::ErrorCode::BadFormat;
+            std::fprintf(stderr, "[core-probe] %s\n", probed.error.message.c_str());
             emit_status(ayther::runtime::ProbeFailedStatus{
                 invalid_core ? ayther::runtime::RuntimeErrorCode::core_invalid
                              : ayther::runtime::RuntimeErrorCode::core_load_failed,
@@ -228,7 +236,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
 
         // Runtime copia el modelo publico del Engine a su evento tipado; no
         // interpreta ni conserva punteros Libretro prestados.
-        const ayther::engine::CoreInfo& info = probed->info();
+        const ayther::engine::CoreInfo &info = probed->info();
         emit_status(ayther::runtime::ProbeSucceededStatus{
             info.api_version,
             info.library_name,
@@ -242,24 +250,23 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
 
     if (core_path_str.empty() || rom_path_str.empty()) {
         emit_status(ayther::runtime::WarningStatus{
-            ayther::runtime::RuntimeErrorCode::cli_invalid_argument,
-            "faltan --core y/o --rom"});
+            ayther::runtime::RuntimeErrorCode::cli_invalid_argument, "faltan --core y/o --rom"});
         std::fprintf(stderr,
-            "ayther_runtime — the Ayther game-session host (spawned by Ayther Play).\n"
-            "Usage: ayther_runtime --core <libretro.dll> --rom <rom>\n"
-            "         [--pack <ay>] [--patch <ips/bps>] [--profile <id>]\n"
-            "         [--subsystems <mask>] [--mute-buses <mask>] [--output <id>]\n"
-            "         [--core-option key=value]... [--no-shaders|--shaders]\n"
-            "         [--manifest <launch.toml>] [--saves-dir <dir>]\n"
-            "         [--input-map <controls.toml>]\n"
-            "         [--trust-registry <file.toml>]\n"
-            "         [--rom-crc32 <hex>] [--load-state <estado.bin>]\n"
-            "         [--rom-revision <token>] [--pack-revision <token>]\n"
-            "         [--play-protocol-version <N>]\n"
-            "         [--frames N] [--capture-at N[,M...]] [--crash-test]\n"
-            "         [--hd-compose]  (retirado en #345: se acepta y avisa)\n"
-            "       ayther_runtime --probe-core <libretro.dll>\n"
-            "         Sondea el core y emite un evento probe. Sin ROM.\n");
+                     "ayther_runtime — the Ayther game-session host (spawned by Ayther Play).\n"
+                     "Usage: ayther_runtime --core <libretro.dll> --rom <rom>\n"
+                     "         [--pack <ay>] [--patch <ips/bps>] [--profile <id>]\n"
+                     "         [--subsystems <mask>] [--mute-buses <mask>] [--output <id>]\n"
+                     "         [--core-option key=value]... [--no-shaders|--shaders]\n"
+                     "         [--manifest <launch.toml>] [--saves-dir <dir>]\n"
+                     "         [--input-map <controls.toml>]\n"
+                     "         [--trust-registry <file.toml>]\n"
+                     "         [--rom-crc32 <hex>] [--load-state <estado.bin>]\n"
+                     "         [--rom-revision <token>] [--pack-revision <token>]\n"
+                     "         [--play-protocol-version <N>]\n"
+                     "         [--frames N] [--capture-at N[,M...]] [--crash-test]\n"
+                     "         [--hd-compose]  (retirado en #345: se acepta y avisa)\n"
+                     "       ayther_runtime --probe-core <libretro.dll>\n"
+                     "         Sondea el core y emite un evento probe. Sin ROM.\n");
         return ayther::runtime::runtime_cli_error_exit_code;
     }
 
@@ -271,59 +278,53 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
                 rom_path_str, options.rom_revision);
             pack_reservation = std::make_unique<ayther::runtime::FileReservation>(
                 pack_path_arg, options.pack_revision);
-        } catch (const std::exception& error) {
+        } catch (const std::exception &error) {
             emit_status(ayther::runtime::WarningStatus{
                 ayther::runtime::RuntimeErrorCode::reservation_failed, error.what()});
-            return ayther::runtime::exit_code(
-                ayther::runtime::RuntimeExitCode::io_failure);
+            return ayther::runtime::exit_code(ayther::runtime::RuntimeExitCode::io_failure);
         }
         std::fprintf(stdout, "AYTHER_RESERVATION 1\n");
         std::fflush(stdout);
     }
-    const auto trust_registry = ayther::runtime::resolve_trust_registry(
-        options.trust_registry_path);
+    const auto trust_registry =
+        ayther::runtime::resolve_trust_registry(options.trust_registry_path);
     if (!trust_registry) {
         std::fprintf(stderr, "[pack] %s\n", trust_registry.diagnostic.c_str());
         emit_status(ayther::runtime::WarningStatus{
-            ayther::runtime::RuntimeErrorCode::trust_registry_invalid,
-            trust_registry.diagnostic});
-        return ayther::runtime::exit_code(
-            ayther::runtime::RuntimeExitCode::configuration_invalid);
+            ayther::runtime::RuntimeErrorCode::trust_registry_invalid, trust_registry.diagnostic});
+        return ayther::runtime::exit_code(ayther::runtime::RuntimeExitCode::configuration_invalid);
     }
     // Trusted inspection delegates signature, time, revocation, game scope and
     // integrity verification to Engine. Never turn an explicit failed pack into
     // a successful original-ROM launch. This also catches missing files before SDL.
     if (!pack_path_arg.empty()) {
-        const auto inspected = ayther::engine::inspect_pack(
-            pack_path_arg, trust_registry.path);
+        const auto inspected = ayther::engine::inspect_pack(pack_path_arg, trust_registry.path);
         if (!inspected) {
-            const auto diagnostic = "cannot open pack '" + pack_path_arg +
-                                    "': " + inspected.error.message +
-                (trust_registry.path.empty() ? " (Engine authoring policy)"
-                    : " (Engine trust registry: '" + trust_registry.path + "')");
+            const auto diagnostic =
+                "cannot open pack '" + pack_path_arg + "': " + inspected.error.message +
+                (trust_registry.path.empty()
+                     ? " (Engine authoring policy)"
+                     : " (Engine trust registry: '" + trust_registry.path + "')");
             std::fprintf(stderr, "[pack] %s\n", diagnostic.c_str());
             emit_status(ayther::runtime::WarningStatus{
                 ayther::runtime::RuntimeErrorCode::pack_open_failed, diagnostic});
-            return ayther::runtime::exit_code(
-                ayther::runtime::RuntimeExitCode::pack_open_failed);
+            return ayther::runtime::exit_code(ayther::runtime::RuntimeExitCode::pack_open_failed);
         }
     }
 
     ayther::InputMap input_map = ayther::InputMap::defaults();
     if (!input_map_path.empty()) {
         auto loaded_input_map = ayther::load_input_map(input_map_path);
-        if (const auto* error = loaded_input_map.error()) {
+        if (const auto *error = loaded_input_map.error()) {
             const std::string diagnostic = ayther::describe(*error);
             std::fprintf(stderr, "[ayther_runtime] %s\n", diagnostic.c_str());
             emit_status(ayther::runtime::WarningStatus{
-                ayther::runtime::RuntimeErrorCode::input_map_invalid,
-                diagnostic});
+                ayther::runtime::RuntimeErrorCode::input_map_invalid, diagnostic});
             return ayther::runtime::exit_code(
                 ayther::runtime::RuntimeExitCode::configuration_invalid);
         }
         input_map = std::move(*loaded_input_map.map());
-        std::fprintf(stdout, "[input] loaded map: %s\n",
-                     input_map_path.c_str());
+        std::fprintf(stdout, "[input] loaded map: %s\n", input_map_path.c_str());
     }
 
     // -----------------------------------------------------------------------
@@ -343,7 +344,19 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     }
     log_startup_milestone("SDL gamepad");
     if (!SDL_Init(SDL_INIT_AUDIO)) {
-        std::fprintf(stderr, "SDL_Init(audio) failed: %s\n", SDL_GetError());
+        const std::string cause = SDL_GetError();
+        std::fprintf(stderr, "SDL_Init(audio) failed: %s\n", cause.c_str());
+        const auto now = std::chrono::steady_clock::now().time_since_epoch();
+        emit_status(ayther::runtime::AudioWarningStatus{
+            ayther::runtime::AudioDiagnosticAggregate{
+                ayther::runtime::AudioDiagnostic{
+                    ayther::runtime::AudioDiagnosticCode::output_failure, "output:default",
+                    "main-output", cause, std::string{ayther::runtime::runtime_version},
+                    ayther::runtime::linked_engine_version(),
+                    static_cast<std::uint64_t>(
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(now).count())},
+                1U, 0U},
+            "No se pudo inicializar el dispositivo de audio."});
         return 1;
     }
     log_startup_milestone("SDL audio");
@@ -357,60 +370,51 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     //
     // Sigue siendo RESIZABLE: al salir de pantalla completa (Alt+Enter del
     // gestor de ventanas) la ventana tiene que poder acomodarse.
-    const std::string vulkan_window_title =
-        ayther::runtime::window_title("Vulkan Passthrough");
-    SDL_Window* window = SDL_CreateWindow(
-        vulkan_window_title.c_str(),
-        1280, 720,
-        SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_FULLSCREEN
-    );
+    const std::string vulkan_window_title = ayther::runtime::window_title("Vulkan Passthrough");
+    SDL_Window *window =
+        SDL_CreateWindow(vulkan_window_title.c_str(), 1280, 720,
+                         SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_FULLSCREEN);
     const bool vulkan_window = (window != nullptr);
     log_startup_milestone("ventana");
 
     if (!vulkan_window) {
         std::fprintf(stdout,
-            "[main] SDL_WINDOW_VULKAN unavailable (%s) — falling back to headless\n",
-            SDL_GetError());
+                     "[main] SDL_WINDOW_VULKAN unavailable (%s) — falling back to headless\n",
+                     SDL_GetError());
         const std::string headless_window_title =
             ayther::runtime::window_title("Headless fallback");
-        window = SDL_CreateWindow(
-            headless_window_title.c_str(),
-            1280, 720,
-            SDL_WINDOW_RESIZABLE | SDL_WINDOW_FULLSCREEN
-        );
+        window = SDL_CreateWindow(headless_window_title.c_str(), 1280, 720,
+                                  SDL_WINDOW_RESIZABLE | SDL_WINDOW_FULLSCREEN);
         if (!window) {
             std::fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
             return 1;
         }
     }
     SdlWindowOwner window_owner{window};
-    const char* const base_path = SDL_GetBasePath();
+    const char *const base_path = SDL_GetBasePath();
     const std::filesystem::path shader_directory =
         (base_path != nullptr ? std::filesystem::path{base_path}
                               : std::filesystem::current_path()) /
         "shaders";
-    const std::string shader_directory_string =
-        shader_directory.generic_string() + "/";
+    const std::string shader_directory_string = shader_directory.generic_string() + "/";
 
     // -----------------------------------------------------------------------
     // Rust ayther_core sanity check
     // -----------------------------------------------------------------------
-    std::fprintf(stdout, "[main] ayther_core version: %u\n",
-                 ayther::engine::core_abi_revision());
+    std::fprintf(stdout, "[main] ayther_core version: %u\n", ayther::engine::core_abi_revision());
 
     // -----------------------------------------------------------------------
     // Vulkan context
     // -----------------------------------------------------------------------
     ayther::runtime::PresentationController presentation;
-    VkContext& vulkan = presentation.context();
-    VkSwapchain& swapchain = presentation.swapchain();
-    VkPostProcess& postprocess = presentation.postprocess();
-    ayther::PlayerOverlay& overlay = presentation.overlay();
+    VkContext &vulkan = presentation.context();
+    VkSwapchain &swapchain = presentation.swapchain();
+    VkPostProcess &postprocess = presentation.postprocess();
+    ayther::PlayerOverlay &overlay = presentation.overlay();
     const bool has_vulkan = vulkan_window && vulkan.init(window);
     log_startup_milestone("Vulkan");
     if (!has_vulkan) {
-        std::fprintf(stdout,
-            "[main] Vulkan context not available — running in Phase 1/2 mode\n");
+        std::fprintf(stdout, "[main] Vulkan context not available — running in Phase 1/2 mode\n");
         emit_status(ayther::runtime::WarningStatus{
             ayther::runtime::RuntimeErrorCode::vulkan_unavailable,
             "Vulkan no esta disponible; se continua sin presentacion GPU"});
@@ -425,9 +429,8 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     if (has_vulkan) {
         int win_w = 1280, win_h = 720;
         SDL_GetWindowSizeInPixels(window, &win_w, &win_h);
-        swap_ok = swapchain.init(vulkan,
-                                 static_cast<uint32_t>(win_w),
-                                 static_cast<uint32_t>(win_h));
+        swap_ok =
+            swapchain.init(vulkan, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
         if (!swap_ok) {
             std::fprintf(stderr, "[main] Swapchain init failed — headless fallback\n");
             emit_status(ayther::runtime::WarningStatus{
@@ -449,12 +452,10 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     // typed watcher share the exact path.
     std::string pack_path = pack_path_arg;
     if (pack_path.empty()) {
-        const auto dot  = core_path_str.rfind('.');
-        const auto stem = (dot != std::string::npos)
-                            ? core_path_str.substr(0, dot) : core_path_str;
+        const auto dot = core_path_str.rfind('.');
+        const auto stem = (dot != std::string::npos) ? core_path_str.substr(0, dot) : core_path_str;
         pack_path = stem + ".ay";
-        if (!std::filesystem::exists(pack_path) &&
-            std::filesystem::exists(stem + ".ae"))
+        if (!std::filesystem::exists(pack_path) && std::filesystem::exists(stem + ".ae"))
             pack_path = stem + ".ae";
     }
 
@@ -473,25 +474,21 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
 #ifdef NDEBUG
         validation_context.release_build = true;
 #endif
-        const auto validation = ayther::engine::validate_pack(
-            pack_path, validation_context);
+        const auto validation = ayther::engine::validate_pack(pack_path, validation_context);
         if (!validation) {
             std::fprintf(stderr, "[pack] validation failed: %s\n",
                          validation.error.message.c_str());
             pack_path.clear();
             pack_rejected = true;
         } else {
-            for (const auto& finding : validation->findings) {
+            for (const auto &finding : validation->findings) {
                 const bool is_error = finding.is_error();
-                std::fprintf(is_error ? stderr : stdout,
-                             "[pack] %s [%s] %s\n",
-                             is_error ? "ERROR" : "aviso",
-                             finding.code.empty() ? "?" : finding.code.c_str(),
-                             finding.message.c_str());
+                std::fprintf(
+                    is_error ? stderr : stdout, "[pack] %s [%s] %s\n", is_error ? "ERROR" : "aviso",
+                    finding.code.empty() ? "?" : finding.code.c_str(), finding.message.c_str());
             }
             if (validation->has_errors()) {
-                std::fprintf(stderr,
-                    "[pack] el pack NO se carga por lo de arriba\n");
+                std::fprintf(stderr, "[pack] el pack NO se carga por lo de arriba\n");
                 pack_path.clear();
                 pack_rejected = true;
             }
@@ -500,11 +497,10 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
 
     if (pack_rejected) {
         if (!pack_path_arg.empty()) {
-            emit_status(ayther::runtime::WarningStatus{
-                ayther::runtime::RuntimeErrorCode::pack_open_failed,
-                "el pack solicitado fue rechazado por validacion"});
-            return ayther::runtime::exit_code(
-                ayther::runtime::RuntimeExitCode::pack_open_failed);
+            emit_status(
+                ayther::runtime::WarningStatus{ayther::runtime::RuntimeErrorCode::pack_open_failed,
+                                               "el pack solicitado fue rechazado por validacion"});
+            return ayther::runtime::exit_code(ayther::runtime::RuntimeExitCode::pack_open_failed);
         }
         emit_status(ayther::runtime::WarningStatus{
             ayther::runtime::RuntimeErrorCode::pack_rejected,
@@ -512,9 +508,9 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     }
 
     ayther::AytherSession::Config scfg;
-    scfg.core_path    = core_path_str;
-    scfg.rom_path     = rom_path_str;
-    scfg.pack_path    = pack_path;     // explicit → watcher shares this exact path
+    scfg.core_path = core_path_str;
+    scfg.rom_path = rom_path_str;
+    scfg.pack_path = pack_path;                // explicit → watcher shares this exact path
     scfg.trust_registry = trust_registry.path; // Engine retains it for reload_pack().
     scfg.enable_audio = true;
     // Si la validación descartó el pack, NO buscar otro por convención. Sin
@@ -522,20 +518,20 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     // la sesión arrancaba con un pack DISTINTO del que el usuario pidió, sin
     // decirlo — medido: `has_pack=1` después de un rechazo. Es peor que no
     // cargar ninguno, porque parece que el rechazo no pasó.
-    if (pack_rejected) scfg.derive_core_pack = false;
+    if (pack_rejected)
+        scfg.derive_core_pack = false;
     // EM-7.1: las opciones del core van en el Config y no en un setter porque
     // el core las lee UNA VEZ, al inicializar. Aplicarlas despues compilaria y
     // no haria nada.
     scfg.core_options = core_opts_arg;
-    scfg.patch_path   = patch_path_arg;   // #230 EM-7.4
+    scfg.patch_path = patch_path_arg; // #230 EM-7.4
 
     auto sess_r = ayther::AytherSession::create(scfg);
     if (!sess_r) {
         std::fprintf(stderr, "[main] AytherSession::create failed: %s\n",
                      sess_r.error.message.c_str());
         emit_status(ayther::runtime::WarningStatus{
-            ayther::runtime::RuntimeErrorCode::core_load_failed,
-            sess_r.error.message});
+            ayther::runtime::RuntimeErrorCode::core_load_failed, sess_r.error.message});
         return 1;
     }
     ayther::runtime::SessionController sess{std::move(*sess_r)};
@@ -545,10 +541,9 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
         emit_status(ayther::runtime::WarningStatus{
             ayther::runtime::RuntimeErrorCode::pack_open_failed,
             "Engine no activo el pack solicitado; la sesion se cancela"});
-        return ayther::runtime::exit_code(
-            ayther::runtime::RuntimeExitCode::pack_open_failed);
+        return ayther::runtime::exit_code(ayther::runtime::RuntimeExitCode::pack_open_failed);
     }
-    sess->enable_rewind(true, 10);   // R6: 10 s rewind window (Backspace to rewind)
+    sess->enable_rewind(true, 10); // R6: 10 s rewind window (Backspace to rewind)
 
     // #293: el perfil pedido. Sin `--profile`, el pack ya arrancó en el suyo
     // (lo aplica `set_pack`), así que acá sólo hay que atender el caso de que
@@ -560,8 +555,9 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     if (!profile_arg.empty()) {
         if (!sess->set_profile(profile_arg)) {
             std::fprintf(stderr,
-                "[main] el pack no tiene el perfil '%s' — se usa el predeterminado.\n"
-                "       disponibles:", profile_arg.c_str());
+                         "[main] el pack no tiene el perfil '%s' — se usa el predeterminado.\n"
+                         "       disponibles:",
+                         profile_arg.c_str());
             for (uint32_t i = 0; i < sess->profile_count(); ++i)
                 std::fprintf(stderr, " %s", sess->profile_id(i).c_str());
             std::fprintf(stderr, "\n");
@@ -600,15 +596,13 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     // proceso vivo y su `launch.toml`: sin el, Play tiene un archivo en el disco
     // y un proceso corriendo sin manera de saber que son la misma partida — que
     // es justo lo que hace falta para detectar sesiones huerfanas (#601).
-    emit_status(ayther::runtime::ReadyStatus{
-        sess->game_id(), sess->has_pack(), manifest_path});
+    emit_status(ayther::runtime::ReadyStatus{sess->game_id(), sess->has_pack(), manifest_path});
     // #600: «que se esta jugando», para el overlay de Play. Va aparte del
     // `ready` porque responden preguntas distintas: `ready` dice que la sesion
     // arranco —el overlay se cierra— y este dice QUE arranco, que es lo que se
     // muestra. Juntarlos obligaria a Play a mirar el mismo evento dos veces con
     // dos intenciones.
-    emit_status(ayther::runtime::NowPlayingStatus{
-        sess->game_id(), sess->game_id()});
+    emit_status(ayther::runtime::NowPlayingStatus{sess->game_id(), sess->game_id()});
 
     // #600: un AVISO no corta la sesion. Un pack cargado con todos los
     // subsistemas apagados anda igual —se ve el original— y tratarlo como error
@@ -624,7 +618,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
 
     if (crash_test) {
         emit_status(ayther::runtime::CrashTestStatus{});
-        std::abort();   // prove the launcher survives an abnormal child exit
+        std::abort(); // prove the launcher survives an abnormal child exit
     }
 
     // -----------------------------------------------------------------------
@@ -639,7 +633,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
             pack_watcher.emplace(std::move(*watcher));
         }
     }
-    Uint64 reload_due_ms = 0;   // non-zero while debounce is ticking
+    Uint64 reload_due_ms = 0; // non-zero while debounce is ticking
     if (pack_watcher)
         std::fprintf(stdout, "[main] Pack watcher active: %s\n", pack_path.c_str());
 
@@ -655,24 +649,21 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     ayther::AytherRenderer renderer;
     bool renderer_ok = false;
     if (swap_ok) {
-        const FitRect canvas_fit = aspect_fit(
-            4, 3, swapchain.extent().width, swapchain.extent().height);
-        renderer_ok = renderer.init(
-            vulkan.engine_view(), static_cast<std::uint32_t>(canvas_fit.w),
-            static_cast<std::uint32_t>(canvas_fit.h),
-            shader_directory_string.c_str());
+        const FitRect canvas_fit =
+            aspect_fit(4, 3, swapchain.extent().width, swapchain.extent().height);
+        renderer_ok = renderer.init(vulkan.engine_view(), static_cast<std::uint32_t>(canvas_fit.w),
+                                    static_cast<std::uint32_t>(canvas_fit.h),
+                                    shader_directory_string.c_str());
         if (!renderer_ok)
             std::fprintf(stderr, "[main] AytherRenderer::init failed — no HD render.\n");
         // #140: activar el tier del pack para la ALTURA del canvas ANTES de la
         // primera carga de texturas (los caches indexan por nombre — cambiar el
         // tier después no las recargaría). Packs legacy: no-op.
         if (const auto pack = sess->pack()) {
-            pack.select_render_tier_for_height(
-                static_cast<std::uint32_t>(canvas_fit.h));
+            pack.select_render_tier_for_height(static_cast<std::uint32_t>(canvas_fit.h));
             if (const auto tiers = pack.render_tiers(); !tiers.is_legacy())
-                std::fprintf(stdout,
-                             "[main] Pack tiers 0x%x — canvas %dpx\n",
-                             tiers.bits(), static_cast<int>(canvas_fit.h));
+                std::fprintf(stdout, "[main] Pack tiers 0x%x — canvas %dpx\n", tiers.bits(),
+                             static_cast<int>(canvas_fit.h));
         }
     }
     // -----------------------------------------------------------------------
@@ -685,7 +676,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     // renderer follows its default no-overlay path.
     // -----------------------------------------------------------------------
     AytherLayerStack pack_layer_stack;
-    const AytherLayerStack* active_layer_stack = nullptr;
+    const AytherLayerStack *active_layer_stack = nullptr;
     const auto rebuild_pack_layer_stack = [&]() {
         pack_layer_stack = AytherLayerStack{};
         active_layer_stack = nullptr;
@@ -693,12 +684,10 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
             return;
         }
         const std::size_t appended_overlay_count =
-            ayther_runtime::build_pack_overlay_stack(
-                sess->pack_overlays(), pack_layer_stack);
+            ayther_runtime::build_pack_overlay_stack(sess->pack_overlays(), pack_layer_stack);
         if (appended_overlay_count != 0U) {
             active_layer_stack = &pack_layer_stack;
-            std::fprintf(stdout, "[main] Pack overlays: %zu layers\n",
-                         appended_overlay_count);
+            std::fprintf(stdout, "[main] Pack overlays: %zu layers\n", appended_overlay_count);
         }
     };
     rebuild_pack_layer_stack();
@@ -715,13 +704,10 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     // -----------------------------------------------------------------------
     bool postprocess_ok = false;
     if (swap_ok && renderer_ok) {
-        const std::string vertex_shader =
-            (shader_directory / "postprocess.vert.spv").string();
-        const std::string fragment_shader =
-            (shader_directory / "postprocess.frag.spv").string();
-        postprocess_ok = postprocess.init(vulkan, swapchain,
-                                          vertex_shader.c_str(),
-                                          fragment_shader.c_str());
+        const std::string vertex_shader = (shader_directory / "postprocess.vert.spv").string();
+        const std::string fragment_shader = (shader_directory / "postprocess.frag.spv").string();
+        postprocess_ok =
+            postprocess.init(vulkan, swapchain, vertex_shader.c_str(), fragment_shader.c_str());
         if (postprocess_ok)
             postprocess.set_source(vulkan, renderer.render_image());
         else {
@@ -735,7 +721,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     // -----------------------------------------------------------------------
     // Main loop
     // -----------------------------------------------------------------------
-    Uint64   last_print_ms = SDL_GetTicks();   // frame index now comes from fv.frame_index
+    Uint64 last_print_ms = SDL_GetTicks(); // frame index now comes from fv.frame_index
 
     // ---------------------------------------------------------------------------
     // Frame pacing — nanosecond precision via SDL_GetTicksNS / SDL_DelayNS.
@@ -749,13 +735,11 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     // visible audio/video drift over time.  Clamped [20, 120] Hz to guard
     // against corrupt core metadata.
     // ---------------------------------------------------------------------------
-    const double core_fps    = sess->timing_fps();   // from retro_system_av_info
-    const double fps_clamped = (core_fps < 20.0) ? 20.0
-                             : (core_fps > 120.0) ? 120.0
-                             : core_fps;
-    const Uint64 frame_ns    = static_cast<Uint64>(1'000'000'000.0 / fps_clamped);
-    std::fprintf(stdout, "[main] Frame pacing: %.4f Hz  →  %" PRIu64 " ns/frame\n",
-                 fps_clamped, frame_ns);
+    const double core_fps = sess->timing_fps(); // from retro_system_av_info
+    const double fps_clamped = (core_fps < 20.0) ? 20.0 : (core_fps > 120.0) ? 120.0 : core_fps;
+    const Uint64 frame_ns = static_cast<Uint64>(1'000'000'000.0 / fps_clamped);
+    std::fprintf(stdout, "[main] Frame pacing: %.4f Hz  →  %" PRIu64 " ns/frame\n", fps_clamped,
+                 frame_ns);
     Uint64 next_frame_ns = SDL_GetTicksNS() + frame_ns;
 
     // Input source (M3): SDL keyboard + gamepad → libretro RetroPad bitfield,
@@ -767,54 +751,50 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
         if (!overlay.init(vulkan, swapchain, window))
             std::fprintf(stderr, "[main] PlayerOverlay::init failed — overlay disabled.\n");
     }
-    bool hd_on_ = true;   // HD substitutions on by default; toggled by overlay or F1
-    bool shaders_on_ = true;   // #299: post-proceso de presentación (CRT)
+    bool hd_on_ = true;      // HD substitutions on by default; toggled by overlay or F1
+    bool shaders_on_ = true; // #299: post-proceso de presentación (CRT)
     // #296: el perfil de SALIDA activo. Puntero a la tabla estatica del
     // Runtime: cambiar de perfil es mover este puntero, y por eso no hay que
     // reiniciar nada.
-    const ayther::runtime::OutputProfile* out_profile_ =
-        &ayther::runtime::output_profile_default();
+    const ayther::runtime::OutputProfile *out_profile_ = &ayther::runtime::output_profile_default();
     // #298: comparación con pantalla dividida. Apagada por default — cuesta un
     // segundo render por frame y no es el modo de jugar.
-    bool  capture_req_    = false;   // #300: F12 pidio una captura
-    bool  diagnose_req_   = false;   // #302: F9 pidio el diagnostico
+    bool capture_req_ = false;  // #300: F12 pidio una captura
+    bool diagnose_req_ = false; // #302: F9 pidio el diagnostico
     // #302: el ultimo frame REAL medido. No un benchmark aparte: una
     // prueba sintetica mediria otra cosa que la que el jugador esta viendo.
     float last_frame_ms_ = 0.0f;
-    bool  split_on_       = false;
-    bool  split_vertical_ = false;   // false = divisor vertical (izq/der)
-    float split_pos_      = 0.5f;
+    bool split_on_ = false;
+    bool split_vertical_ = false; // false = divisor vertical (izq/der)
+    float split_pos_ = 0.5f;
 
     // #299: la configuración del jugador para ESTA combinación de juego y pack.
     //
     // Se carga antes del primer frame y se aplica sobre la sesión: si no se
     // aplicara acá, el panel mostraría lo guardado y el juego se vería con otra
     // cosa hasta que alguien abriera el menú.
-    const std::filesystem::path& cfg_dir =
-        runtime_config.paths().configuration_directory();
+    const std::filesystem::path &cfg_dir = runtime_config.paths().configuration_directory();
     std::string cfg_pack_name;
     if (const auto pack = sess->pack()) {
         cfg_pack_name = pack.info().name;
     }
     const std::filesystem::path cfg_file =
         ayther::player_config_path(cfg_dir, sess->game_id(), cfg_pack_name);
-    static_assert(ayther::player_config_audio_bus_count ==
-                  ayther::kAudioBusCount);
+    static_assert(ayther::player_config_audio_bus_count == ayther::kAudioBusCount);
     auto player_cfg_result = ayther::player_config_load_checked(cfg_file);
     if (player_cfg_result.status == ayther::PlayerConfigLoadStatus::invalid ||
-        player_cfg_result.status ==
-            ayther::PlayerConfigLoadStatus::unsupported_version ||
+        player_cfg_result.status == ayther::PlayerConfigLoadStatus::unsupported_version ||
         player_cfg_result.status == ayther::PlayerConfigLoadStatus::io_error) {
         emit_status(ayther::runtime::WarningStatus{
-            ayther::runtime::RuntimeErrorCode::config_invalid,
-            player_cfg_result.diagnostic});
+            ayther::runtime::RuntimeErrorCode::config_invalid, player_cfg_result.diagnostic});
     }
     ayther::PlayerConfig player_cfg = std::move(player_cfg_result.config);
     {
         // Orden: primero el PERFIL y después la máscara guardada. El perfil
         // pisa la máscara, así que aplicarlo después borraría los ajustes
         // sueltos que el jugador dejó — y ésos son más específicos.
-        if (!player_cfg.profile.empty()) sess->set_profile(player_cfg.profile);
+        if (!player_cfg.profile.empty())
+            sess->set_profile(player_cfg.profile);
         if (player_cfg.have_subsystems) {
             // Se INTERSECTA con lo que este pack trae: la configuración puede
             // venir de una versión anterior del pack que traía más cosas, y
@@ -822,17 +802,17 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
             // el panel mostrando algo que no pasa.
             uint32_t avail = 0;
             for (uint32_t i = 0; i < ayther::kSubsystemCount; ++i)
-                if (sess->subsystem_availability(static_cast<ayther::Subsystem>(i))
-                    != ayther::SubsystemAvailability::Absent)
+                if (sess->subsystem_availability(static_cast<ayther::Subsystem>(i)) !=
+                    ayther::SubsystemAvailability::Absent)
                     avail |= (1u << i);
             sess->set_subsystems_enabled_mask(player_cfg.subsystems & avail);
         }
         for (uint32_t i = 0; i < ayther::kAudioBusCount; ++i) {
             sess->set_bus_volume(static_cast<ayther::AudioBus>(i), player_cfg.bus_gain[i]);
-            sess->set_bus_muted (static_cast<ayther::AudioBus>(i), player_cfg.bus_muted[i]);
+            sess->set_bus_muted(static_cast<ayther::AudioBus>(i), player_cfg.bus_muted[i]);
         }
         shaders_on_ = player_cfg.shaders_on;
-        hd_on_      = player_cfg.hd_on;
+        hd_on_ = player_cfg.hd_on;
         // #311: lo que Play pidio pisa lo guardado. Es mas especifico —el
         // jugador acaba de elegirlo— y ademas es la unica forma de que la
         // pantalla previa signifique algo cuando ya hay config guardada.
@@ -842,7 +822,8 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
             for (uint32_t i = 0; i < ayther::kAudioBusCount; ++i)
                 sess->set_bus_muted(static_cast<ayther::AudioBus>(i),
                                     (*mute_buses_arg & (uint32_t{1} << i)) != 0);
-        if (shaders_arg.has_value()) shaders_on_ = *shaders_arg;
+        if (shaders_arg.has_value())
+            shaders_on_ = *shaders_arg;
         // #296: el perfil de SALIDA. La precedencia la decide
         // `output_profile_resolve` y no este bloque: lo que el usuario
         // eligio gana sobre lo que el pack recomienda, y si no ganara,
@@ -851,17 +832,15 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
         if (const auto pack = sess->pack()) {
             pack_output = pack.info().recommended_output_profile;
         }
-        const std::string user_output =
-            !output_arg.empty() ? output_arg : player_cfg.output;
-        out_profile_ = &ayther::runtime::output_profile_resolve(
-            user_output, pack_output);
+        const std::string user_output = !output_arg.empty() ? output_arg : player_cfg.output;
+        out_profile_ = &ayther::runtime::output_profile_resolve(user_output, pack_output);
         player_cfg.output = std::string(out_profile_->id);
     }
 
     // Last valid FrameView — kept alive across paused frames (step() not called
     // while paused, so the previous frame's pointers remain valid).
     static const ayther::FrameView kEmptyFrame{};
-    const ayther::FrameView* last_fv = nullptr;
+    const ayther::FrameView *last_fv = nullptr;
     std::uint64_t video_decoded_frames = 0;
     std::uint64_t last_video_sequence = 0;
 
@@ -878,11 +857,11 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     // puede jugar.
     if (!load_state_arg.empty()) {
         auto loaded_state = save_state_store.load(load_state_arg);
-        const bool state_restored = loaded_state.loaded() && sess &&
-                                    sess->unserialize(loaded_state.bytes);
+        const bool state_restored =
+            loaded_state.loaded() && sess && sess->unserialize(loaded_state.bytes);
         if (state_restored) {
-            std::fprintf(stdout, "[main] reanudado desde %s (%zu bytes)\n",
-                         load_state_arg.c_str(), loaded_state.bytes.size());
+            std::fprintf(stdout, "[main] reanudado desde %s (%zu bytes)\n", load_state_arg.c_str(),
+                         loaded_state.bytes.size());
         } else {
             emit_status(ayther::runtime::WarningStatus{
                 ayther::runtime::RuntimeErrorCode::state_restore_failed,
@@ -900,10 +879,9 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
         }
         swap_ok = true;
         if (renderer_ok) {
-            const FitRect canvas = aspect_fit(
-                4, 3, swapchain.extent().width, swapchain.extent().height);
-            renderer.resize(vulkan.engine_view(),
-                            static_cast<std::uint32_t>(canvas.w),
+            const FitRect canvas =
+                aspect_fit(4, 3, swapchain.extent().width, swapchain.extent().height);
+            renderer.resize(vulkan.engine_view(), static_cast<std::uint32_t>(canvas.w),
                             static_cast<std::uint32_t>(canvas.h));
             if (postprocess_ok) {
                 postprocess_ok = postprocess.rebuild(vulkan, swapchain);
@@ -930,7 +908,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
         while (SDL_PollEvent(&event)) {
             // M4: overlay consumes the event first (ImGui keyboard/gamepad nav).
             overlay.handle_event(event);
-            input.handle_event(event);   // gamepad hotplug
+            input.handle_event(event); // gamepad hotplug
 
             if (event.type == SDL_EVENT_QUIT) {
                 running = false;
@@ -950,15 +928,18 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
                     split_on_ = !split_on_;
                     std::fprintf(stdout, "[main] split: %s\n", split_on_ ? "ON" : "OFF");
                 }
-                if (event.key.scancode == SDL_SCANCODE_F12) capture_req_ = true;
-                if (event.key.scancode == SDL_SCANCODE_F9) diagnose_req_ = true;
+                if (event.key.scancode == SDL_SCANCODE_F12)
+                    capture_req_ = true;
+                if (event.key.scancode == SDL_SCANCODE_F9)
+                    diagnose_req_ = true;
                 // #296: F4 cicla el perfil de SALIDA. Sin reiniciar nada —
                 // cambiar de perfil es mover un puntero a la tabla estatica.
                 if (event.key.scancode == SDL_SCANCODE_F4) {
                     const auto all = ayther::runtime::output_profiles();
                     std::size_t cur = 0;
                     for (std::size_t i = 0; i < all.size(); ++i)
-                        if (&all[i] == out_profile_) cur = i;
+                        if (&all[i] == out_profile_)
+                            cur = i;
                     out_profile_ = &all[(cur + 1) % all.size()];
                     // Ciclar es ELEGIR: a partir de aca manda el usuario y
                     // no la recomendacion del pack.
@@ -985,8 +966,8 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
                     int w = 1, h = 1;
                     SDL_GetWindowSize(window, &w, &h);
                     const float t = split_vertical_
-                        ? (h ? event.motion.y / static_cast<float>(h) : 0.5f)
-                        : (w ? event.motion.x / static_cast<float>(w) : 0.5f);
+                                        ? (h ? event.motion.y / static_cast<float>(h) : 0.5f)
+                                        : (w ? event.motion.x / static_cast<float>(w) : 0.5f);
                     split_pos_ = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
                 }
             } else if (event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
@@ -1007,8 +988,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
                 // Only rebuild when it is the *main* game window that resized.
                 const SDL_WindowID game_wid = SDL_GetWindowID(window);
                 if (event.window.windowID == game_wid) {
-                    (void)rebuild_presentation(event.window.data1,
-                                               event.window.data2);
+                    (void)rebuild_presentation(event.window.data1, event.window.data2);
                 }
             }
         }
@@ -1027,8 +1007,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
 
             // GPU must be idle before freeing textures that may be in flight.
             if (vulkan.is_ready()) {
-                if (const auto failure = vulkan.wait_idle(
-                        "vkDeviceWaitIdle [pack hot reload]")) {
+                if (const auto failure = vulkan.wait_idle("vkDeviceWaitIdle [pack hot reload]")) {
                     ayther::runtime::vulkan::log_vk_failure(*failure);
                     running = false;
                     continue;
@@ -1046,8 +1025,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
             if (!pack_path_arg.empty() && (!rr || !sess->has_pack())) {
                 emit_status(ayther::runtime::WarningStatus{
                     ayther::runtime::RuntimeErrorCode::pack_open_failed,
-                    rr ? "el pack solicitado desaparecio durante la recarga"
-                       : rr.error.message});
+                    rr ? "el pack solicitado desaparecio durante la recarga" : rr.error.message});
                 return ayther::runtime::exit_code(
                     ayther::runtime::RuntimeExitCode::pack_open_failed);
             }
@@ -1056,8 +1034,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
                     // #140: el reload re-abre el pack (tier default = el más
                     // alto) → re-activar el tier del canvas vigente.
                     if (const auto pack = sess->pack(); pack && renderer_ok) {
-                        pack.select_render_tier_for_height(
-                            renderer.render_image().extent.height);
+                        pack.select_render_tier_for_height(renderer.render_image().extent.height);
                     }
                     std::fprintf(stdout, "[main] Pack reloaded  game=%s\n", sess->game_id());
                 } else {
@@ -1068,8 +1045,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
                 // evictaron arriba, así que las láminas nuevas se re-fetchean.
                 rebuild_pack_layer_stack();
             } else {
-                std::fprintf(stderr, "[main] Pack reload failed: %s\n",
-                             rr.error.message.c_str());
+                std::fprintf(stderr, "[main] Pack reload failed: %s\n", rr.error.message.c_str());
             }
         }
         // ---------------------------------------------------------------------
@@ -1080,9 +1056,9 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
         //   Tab held  → fast-forward (R6, run extra frames per displayed frame)
         // M4: skip stepping while the pause overlay is open.
         if (!overlay.is_paused()) {
-            const bool* keys = SDL_GetKeyboardState(nullptr);
+            const bool *keys = SDL_GetKeyboardState(nullptr);
             const bool rewinding = keys && keys[SDL_SCANCODE_BACKSPACE];
-            const bool ffwd      = keys && keys[SDL_SCANCODE_TAB];
+            const bool ffwd = keys && keys[SDL_SCANCODE_TAB];
 
             // El modo HD también gatea el matcher de sets de plano (Utilería y
             // Glifos del pack): suprime los tiles originales, así que en modo
@@ -1101,8 +1077,8 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
                 sess->set_audio_runtime_substitution(hd_on_);
 
             if (rewinding) {
-                if (const ayther::FrameView* rv = sess->rewind_step())
-                    last_fv = rv;            // walked back one frame
+                if (const ayther::FrameView *rv = sess->rewind_step())
+                    last_fv = rv; // walked back one frame
                 // else: buffer exhausted — hold on the oldest frame
             } else {
                 sess->set_input(0, input.poll());
@@ -1110,23 +1086,26 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
                 if (ffwd) {
                     // Run a few extra frames this display tick (capped) — each
                     // still feeds the rewind ring + audio. ~4× speed.
-                    for (int i = 0; i < 3; ++i) { sess->set_input(0, input.poll()); last_fv = &sess->step(); }
+                    for (int i = 0; i < 3; ++i) {
+                        sess->set_input(0, input.poll());
+                        last_fv = &sess->step();
+                    }
                 }
             }
         }
-        const ayther::FrameView& fv = last_fv ? *last_fv : kEmptyFrame;
+        const ayther::FrameView &fv = last_fv ? *last_fv : kEmptyFrame;
 
         // --frames N (dev/CI): clean exit once N frames have been emulated, so the
         // launcher slice + headless tests get a deterministic, self-terminating run.
         // #502: captura programada (mismo camino que F12) — el e2e del pack sin
         // teclado: SDL no recibe teclas sintéticas.
         for (const std::uint64_t capture_frame : capture_at)
-            if (fv.frame_index == capture_frame) capture_req_ = true;
+            if (fv.frame_index == capture_frame)
+                capture_req_ = true;
         if (frames_limit > 0 && fv.frame_index >= frames_limit) {
-            std::fprintf(stdout,
-                         "[main] --frames %" PRIu64 " reached; exiting cleanly.\n",
+            std::fprintf(stdout, "[main] --frames %" PRIu64 " reached; exiting cleanly.\n",
                          frames_limit);
-            running = false;   // the authoritative exit status is emitted post-loop
+            running = false; // the authoritative exit status is emitted post-loop
         }
         if (fv.video_y != nullptr && fv.video_seq != last_video_sequence) {
             ++video_decoded_frames;
@@ -1137,8 +1116,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
         // Sonic RAM reads (debug overlay)
         // ----------------------------------------------------------------
         const auto telemetry = ayther::runtime::decode_sonic_telemetry(
-            std::span<const std::uint8_t>{sess->work_ram(),
-                                          sess->work_ram_size()});
+            std::span<const std::uint8_t>{sess->work_ram(), sess->work_ram_size()});
         const auto px = telemetry.x;
         const auto py = telemetry.y;
         const auto vx = telemetry.velocity_x;
@@ -1148,10 +1126,9 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
 
         // ---- Vulkan present path ------------------------------------------
         if (swap_ok && renderer_ok && fv.fb_pixels) {
-            if (auto acquired_frame = swapchain.begin_frame(vulkan);
-                acquired_frame.has_value()) {
-                AcquiredFrame& frame = *acquired_frame;
-                const auto      pack = sess->pack();   // typed borrowed HD assets
+            if (auto acquired_frame = swapchain.begin_frame(vulkan); acquired_frame.has_value()) {
+                AcquiredFrame &frame = *acquired_frame;
+                const auto pack = sess->pack(); // typed borrowed HD assets
                 const VkCommandBuffer cmd = frame.command_buffer();
 
                 // The motor renders the emulator frame + HD tile/sprite subs
@@ -1171,11 +1148,9 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
                 if (split_on_ && hd_on_) {
                     renderer.render(vulkan.engine_view(), cmd, fv, pack,
                                     /*hd=*/false, active_layer_stack);
-                    split_ready = renderer.capture_compare(
-                        vulkan.engine_view(), cmd);
+                    split_ready = renderer.capture_compare(vulkan.engine_view(), cmd);
                 }
-                renderer.render(vulkan.engine_view(), cmd, fv, pack, hd_on_,
-                                active_layer_stack);
+                renderer.render(vulkan.engine_view(), cmd, fv, pack, hd_on_, active_layer_stack);
 
                 // Present the offscreen HD frame: CRT post-process (samples it)
                 // when the shaders are present, else a plain blit. Both leave the
@@ -1185,22 +1160,18 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
                     // las dos mitades en un solo pase y compararlas con el CRT
                     // encima compararía el shader, no la remasterización.
                     VkPresent::blit_split_to_swapchain(
-                        vulkan, frame,
-                        renderer.compare_render_image(), renderer.render_image(),
+                        vulkan, frame, renderer.compare_render_image(), renderer.render_image(),
                         split_pos_, split_vertical_);
                 } else if (postprocess_ok) {
-                    const AytherShaderParams& sp = fv.shader_params;
+                    const AytherShaderParams &sp = fv.shader_params;
                     const float time_s = static_cast<float>(SDL_GetTicks()) * 0.001f;
                     // #296: el perfil ESCALA lo que el pack pidio y pone lo
                     // suyo cuando el pack no pidio nada. Las dos mitades de esa
                     // regla viven en `output_shader`, que se prueba sin GPU.
                     const ayther::runtime::OutputShader fx =
-                        shaders_on_
-                            ? ayther::runtime::output_shader(
-                                  *out_profile_, sp.crt_strength,
-                                  sp.scan_strength, sp.vignette)
-                            : ayther::runtime::OutputShader{
-                                  0.0f, 0.0f, 0.0f, 0.0f };
+                        shaders_on_ ? ayther::runtime::output_shader(*out_profile_, sp.crt_strength,
+                                                                     sp.scan_strength, sp.vignette)
+                                    : ayther::runtime::OutputShader{0.0f, 0.0f, 0.0f, 0.0f};
 
                     // Y el rect: el ESCALADO tambien es del perfil.
                     //
@@ -1217,40 +1188,32 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
                     //     caería siempre a fit, que es no hacer nada.
                     const uint32_t emu_h_px = fv.fb_height ? fv.fb_height : kEmuH;
                     const bool use_integer_scaling =
-                        out_profile_->scaling
-                            == ayther::runtime::OutputScaling::Integer;
+                        out_profile_->scaling == ayther::runtime::OutputScaling::Integer;
                     const ayther::runtime::OutputRect r =
                         use_integer_scaling
-                            ? ayther::runtime::output_rect(
-                                  *out_profile_, (emu_h_px * 4 + 1) / 3,
-                                  emu_h_px, swapchain.extent().width,
-                                  swapchain.extent().height)
-                            : ayther::runtime::output_rect(
-                                  *out_profile_, 4, 3,
-                                  swapchain.extent().width,
-                                  swapchain.extent().height);
-                    postprocess.apply(vulkan, frame,
-                        static_cast<float>(swapchain.extent().width),
-                        static_cast<float>(swapchain.extent().height),
-                        static_cast<float>(emu_h_px),
-                        time_s,
-                        OutDestRect{ r.x, r.y, r.w, r.h },
-                        out_profile_->smoothing,
-                        fx.crt, fx.scan, fx.vignette,
-                        // #230 EM-7.2: el sangrado NTSC es ABSOLUTO del perfil
-                        // y no un escalado de lo que pide el pack — el autor no
-                        // autora un `ntsc`, porque el sangrado no es una
-                        // decision sobre su arte sino sobre que televisor imita
-                        // quien mira. Escalarlo contra un valor que nadie
-                        // autora daria siempre cero.
-                        fx.ntsc);
+                            ? ayther::runtime::output_rect(*out_profile_, (emu_h_px * 4 + 1) / 3,
+                                                           emu_h_px, swapchain.extent().width,
+                                                           swapchain.extent().height)
+                            : ayther::runtime::output_rect(*out_profile_, 4, 3,
+                                                           swapchain.extent().width,
+                                                           swapchain.extent().height);
+                    postprocess.apply(vulkan, frame, static_cast<float>(swapchain.extent().width),
+                                      static_cast<float>(swapchain.extent().height),
+                                      static_cast<float>(emu_h_px), time_s,
+                                      OutDestRect{r.x, r.y, r.w, r.h}, out_profile_->smoothing,
+                                      fx.crt, fx.scan, fx.vignette,
+                                      // #230 EM-7.2: el sangrado NTSC es ABSOLUTO del perfil
+                                      // y no un escalado de lo que pide el pack — el autor no
+                                      // autora un `ntsc`, porque el sangrado no es una
+                                      // decision sobre su arte sino sobre que televisor imita
+                                      // quien mira. Escalarlo contra un valor que nadie
+                                      // autora daria siempre cero.
+                                      fx.ntsc);
                 } else {
-                    VkPresent::blit_to_swapchain(
-                        vulkan, frame,
-                        renderer.render_image(),
-                        out_profile_->scaling
-                            == ayther::runtime::OutputScaling::Integer,
-                        out_profile_->smoothing);
+                    VkPresent::blit_to_swapchain(vulkan, frame, renderer.render_image(),
+                                                 out_profile_->scaling ==
+                                                     ayther::runtime::OutputScaling::Integer,
+                                                 out_profile_->smoothing);
                 }
 
                 // #300: captura comparativa sincronizada.
@@ -1274,10 +1237,10 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
                     diagnose_req_ = false;
                     ayther::DiagnosticReport dr;
                     dr.vulkan = has_vulkan;
-                    if (const SDL_DisplayMode* dm =
+                    if (const SDL_DisplayMode *dm =
                             SDL_GetCurrentDisplayMode(SDL_GetPrimaryDisplay())) {
-                        dr.display_w  = static_cast<uint32_t>(dm->w);
-                        dr.display_h  = static_cast<uint32_t>(dm->h);
+                        dr.display_w = static_cast<uint32_t>(dm->w);
+                        dr.display_h = static_cast<uint32_t>(dm->h);
                         dr.refresh_hz = dm->refresh_rate;
                     }
                     // La escala entera se mide contra la VENTANA y no contra el
@@ -1299,9 +1262,9 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
                     {
                         SDL_AudioSpec spec{};
                         int frames = 0;
-                        if (SDL_GetAudioDeviceFormat(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
-                                                     &spec, &frames)) {
-                            dr.audio_freq     = spec.freq;
+                        if (SDL_GetAudioDeviceFormat(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec,
+                                                     &frames)) {
+                            dr.audio_freq = spec.freq;
                             dr.audio_channels = spec.channels;
                             if (spec.freq > 0)
                                 dr.buffer_latency_ms =
@@ -1315,18 +1278,16 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
                     }
                     ayther::diagnose_suggest(dr);
 
-                    const std::filesystem::path dp =
-                        runtime_config.paths().diagnostics_file();
+                    const std::filesystem::path dp = runtime_config.paths().diagnostics_file();
                     std::error_code dec;
                     std::filesystem::create_directories(dp.parent_path(), dec);
                     std::ofstream df(dp, std::ios::binary | std::ios::trunc);
                     const std::string md = ayther::diagnostic_report_markdown(dr);
-                    if (df) df.write(md.data(),
-                                     static_cast<std::streamsize>(md.size()));
+                    if (df)
+                        df.write(md.data(), static_cast<std::streamsize>(md.size()));
                     std::fprintf(stdout,
-                        "[main] diagnostico: sugiere '%s' — %s\n           informe: %s\n",
-                        dr.suggested.c_str(), dr.reason.c_str(),
-                        dp.string().c_str());
+                                 "[main] diagnostico: sugiere '%s' — %s\n           informe: %s\n",
+                                 dr.suggested.c_str(), dr.reason.c_str(), dp.string().c_str());
                 }
 
                 if (capture_req_) {
@@ -1334,22 +1295,19 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
                     if (renderer.readback_init(vulkan.engine_view())) {
                         const VkExtent2D ex = renderer.render_image().extent;
                         std::vector<uint8_t> orig;
-                        const auto capture_bytes =
-                            ayther::capture_pixel_bytes(ex.width, ex.height);
+                        const auto capture_bytes = ayther::capture_pixel_bytes(ex.width, ex.height);
                         if (capture_bytes.has_value()) {
-                            if (const uint8_t* p0 = renderer.export_frame(
-                                    vulkan.engine_view(), fv, pack,
-                                    /*hd=*/false, active_layer_stack)) {
+                            if (const uint8_t *p0 =
+                                    renderer.export_frame(vulkan.engine_view(), fv, pack,
+                                                          /*hd=*/false, active_layer_stack)) {
                                 orig.assign(p0, p0 + *capture_bytes);
                             }
                         }
-                        const uint8_t* p1 =
-                            renderer.export_frame(
-                                vulkan.engine_view(), fv, pack,
-                                /*hd=*/true, active_layer_stack);
+                        const uint8_t *p1 = renderer.export_frame(vulkan.engine_view(), fv, pack,
+                                                                  /*hd=*/true, active_layer_stack);
                         if (!orig.empty() && p1) {
                             ayther::CaptureMeta m;
-                            m.game_id  = sess->game_id();
+                            m.game_id = sess->game_id();
                             m.pack_name = cfg_pack_name;
                             if (const auto current_pack = sess->pack()) {
                                 m.pack_build = current_pack.info().build_id;
@@ -1363,27 +1321,24 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
 #else
                             const bool has_utc = gmtime_r(&now, &utc) != nullptr;
 #endif
-                            if (!has_utc || std::strftime(
-                                    ts, sizeof(ts), "%Y-%m-%dT%H:%M:%S",
-                                    &utc) == 0) {
+                            if (!has_utc ||
+                                std::strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%S", &utc) == 0) {
                                 std::snprintf(ts, sizeof(ts), "unknown-time");
                             }
                             m.timestamp = ts;
-                            m.width  = ex.width;
+                            m.width = ex.width;
                             m.height = ex.height;
                             std::string base = "captura-";
                             base += ts;
-                            for (char& c : base) if (c == ':') c = '-';
-                            const auto capture_result =
-                                capture_service.write(
-                                runtime_config.paths().captures_directory(),
-                                base, ex.width, ex.height, orig,
-                                std::span<const std::uint8_t>{p1, *capture_bytes},
+                            for (char &c : base)
+                                if (c == ':')
+                                    c = '-';
+                            const auto capture_result = capture_service.write(
+                                runtime_config.paths().captures_directory(), base, ex.width,
+                                ex.height, orig, std::span<const std::uint8_t>{p1, *capture_bytes},
                                 split_pos_, split_vertical_, m);
                             std::fprintf(stdout, "[main] captura: %s\n",
-                                         capture_result
-                                             ? capture_result.prefix.c_str()
-                                             : "FALLO");
+                                         capture_result ? capture_result.prefix.c_str() : "FALLO");
                             if (!capture_result) {
                                 emit_status(ayther::runtime::WarningStatus{
                                     ayther::runtime::RuntimeErrorCode::capture_failed,
@@ -1400,8 +1355,8 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
 
                 // M4: pause overlay — draws the menu over the swapchain image
                 // (after CRT/blit, before finalize). No-op when not paused.
-                overlay.render(vulkan, frame, hd_on_, running,
-                               sess.get(), &player_cfg, &shaders_on_);
+                overlay.render(vulkan, frame, hd_on_, running, sess.get(), &player_cfg,
+                               &shaders_on_);
                 // #299: guardar al SALIR del panel, no en cada movimiento de un
                 // slider — eso escribiría el archivo sesenta veces por segundo.
                 if (overlay.take_config_dirty() && !overlay.is_paused()) {
@@ -1436,26 +1391,20 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
             static Uint64 prev_ms = 0;
             if (prev_ms) {
                 const float dt = static_cast<float>(now_ms - prev_ms);
-                last_frame_ms_ = last_frame_ms_ > 0.0f
-                    ? last_frame_ms_ * 0.9f + dt * 0.1f : dt;
+                last_frame_ms_ = last_frame_ms_ > 0.0f ? last_frame_ms_ * 0.9f + dt * 0.1f : dt;
             }
             prev_ms = now_ms;
         }
         if (now_ms - last_print_ms >= 1000) {
             std::fprintf(stdout,
-                "[frame %5" PRIu64 "]"
-                "  XY=(%5d,%5d)"
-                "  vel=(%4d,%4d)"
-                "  tiles=%u  sprites=%u  audio=%u"
-                "  vk=%s\n",
-                fv.frame_index,
-                xy_ok  ? px : -1, xy_ok  ? py : -1,
-                vel_ok ? vx :  0, vel_ok ? vy :  0,
-                fv.unique_tile_count,
-                fv.unique_sprite_count,
-                fv.unique_audio_count,
-                swap_ok ? vulkan.gpu_name().c_str() : "off"
-            );
+                         "[frame %5" PRIu64 "]"
+                         "  XY=(%5d,%5d)"
+                         "  vel=(%4d,%4d)"
+                         "  tiles=%u  sprites=%u  audio=%u"
+                         "  vk=%s\n",
+                         fv.frame_index, xy_ok ? px : -1, xy_ok ? py : -1, vel_ok ? vx : 0,
+                         vel_ok ? vy : 0, fv.unique_tile_count, fv.unique_sprite_count,
+                         fv.unique_audio_count, swap_ok ? vulkan.gpu_name().c_str() : "off");
             last_print_ms = now_ms;
         }
 
@@ -1466,7 +1415,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
             if (now_ns < next_frame_ns)
                 SDL_DelayNS(next_frame_ns - now_ns);
             else
-                next_frame_ns = now_ns;  // fell behind — resync, don't chase missed frames
+                next_frame_ns = now_ns; // fell behind — resync, don't chase missed frames
             next_frame_ns += frame_ns;
         }
     }
@@ -1475,7 +1424,8 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     // Shutdown
     // -----------------------------------------------------------------------
 
-    std::fprintf(stdout, "[main] Playback completed: has_pack=%d video_decoded_frames=%" PRIu64 "\n",
+    std::fprintf(stdout,
+                 "[main] Playback completed: has_pack=%d video_decoded_frames=%" PRIu64 "\n",
                  static_cast<int>(sess->has_pack()), video_decoded_frames);
 
     // ---- Cloud save: serialize state before teardown (M7) -------------------
@@ -1486,27 +1436,24 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     std::string savestate_path;
     std::vector<std::uint8_t> state_data;
     if (sess && sess->serialize(state_data)) {
-        const auto saved = save_state_store.save(
-            runtime_config.saves_directory(), sess->game_id(),
-            sess->active_profile(), rom_crc32_arg, state_data);
+        const auto saved = save_state_store.save(runtime_config.saves_directory(), sess->game_id(),
+                                                 sess->active_profile(), rom_crc32_arg, state_data);
         if (saved) {
             savestate_path = saved.path.string();
-            std::fprintf(stdout, "[main] guardado: %zu bytes -> %s\n",
-                         state_data.size(), savestate_path.c_str());
+            std::fprintf(stdout, "[main] guardado: %zu bytes -> %s\n", state_data.size(),
+                         savestate_path.c_str());
         } else {
             std::fprintf(stderr, "[main] no se pudo escribir el guardado: %s\n",
                          saved.diagnostic.c_str());
-            emit_status(ayther::runtime::WarningStatus{
-                saved.error, saved.diagnostic});
+            emit_status(ayther::runtime::WarningStatus{saved.error, saved.diagnostic});
         }
     }
 
     // Coarse lifecycle IPC (M2 / M7): emit exit event with optional savestate
     // path so the launcher can upload the cloud save.
-    emit_status(ayther::runtime::ExitStatus{
-        savestate_path.empty()
-            ? std::optional<std::string>{}
-            : std::optional<std::string>{savestate_path}});
+    emit_status(ayther::runtime::ExitStatus{savestate_path.empty()
+                                                ? std::optional<std::string>{}
+                                                : std::optional<std::string>{savestate_path}});
 
     // Stop the file watcher before any Rust/Vulkan teardown.
     pack_watcher.reset();
@@ -1521,8 +1468,7 @@ int ayther::runtime::run_runtime(const int argc, char* argv[]) {
     // Destroy Vulkan objects in reverse creation order.
     // vkDeviceWaitIdle before any teardown.
     if (vulkan.is_ready()) {
-        if (const auto failure =
-                vulkan.wait_idle("vkDeviceWaitIdle [main teardown]")) {
+        if (const auto failure = vulkan.wait_idle("vkDeviceWaitIdle [main teardown]")) {
             ayther::runtime::vulkan::log_vk_failure(*failure);
         }
         renderer.shutdown(vulkan.engine_view()); // Engine offscreen resources

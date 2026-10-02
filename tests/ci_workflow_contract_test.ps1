@@ -25,8 +25,8 @@ Assert-Condition (Test-Path -LiteralPath $Presets -PathType Leaf) `
     "CMake presets are missing: '$Presets'."
 
 $lock = Get-Content -LiteralPath $EngineLock -Raw | ConvertFrom-Json
-Assert-Condition ($lock.release.tag -ceq "v0.1.0-rc.10") `
-    "MAD-005 requires the Engine v0.1.0-rc.10 lock."
+Assert-Condition ($lock.release.tag -ceq "v0.1.0-rc.13") `
+    "RF-18 requires the Engine v0.1.0-rc.13 lock."
 
 $workflowText = Get-Content -LiteralPath $Workflow -Raw
 $presetDocument = Get-Content -LiteralPath $Presets -Raw | ConvertFrom-Json
@@ -61,8 +61,8 @@ foreach ($match in $uses) {
 
 Assert-Condition ($workflowText -match 'tools/bootstrap_ayther_engine\.ps1') `
     "CI must use Runtime's locked Engine bootstrap."
-Assert-Condition ($workflowText -match 'v0\.1\.0-rc\.10') `
-    "CI must reject any Engine lock other than v0.1.0-rc.10."
+Assert-Condition ($workflowText -match 'v0\.1\.0-rc\.13') `
+    "CI must reject any Engine lock other than v0.1.0-rc.13."
 Assert-Condition ($workflowText -match 'cmake --preset') `
     "CI configuration must use CMake presets."
 Assert-Condition ($workflowText -match 'cmake --build --preset') `
@@ -79,6 +79,61 @@ Assert-Condition ($workflowText -match 'ctest --preset') `
     "CI tests must use CTest presets."
 Assert-Condition ($workflowText -match '--output-junit') `
     "CTest must produce JUnit output."
+$testSteps = [regex]::Matches(
+    $workflowText,
+    '(?ms)^\s+- name: Test\s*$.*?(?=^\s+- name:|\z)')
+Assert-Condition ($testSteps.Count -eq 2) `
+    "Both platform jobs must execute their complete configured CTest suite."
+foreach ($testStep in $testSteps) {
+    Assert-Condition ($testStep.Value -match 'ctest --preset') `
+        "Every Test step must execute the configured CTest preset."
+    Assert-Condition ($testStep.Value -match 'if \(\$exitCode -ne 0\) \{ exit \$exitCode \}') `
+        "Every Test step must propagate a failing CTest exit code."
+    Assert-Condition ($testStep.Value -notmatch '(?m)\s-(E|LE|R|L)\s') `
+        "The mandatory Test step must not filter out configured QA families."
+}
+$familyDiscoverySteps = [regex]::Matches(
+    $workflowText,
+    '(?m)^\s+- name: Verify required CTest families\s*$')
+Assert-Condition ($familyDiscoverySteps.Count -eq 2) `
+    "Both platform jobs must reject missing required CTest families."
+Assert-Condition ($workflowText -match 'tools/check_ctest_families\.cmake') `
+    "CI must use the shared CTest family discovery check."
+$requiredFamilies = `
+    'audio_qa,unit,contract,integration,limits,protocol,fixture'
+$requiredFamilyInvocations = [regex]::Matches(
+    $workflowText,
+    [regex]::Escape("-DQA_REQUIRED_FAMILIES=$requiredFamilies"))
+Assert-Condition ($requiredFamilyInvocations.Count -eq 2) `
+    "Both platform jobs must discover every required audio QA family."
+$formatSteps = [regex]::Matches(
+    $workflowText,
+    '(?m)^\s+- name: Check modified C\+\+ formatting\s*$')
+Assert-Condition ($formatSteps.Count -eq 1) `
+    "Linux quality CI must block on modified C++ formatting."
+Assert-Condition ($workflowText -match 'tools/run_clang_format_changed\.sh') `
+    "CI must invoke the checked-in clang-format gate."
+$fullHistoryCheckouts = [regex]::Matches(
+    $workflowText,
+    '(?m)^\s+fetch-depth:\s+0\s*$')
+Assert-Condition ($fullHistoryCheckouts.Count -eq 2) `
+    "Both platform jobs must fetch enough history for change-based gates."
+
+$runtimeRoot = Split-Path -Parent $PSScriptRoot
+$runtimeCmake = Get-Content -LiteralPath (Join-Path $runtimeRoot 'CMakeLists.txt') -Raw
+$audioQaCmake = Get-Content -LiteralPath `
+    (Join-Path $runtimeRoot 'tests/audio_qa/CMakeLists.txt') -Raw
+$audioQaToolCmake = Get-Content -LiteralPath `
+    (Join-Path $runtimeRoot 'tools/audio_qa/CMakeLists.txt') -Raw
+$mandatoryGraph = $runtimeCmake + "`n" + $audioQaCmake + "`n" + $audioQaToolCmake
+foreach ($token in @(
+        'add_executable(ayther_audio_qa',
+        'audio_qa_engine_package_contract',
+        'audio_qa_real_replay_integration',
+        'audio_qa_runtime_process')) {
+    Assert-Condition ($mandatoryGraph.Contains($token)) `
+        "The mandatory Runtime build/test graph omits '$token'."
+}
 
 foreach ($artifact in @(
         'configure.log',

@@ -31,6 +31,16 @@ if(NOT EXISTS "${packaged_runtime}")
         "Installed Runtime executable is missing: ${packaged_runtime}")
 endif()
 if(WIN32)
+    set(checker_name "ayther_audio_qa.exe")
+else()
+    set(checker_name "ayther_audio_qa")
+endif()
+set(packaged_checker "${package_bin}/${checker_name}")
+if(NOT EXISTS "${packaged_checker}")
+    message(FATAL_ERROR
+        "Installed audio QA checker is missing: ${packaged_checker}")
+endif()
+if(WIN32)
     file(GLOB toml_runtime_dlls "${package_bin}/tomlplusplus*.dll")
     if(NOT toml_runtime_dlls)
         message(FATAL_ERROR
@@ -86,6 +96,27 @@ if(status_prefix_at EQUAL -1 OR status_reason_at EQUAL -1)
     message(FATAL_ERROR
         "Installed Runtime did not emit the protocol-v1 CLI error:\n"
         "${runtime_stdout}\n${runtime_stderr}")
+endif()
+
+# The checker has its own stable invocation contract. Calling it without a
+# command must reach main(), reject the request and emit the localized marker.
+execute_process(
+    COMMAND "${packaged_checker}"
+    WORKING_DIRECTORY "${clean_working_directory}"
+    RESULT_VARIABLE checker_result
+    OUTPUT_VARIABLE checker_stdout
+    ERROR_VARIABLE checker_stderr
+)
+string(FIND "${checker_stderr}"
+    "audio_qa_error: invalid_invocation" checker_error_at)
+string(FIND "${checker_stderr}"
+    "audio_qa_message[es]" checker_message_at)
+if(NOT checker_result EQUAL 3 OR
+   checker_error_at EQUAL -1 OR checker_message_at EQUAL -1)
+    message(FATAL_ERROR
+        "Packaged checker did not reach its invocation contract "
+        "(exit=${checker_result}).\n"
+        "stdout:\n${checker_stdout}\nstderr:\n${checker_stderr}")
 endif()
 
 # Prove the executable is using its installed dependency set rather than the

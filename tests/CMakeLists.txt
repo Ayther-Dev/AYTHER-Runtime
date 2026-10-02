@@ -446,6 +446,22 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
+add_executable(audio_diagnostic_tests
+    audio_diagnostic_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio_diagnostic.cpp
+)
+target_include_directories(audio_diagnostic_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+set_target_properties(audio_diagnostic_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    audio_diagnostic
+    COMMAND audio_diagnostic_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
 add_executable(sonic_telemetry_tests
     sonic_telemetry_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/sonic_telemetry.cpp
@@ -483,6 +499,144 @@ add_test(
     COMMAND version_info_tests
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
+
+add_executable(music_sequence_runtime_tests music_sequence_runtime_test.cpp)
+target_include_directories(music_sequence_runtime_tests PRIVATE ../src)
+target_link_libraries(music_sequence_runtime_tests PRIVATE Ayther::engine)
+set_target_properties(music_sequence_runtime_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+add_test(NAME music_sequence_runtime COMMAND music_sequence_runtime_tests)
+
+add_executable(music_state_snapshot_tests
+    music_state_snapshot_test.cpp
+)
+target_include_directories(music_state_snapshot_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+target_link_libraries(music_state_snapshot_tests PRIVATE Ayther::engine)
+set_target_properties(music_state_snapshot_tests PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME music_state_snapshot COMMAND music_state_snapshot_tests)
+
+add_executable(music_state_bundle_store_tests
+    music_state_bundle_store_test.cpp
+)
+target_include_directories(music_state_bundle_store_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+set_target_properties(music_state_bundle_store_tests PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+add_test(NAME music_state_bundle_store COMMAND music_state_bundle_store_tests)
+
+add_executable(music_restore_preparation_tests music_restore_preparation_test.cpp)
+target_include_directories(music_restore_preparation_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+set_target_properties(music_restore_preparation_tests PROPERTIES
+    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+add_test(NAME music_restore_preparation COMMAND music_restore_preparation_tests)
+
+add_executable(music_restore_classification_tests music_restore_classification_test.cpp)
+target_include_directories(music_restore_classification_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+set_target_properties(music_restore_classification_tests PROPERTIES
+    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+add_test(NAME music_restore_classification COMMAND music_restore_classification_tests)
+
+add_executable(music_backend_drain_tests music_backend_drain_test.cpp)
+target_include_directories(music_backend_drain_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+set_target_properties(music_backend_drain_tests PROPERTIES
+    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+add_test(NAME music_backend_drain COMMAND music_backend_drain_tests)
+
+add_executable(music_restore_transaction_tests music_restore_transaction_test.cpp)
+target_include_directories(music_restore_transaction_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+set_target_properties(music_restore_transaction_tests PROPERTIES
+    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+add_test(NAME music_restore_transaction COMMAND music_restore_transaction_tests)
+
+add_executable(music_restore_recovery_tests music_restore_recovery_test.cpp)
+target_include_directories(music_restore_recovery_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+set_target_properties(music_restore_recovery_tests PROPERTIES
+    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+add_test(NAME music_restore_recovery COMMAND music_restore_recovery_tests)
+
+add_executable(music_restore_budget_tests music_restore_budget_test.cpp)
+target_include_directories(music_restore_budget_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+set_target_properties(music_restore_budget_tests PROPERTIES
+    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+add_test(NAME music_restore_budget COMMAND music_restore_budget_tests)
+
+add_executable(music_restore_position_tests music_restore_position_test.cpp)
+target_include_directories(music_restore_position_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+set_target_properties(music_restore_position_tests PROPERTIES
+    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+add_test(NAME music_restore_position COMMAND music_restore_position_tests)
+
+add_executable(music_discontinuity_tests music_discontinuity_test.cpp)
+target_include_directories(music_discontinuity_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+set_target_properties(music_discontinuity_tests PROPERTIES
+    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+add_test(NAME music_discontinuity COMMAND music_discontinuity_tests)
+
+add_executable(music_pcm_backend_tests music_pcm_backend_test.cpp)
+target_include_directories(music_pcm_backend_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+set_target_properties(music_pcm_backend_tests PROPERTIES
+    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+add_test(NAME music_pcm_backend COMMAND music_pcm_backend_tests)
+
+add_executable(music_rf18_trace_tests music_rf18_trace_test.cpp)
+target_include_directories(music_rf18_trace_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+set_target_properties(music_rf18_trace_tests PROPERTIES
+    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+add_test(NAME music_rf18_trace COMMAND music_rf18_trace_tests)
+
+add_executable(music_evidence_bundle_tests music_evidence_bundle_test.cpp)
+target_include_directories(music_evidence_bundle_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+set_target_properties(music_evidence_bundle_tests PROPERTIES
+    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+add_test(NAME music_evidence_bundle COMMAND music_evidence_bundle_tests)
+
+add_executable(music_warning_tests music_warning_test.cpp)
+target_include_directories(music_warning_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+set_target_properties(music_warning_tests PROPERTIES
+    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+add_test(NAME music_warning COMMAND music_warning_tests)
+
+add_executable(music_three_consumer_semantics_tests
+    music_three_consumer_semantics_test.cpp)
+target_include_directories(music_three_consumer_semantics_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/lab)
+target_link_libraries(music_three_consumer_semantics_tests PRIVATE Ayther::engine)
+set_target_properties(music_three_consumer_semantics_tests PROPERTIES
+    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+add_test(NAME music_three_consumer_semantics
+    COMMAND music_three_consumer_semantics_tests)
+
+add_executable(music_product_flow_tests music_product_flow_test.cpp)
+target_include_directories(music_product_flow_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+set_target_properties(music_product_flow_tests PROPERTIES
+    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+add_test(NAME music_product_flow COMMAND music_product_flow_tests)
+set_tests_properties(music_sequence_runtime PROPERTIES
+    LABELS "unit;audio;contract" TIMEOUT 30)
 
 # ------------------------------------------------------------------
 # core_probe_api_tests — MIG-022: installed public Engine probe facade.
@@ -779,6 +933,23 @@ endif()
 # neither of them.
 # ------------------------------------------------------------------
 add_library(synthetic_libretro_core SHARED synthetic_libretro_core.cpp)
+target_compile_definitions(synthetic_libretro_core PRIVATE
+    AYTHER_SYNTHETIC_CORE_BUILD)
+target_include_directories(synthetic_libretro_core PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_features(synthetic_libretro_core PRIVATE cxx_std_20)
+set_target_properties(synthetic_libretro_core PROPERTIES CXX_EXTENSIONS OFF)
+if(AYTHER_CLANG_TIDY_COMMAND)
+    set_target_properties(synthetic_libretro_core PROPERTIES
+        CXX_CLANG_TIDY "${AYTHER_CLANG_TIDY_COMMAND}")
+endif()
+if(MSVC)
+    target_compile_options(synthetic_libretro_core PRIVATE
+        /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(synthetic_libretro_core PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+endif()
 add_library(non_libretro_library SHARED non_libretro_library.cpp)
 set_target_properties(
     synthetic_libretro_core
@@ -795,3 +966,5 @@ add_test(
             "-DNON_CORE_DLL=$<TARGET_FILE:non_libretro_library>"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/probe_core_test.cmake
 )
+
+add_subdirectory(audio_qa)
