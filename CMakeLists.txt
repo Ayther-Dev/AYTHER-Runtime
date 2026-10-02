@@ -11,11 +11,11 @@
 #   cmake -S . -B build_rt -DCMAKE_PREFIX_PATH=<Engine bootstrap prefix>
 #   cmake --build build_rt
 # ---------------------------------------------------------------------------
-set(AYTHER_RUNTIME_VERSION "0.1.0-beta.6")
+set(AYTHER_RUNTIME_VERSION "0.1.0-beta.7")
 set(AYTHER_RUNTIME_PROJECT_VERSION "0.1.0")
 set(AYTHER_ENGINE_MIN_VERSION "0.1.0")
 set(AYTHER_ENGINE_MAX_VERSION_EXCLUSIVE "0.2.0")
-set(AYTHER_ENGINE_LOCKED_RELEASE "v0.1.0-rc.9")
+set(AYTHER_ENGINE_LOCKED_RELEASE "v0.1.0-rc.10")
 if(AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE)
     set(AYTHER_ENGINE_LOCKED_RELEASE
         "ayther-engine-vpx-audio-qa-final-qa208r23-20260929")
