@@ -68,9 +68,9 @@ int main() {
             require(latency >= std::chrono::steady_clock::duration::zero() &&
                         latency <= disconnect_notification_budget,
                     "channel_break_latency_outside_budget");
-            maximum_latency =
-                (std::max)(maximum_latency,
-                           std::chrono::duration_cast<std::chrono::nanoseconds>(latency));
+            maximum_latency = (std::max)(
+                maximum_latency,
+                std::chrono::duration_cast<std::chrono::nanoseconds>(latency));
         }
 
         std::printf(
