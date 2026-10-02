@@ -470,7 +470,7 @@ set_tests_properties(audio_qa_public_pack_fixture PROPERTIES
 add_executable(audio_qa_replay_execution_result_test
     replay_execution_result_test.cpp)
 target_link_libraries(audio_qa_replay_execution_result_test PRIVATE
-    ayther_audio_qa_model_toml)
+    ayther_audio_qa_model_toml tomlplusplus::tomlplusplus)
 target_compile_features(audio_qa_replay_execution_result_test PRIVATE cxx_std_20)
 set_target_properties(audio_qa_replay_execution_result_test PROPERTIES
     CXX_EXTENSIONS OFF)
@@ -559,6 +559,24 @@ if(AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE AND WIN32)
         TIMEOUT 45 FIXTURES_REQUIRED audio_qa_public_recording
         ENVIRONMENT
             "SDL_AUDIO_DRIVER=dummy;SDL_AUDIO_FREQUENCY=48000;SDL_AUDIO_CHANNELS=2;SDL_AUDIO_DEVICE_SAMPLE_FRAMES=512")
+
+    if(AYTHER_ENABLE_GPU_TESTS)
+        add_test(NAME audio_qa_visible_replay_integration
+            COMMAND ${CMAKE_COMMAND}
+                "-DCHECK_EXE=$<TARGET_FILE:ayther_audio_qa>"
+                "-DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>"
+                "-DCORE_DLL=$<TARGET_FILE:synthetic_libretro_core>"
+                "-DROM_FILE=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic.aytest"
+                "-DPACK_FILE=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic.ay"
+                "-DTRUST_REGISTRY=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic-trust.toml"
+                "-DTAKE_FILE=${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic.arp"
+                "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/visible-replay/$<CONFIG>"
+                "-DFIXTURE_EXE=$<TARGET_FILE:audio_qa_public_recording_fixture>"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/visible_replay_integration_test.cmake")
+        set_tests_properties(audio_qa_visible_replay_integration PROPERTIES
+            LABELS "audio_qa;gpu;integration" TIMEOUT 90 RUN_SERIAL TRUE
+            FIXTURES_REQUIRED audio_qa_public_recording)
+    endif()
 
     set(AYTHER_AUDIO_QA_LEGACY_RUNTIME "" CACHE FILEPATH
         "Historical Runtime executable used by the QA compatibility test")

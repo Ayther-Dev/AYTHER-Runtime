@@ -65,6 +65,7 @@ struct RuntimeOptions {
     std::string qa_control_channel;
     std::string qa_data_channel;
     std::string qa_run_id;
+    std::string qa_presentation = "none";
 
     [[nodiscard]] static RuntimeOptionsParseResult parse(int argc, char *const argv[]);
 };

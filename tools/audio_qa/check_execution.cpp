@@ -3,9 +3,10 @@
 #include "capability_gate.h"
 #include "capability_report.h"
 #include "control_message.h"
+#include "durable_file.h"
 #include "fact_batch.h"
-#include "inherited_channel.h"
 #include "incremental_evidence.h"
+#include "inherited_channel.h"
 #include "isolated_runtime_data.h"
 #include "pcm_message.h"
 #include "play_launch_manifest.h"
@@ -42,8 +43,7 @@ namespace {
     return std::filesystem::path{value}.wstring();
 }
 
-[[nodiscard]] std::optional<std::filesystem::path>
-environment_path(const char *const name) {
+[[nodiscard]] std::optional<std::filesystem::path> environment_path(const char *const name) {
 #ifdef _WIN32
     char *raw{};
     std::size_t size{};
@@ -76,8 +76,7 @@ struct RuntimeDataLocation {
     return {(base ? *base : std::filesystem::current_path()) / "Ayther", L"APPDATA"};
 #elif defined(__APPLE__)
     const auto home = environment_path("HOME");
-    return {(home ? *home / "Library" / "Application Support"
-                  : std::filesystem::current_path()) /
+    return {(home ? *home / "Library" / "Application Support" : std::filesystem::current_path()) /
                 "Ayther",
             L"HOME"};
 #else
@@ -147,18 +146,24 @@ CheckExecutionResult execute_check_replay(const CheckOptions &options, const Req
             return CheckExecutionError::runtime_identity_unavailable;
 
         const auto data_location = runtime_data_location();
-        auto prepared_data = prepare_isolated_runtime_data(
-            data_location.user_root,
-            std::filesystem::path{options.output} / (".runtime-data-" + run_id));
+        auto prepared_data = prepare_isolated_runtime_data(data_location.user_root,
+                                                           std::filesystem::path{options.output} /
+                                                               (".runtime-data-" + run_id));
         auto *prepared = std::get_if<IsolatedRuntimeData>(&prepared_data);
         if (prepared == nullptr)
             return CheckExecutionError::runtime_data_isolation_failed;
         auto isolated_data = std::move(*prepared);
         std::vector<RuntimeEnvironmentEntry> environment{
             {data_location.environment_key, isolated_data.directory().wstring()}};
-        const auto capability_query =
-            query_runtime_process(*runtime, {L"--qa-capabilities"}, environment, 64U * 1024U,
-                                  2000U);
+        if (options.presentation == "visible") {
+            for (const auto key :
+                 {"SystemRoot", "WINDIR", "TEMP", "TMP", "SDL_VIDEO_DRIVER", "SDL_AUDIO_DRIVER",
+                  "SDL_AUDIO_FREQUENCY", "SDL_AUDIO_CHANNELS", "SDL_AUDIO_DEVICE_SAMPLE_FRAMES"})
+                if (const auto value = environment_path(key))
+                    environment.emplace_back(wide(key), value->wstring());
+        }
+        const auto capability_query = query_runtime_process(*runtime, {L"--qa-capabilities"},
+                                                            environment, 64U * 1024U, 2000U);
         const auto *capability_output = std::get_if<RuntimeQueryOutput>(&capability_query);
         if (capability_output == nullptr || capability_output->exit_code != 0)
             return CheckExecutionError::runtime_incompatible;
@@ -167,6 +172,10 @@ CheckExecutionResult execute_check_replay(const CheckOptions &options, const Req
         const auto *offer = std::get_if<CapabilitySet>(&decoded_capabilities);
         CapabilityGate capability_gate;
         if (offer == nullptr || !capability_gate.negotiate(*offer))
+            return CheckExecutionError::runtime_incompatible;
+        if (options.presentation == "visible" &&
+            std::find(offer->capabilities.begin(), offer->capabilities.end(),
+                      "visible_replay_v1") == offer->capabilities.end())
             return CheckExecutionError::runtime_incompatible;
 
         auto control_created = create_inherited_control_channel();
@@ -192,10 +201,13 @@ CheckExecutionResult execute_check_replay(const CheckOptions &options, const Req
             L"--core",
             wide(*core),
             L"--rom",
-            wide(*rom),
-            L"--pack",
-            wide(options.pack)};
+            wide(*rom)};
+        if (options.pack_mode == "hd") {
+            arguments.emplace_back(L"--pack");
+            arguments.push_back(wide(options.pack));
+        }
         append_value_argument(arguments, L"--manifest", &options.play_manifest);
+        append_value_argument(arguments, L"--qa-presentation", &options.presentation);
         append_value_argument(arguments, L"--profile", condition_value(*reference, "profile"));
         append_value_argument(arguments, L"--subsystems",
                               condition_value(*reference, "subsystems"));
@@ -217,11 +229,11 @@ CheckExecutionResult execute_check_replay(const CheckOptions &options, const Req
         }
         const std::array<NativeChannelHandle, 2> inherited{control->runtime_read.get(),
                                                            data->runtime_write.get()};
-        environment.insert(environment.end(),
-                           {{L"SDL_AUDIO_DRIVER", L"dummy"},
-                            {L"SDL_AUDIO_FREQUENCY", L"44100"},
-                            {L"SDL_AUDIO_CHANNELS", L"2"},
-                            {L"SDL_AUDIO_DEVICE_SAMPLE_FRAMES", L"64"}});
+        if (options.presentation == "none")
+            environment.insert(environment.end(), {{L"SDL_AUDIO_DRIVER", L"dummy"},
+                                                   {L"SDL_AUDIO_FREQUENCY", L"44100"},
+                                                   {L"SDL_AUDIO_CHANNELS", L"2"},
+                                                   {L"SDL_AUDIO_DEVICE_SAMPLE_FRAMES", L"64"}});
         auto launched =
             launch_runtime_process(*runtime, arguments, std::move(environment), inherited);
         auto *process = std::get_if<OwnedRuntimeProcess>(&launched);
@@ -284,6 +296,12 @@ CheckExecutionResult execute_check_replay(const CheckOptions &options, const Req
                 if (result == nullptr)
                     return CheckExecutionError::terminal_failed;
                 evidence.replay = *result;
+                const auto payload = std::span{*bytes}.subspan(protocol_header_bytes);
+                const auto published = publish_durable_file(
+                    std::filesystem::path{options.output} / "runs" / run_id / "replay-result.toml",
+                    payload);
+                if (!std::holds_alternative<DurablePublishedFile>(published))
+                    return CheckExecutionError::evidence_stream_invalid;
                 break;
             } else {
                 return CheckExecutionError::evidence_stream_invalid;
@@ -293,7 +311,8 @@ CheckExecutionResult execute_check_replay(const CheckOptions &options, const Req
         auto &result = evidence.replay;
 
         if (!evidence.preservation_error) {
-            const auto publication = evidence_writer->finish(result.trace);
+            const auto publication =
+                evidence_writer->finish(result.trace, result.assignment_count > 0U);
             if (const auto *preserved = std::get_if<IntegratedEvidenceSummary>(&publication)) {
                 evidence.preserved = *preserved;
                 result.trace = evidence_writer->trace();
@@ -310,7 +329,8 @@ CheckExecutionResult execute_check_replay(const CheckOptions &options, const Req
         if (result.succeeded && result.inputs_consumed != result.recording_frames)
             return CheckExecutionError::result_input_mismatch;
         if (result.succeeded && evidence.preserved &&
-            (!result.trace.causally_connected || !result.trace.loss_free ||
+            ((result.assignment_count > 0U && !result.trace.causally_connected) ||
+             !result.trace.loss_free ||
              evidence.preserved->facts != result.trace.observed_fact_count ||
              evidence.preserved->pcm_blocks == 0U))
             return CheckExecutionError::result_evidence_mismatch;

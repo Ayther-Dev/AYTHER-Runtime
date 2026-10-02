@@ -1,6 +1,7 @@
 #pragma once
 
 #include "reference_model.h"
+#include "replay_presentation.h"
 
 #include <cstdint>
 #include <span>
@@ -49,6 +50,7 @@ struct ReplayExecutionResult {
     ReplayTraceSummary trace;
     bool succeeded{};
     std::string code;
+    ReplayPresentation presentation;
     bool operator==(const ReplayExecutionResult &) const = default;
 };
 

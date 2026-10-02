@@ -18,11 +18,13 @@ struct CheckOptions {
     std::string reference;
     std::string play_manifest;
     std::string pack;
+    std::string pack_mode = "hd";
     std::string trust_registry;
     std::vector<std::string> takes;
     std::string output;
     std::string request_id;
     std::string language = "es";
+    std::string presentation = "none";
 };
 
 enum class CheckOptionErrorCode {
@@ -36,6 +38,8 @@ enum class CheckOptionErrorCode {
     missing_required_option,
     unsupported_language,
     invalid_number,
+    unsupported_presentation,
+    unsupported_pack_mode,
 };
 
 struct CheckOptionError {

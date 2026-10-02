@@ -22,7 +22,10 @@ namespace {
 constexpr std::uint64_t burst_fact_count = 100'000U;
 constexpr std::uint64_t replay_detector_burst_count = 4096U;
 constexpr std::uint64_t replay_detector_output_burst_count = 1024U;
-constexpr std::uint64_t replay_selection_burst_count = 4096U;
+// The delivered Release replay can outrun the persistence worker by more than
+// 4096 selection facts while closing a long, three-cycle take. Preserve 50%
+// headroom over that former limit without relying on debug-build pacing.
+constexpr std::uint64_t replay_selection_burst_count = 6144U;
 constexpr std::uint64_t replay_mixer_burst_count = 384U;
 constexpr std::size_t framed_fact_bytes = 256U;
 
@@ -159,6 +162,25 @@ struct BalancedSink {
     }
 };
 
+struct FairSink {
+    std::uint32_t previous{};
+    std::size_t current_run{};
+    std::size_t longest_run{};
+    std::size_t first_run{};
+    std::size_t received{};
+
+    static void receive(void *const context, std::string_view,
+                        const qa::EngineFactView &fact) noexcept {
+        auto &sink = *static_cast<FairSink *>(context);
+        if (sink.previous != 0U && fact.id.producer != sink.previous && sink.first_run == 0U)
+            sink.first_run = sink.current_run;
+        sink.current_run = fact.id.producer == sink.previous ? sink.current_run + 1U : 1U;
+        sink.previous = fact.id.producer;
+        sink.longest_run = (std::max)(sink.longest_run, sink.current_run);
+        ++sink.received;
+    }
+};
+
 } // namespace
 
 int main() {
@@ -252,6 +274,29 @@ int main() {
                          std::string_view{detector_field_value},
                          {}};
             }
+            const std::array<obs::FieldView, 11> selection_fields{
+                obs::FieldView{"signature", obs::Availability::known, obs::Unit::none,
+                               std::uint64_t{1U}, {}},
+                obs::FieldView{"instrument", obs::Availability::known, obs::Unit::none,
+                               std::uint64_t{2U}, {}},
+                obs::FieldView{"pitch", obs::Availability::known, obs::Unit::none,
+                               std::uint64_t{3U}, {}},
+                obs::FieldView{"use", obs::Availability::known, obs::Unit::none,
+                               std::string_view{"runtime_selection"}, {}},
+                obs::FieldView{"source", obs::Availability::unknown, obs::Unit::none,
+                               std::monostate{}, "not_observed"},
+                obs::FieldView{"provenance_complete", obs::Availability::known,
+                               obs::Unit::none, false, {}},
+                obs::FieldView{"source_kind", obs::Availability::known, obs::Unit::none,
+                               std::string_view{"detector_event"}, {}},
+                obs::FieldView{"source_index", obs::Availability::known, obs::Unit::count,
+                               std::uint64_t{4U}, {}},
+                obs::FieldView{"event_start", obs::Availability::known,
+                               obs::Unit::emulation_frame, std::uint64_t{5U}, {}},
+                obs::FieldView{"event_end", obs::Availability::known,
+                               obs::Unit::emulation_frame, std::uint64_t{6U}, {}},
+                obs::FieldView{"evaluated_frame", obs::Availability::known,
+                               obs::Unit::emulation_frame, std::uint64_t{7U}, {}}};
             const auto causes = producer == 3U ? std::span<const obs::Cause>{detector_causes}
                                 : producer == 4U
                                     ? std::span<const obs::Cause>{detector_causes}.first(2U)
@@ -260,7 +305,7 @@ int main() {
             const auto fields =
                 producer == 3U   ? std::span<const obs::FieldView>{detector_fields}
                 : producer == 4U ? std::span<const obs::FieldView>{detector_fields}.first(12U)
-                : producer == 5U ? std::span<const obs::FieldView>{detector_fields}.first(12U)
+                : producer == 5U ? std::span<const obs::FieldView>{selection_fields}
                                  : std::span<const obs::FieldView>{};
             const std::array<obs::StateOrder, 1> detector_order{{"audio_detector_analysis", 1U}};
             const auto state_orders = producer == 4U
@@ -320,6 +365,20 @@ int main() {
                     balanced_sink.received[4] == replay_selection_burst_count &&
                     balanced_bridge->losses() == qa::ObservationBridgeLosses{},
                 "normalized_backlog_drain_was_not_lossless");
+
+        auto fair_bridge = std::make_unique<qa::ProductionObservationBridge>("run-fair");
+        const auto fair_observer = fair_bridge->observer();
+        for (std::uint64_t sequence = 1U; sequence <= replay_detector_burst_count; ++sequence)
+            fair_observer.observe(obs::FactView{{3U, sequence}, "detector", {}, {}, {}, {}});
+        for (std::uint64_t sequence = 1U; sequence <= replay_selection_burst_count; ++sequence)
+            fair_observer.observe(obs::FactView{{5U, sequence}, "selection", {}, {}, {}, {}});
+        FairSink fair_sink;
+        while (fair_bridge->try_consume_fact(&fair_sink, FairSink::receive)) {
+        }
+        require(fair_sink.received == replay_detector_burst_count + replay_selection_burst_count &&
+                    fair_sink.first_run != 0U && fair_sink.first_run <= 1024U &&
+                    fair_bridge->losses() == qa::ObservationBridgeLosses{},
+                "full_burst_lanes_were_not_fairly_drained");
 
         std::printf("fact_burst_limits_test: burst=%llu elapsed_us=%llu "
                     "losses=0 max_queue=1 fact_limit=%llu batch_limit=%u "

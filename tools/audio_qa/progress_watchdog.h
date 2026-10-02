@@ -18,7 +18,7 @@ struct WatchdogPolicy {
 
 inline constexpr WatchdogPolicy preparation_watchdog_policy{120000, 300000};
 inline constexpr WatchdogPolicy playback_watchdog_policy{5000, 0};
-inline constexpr WatchdogPolicy closing_watchdog_policy{10000, 30000};
+inline constexpr WatchdogPolicy closing_watchdog_policy{10000, 0};
 
 struct WatchdogTimeout {
     WatchdogPhase phase{WatchdogPhase::preparation};

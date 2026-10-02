@@ -1,4 +1,6 @@
 #include "audio_qa_runtime_session.h"
+#include "audio_qa_presentation.h"
+#include "runtime_config.h"
 
 #include "content_hash.h"
 #include "control_message.h"
@@ -49,8 +51,6 @@ namespace qa = ayther::audio_qa;
 
 constexpr int qa_protocol_error = 65;
 constexpr int qa_execution_error = 66;
-
-using ObservationBridge = qa::ProductionObservationBridge;
 
 class StreamingObservationWriter final {
   public:
@@ -253,6 +253,7 @@ class StreamingObservationWriter final {
     bool valid_{true};
 };
 
+template <class ObservationBridge>
 void drain_observations(ObservationBridge &bridge, StreamingObservationWriter &writer) noexcept {
     while (bridge.try_consume_fact(&writer, StreamingObservationWriter::receive_fact)) {
     }
@@ -260,13 +261,14 @@ void drain_observations(ObservationBridge &bridge, StreamingObservationWriter &w
     }
 }
 
-struct ObservationDrainContext {
+template <class ObservationBridge> struct ObservationDrainContext {
     ObservationBridge *bridge{};
     StreamingObservationWriter *writer{};
 };
 
+template <class ObservationBridge>
 [[nodiscard]] bool drain_observation_cycle(void *const value) noexcept {
-    auto &context = *static_cast<ObservationDrainContext *>(value);
+    auto &context = *static_cast<ObservationDrainContext<ObservationBridge> *>(value);
     bool consumed =
         context.bridge->try_consume_fact(context.writer, StreamingObservationWriter::receive_fact);
     consumed =
@@ -275,6 +277,7 @@ struct ObservationDrainContext {
     return consumed;
 }
 
+template <class ObservationBridge>
 void stop_observation_worker(ayther::engine::audio_observation::ObservationConsumerWorker &worker,
                              ObservationBridge &bridge,
                              StreamingObservationWriter &writer) noexcept {
@@ -362,7 +365,8 @@ void acknowledge_progress(void *, const qa::ReplayProgressEvent &) noexcept {}
 
 } // namespace
 
-int run_audio_qa_session(const RuntimeOptions &options) noexcept {
+template <class ObservationBridge>
+int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
     auto control_result = qa::adopt_inherited_data_channel(options.qa_control_channel);
     auto data_result = qa::adopt_inherited_data_channel(options.qa_data_channel);
     auto *control = std::get_if<qa::OwnedChannelHandle>(&control_result);
@@ -387,6 +391,9 @@ int run_audio_qa_session(const RuntimeOptions &options) noexcept {
         return qa_protocol_error;
 
     qa::ReplayExecutionResult result;
+    result.presentation.mode = options.qa_presentation;
+    if (options.qa_presentation == "visible")
+        result.presentation.code = "not_started";
     result.run_id = options.qa_run_id;
     result.take_id = pending->take_ids.front();
     result.code = "recording_unavailable";
@@ -401,20 +408,22 @@ int run_audio_qa_session(const RuntimeOptions &options) noexcept {
 
         auto bridge = std::make_unique<ObservationBridge>(result.run_id);
         StreamingObservationWriter writer{*data, result.run_id};
-        ObservationDrainContext drain_context{bridge.get(), &writer};
+        ObservationDrainContext<ObservationBridge> drain_context{bridge.get(), &writer};
         ayther::engine::audio_observation::ObservationConsumerWorker observation_worker{
-            &drain_context, drain_observation_cycle};
+            &drain_context, drain_observation_cycle<ObservationBridge>};
         if (!observation_worker.start()) {
             result.code = "observation_worker_start_failed";
             (void)send_result(*data, result);
             return qa_execution_error;
         }
         std::unique_ptr<AytherSession> session;
+        std::unique_ptr<AudioQaPresentation> presentation;
         bool observation_stopped{};
         qa::ObservationBridgeLosses observation_losses;
         const auto stop_capture = [&] {
             if (observation_stopped)
                 return;
+            presentation.reset();
             session.reset();
             stop_observation_worker(observation_worker, *bridge, writer);
             observation_stopped = true;
@@ -463,10 +472,42 @@ int run_audio_qa_session(const RuntimeOptions &options) noexcept {
             session.get(), digest_id(result.initial_game_state), nullptr);
         if (hd.initialization != qa::HdInitialization::fresh || hd.evidence_incomplete)
             return fail_session("fresh_hd_initialization_failed");
-        session->load_audio_events_from_pack();
-        result.assignment_count = session->audio_event_assignment_count();
-        if (result.assignment_count == 0U)
-            return fail_session("audio_assignment_catalog_empty");
+        if (!options.pack_path.empty()) {
+            session->load_audio_events_from_pack();
+            result.assignment_count = session->audio_event_assignment_count();
+            if (result.assignment_count == 0U)
+                return fail_session("audio_assignment_catalog_empty");
+        }
+        ayther::PlayerConfig player_config;
+        if (options.qa_presentation == "visible") {
+            result.presentation.mode = "visible";
+            const auto pack = session->pack();
+            auto loaded = ayther::player_config_load_checked(
+                ayther::player_config_path(RuntimePaths::discover().configuration_directory(),
+                                           session->game_id(), pack ? pack.info().name : ""));
+            if (loaded.status != ayther::PlayerConfigLoadStatus::loaded &&
+                loaded.status != ayther::PlayerConfigLoadStatus::missing)
+                return fail_session("player_configuration_invalid");
+            player_config = std::move(loaded.config);
+            if (!player_config.profile.empty() && !session->set_profile(player_config.profile))
+                return fail_session("player_profile_unavailable");
+            if (player_config.have_subsystems) {
+                std::uint32_t available{};
+                for (std::uint32_t index{}; index < ayther::kSubsystemCount; ++index)
+                    if (session->subsystem_availability(static_cast<ayther::Subsystem>(index)) !=
+                        ayther::SubsystemAvailability::Absent)
+                        available |= std::uint32_t{1} << index;
+                session->set_subsystems_enabled_mask(player_config.subsystems & available);
+            }
+            for (std::uint32_t index{}; index < ayther::kAudioBusCount; ++index) {
+                session->set_bus_volume(static_cast<ayther::AudioBus>(index),
+                                        player_config.bus_gain[index]);
+                session->set_bus_muted(static_cast<ayther::AudioBus>(index),
+                                       player_config.bus_muted[index]);
+            }
+            presentation = std::make_unique<AudioQaPresentation>(result.presentation);
+            presentation->initialize(*session, options, player_config);
+        }
         if (!options.profile.empty() && !session->set_profile(options.profile))
             return fail_session("audio_profile_unavailable");
         if (options.subsystems)
@@ -476,8 +517,11 @@ int run_audio_qa_session(const RuntimeOptions &options) noexcept {
                 session->set_bus_muted(static_cast<ayther::AudioBus>(index),
                                        (*options.mute_buses & (std::uint32_t{1} << index)) != 0U);
         session->set_audio_runtime_substitution(true);
-        if (!session->set_audio_pcm_observer(replay_observer.on_pcm))
-            return fail_session("pcm_observation_start_failed");
+        if (!session->set_audio_pcm_observer(replay_observer.on_pcm)) {
+            if (!presentation)
+                return fail_session("pcm_observation_start_failed");
+            result.presentation.code = "audible_output_unavailable";
+        }
 
         qa::InitialStatePublication publication{
             fresh_initial_state(result.run_id, digest_id(result.initial_game_state))};
@@ -489,25 +533,62 @@ int run_audio_qa_session(const RuntimeOptions &options) noexcept {
         if (!progress.publish_acceptance())
             return fail_session("replay_progress_failed");
         qa::RecordingReplayLoop loop{publication, inputs, &progress};
-        const auto operations = qa::engine_recording_replay_operations(session.get());
+        struct PresentedStep {
+            AytherSession *session;
+            AudioQaPresentation *presentation;
+            std::uint32_t recording_frame{};
+        } step{session.get(), presentation.get()};
+        const qa::ReplayFrameOperations operations{
+            &step,
+            [](void *context, const std::uint32_t frame, const std::uint16_t buttons) noexcept {
+                auto &value = *static_cast<PresentedStep *>(context);
+                value.recording_frame = frame;
+                const auto engine = qa::engine_recording_replay_operations(value.session);
+                return engine.set_input(engine.context, frame, buttons);
+            },
+            [](void *context) noexcept -> qa::ReplayFrameOperationResult {
+                auto &value = *static_cast<PresentedStep *>(context);
+                try {
+                    const auto &view = value.session->step();
+                    if (value.presentation)
+                        value.presentation->present(*value.session, view, value.recording_frame);
+                    return {true, view.frame_index, "ok", {}};
+                } catch (...) {
+                    return {false, 0U, "replay_step_failed", {}};
+                }
+            }};
         auto next_frame = std::chrono::steady_clock::now();
+        bool cancelled{};
         for (std::uint32_t frame{}; frame < layout.layout.frame_count; ++frame) {
+            if (presentation && !presentation->poll()) {
+                cancelled = true;
+                break;
+            }
             const auto executed = loop.execute_next(operations);
             if (executed.error != qa::ReplayFrameError::none) {
                 result.inputs_consumed = loop.frames_completed();
                 return fail_session("recording_replay_failed");
             }
             next_frame += frame_period;
+            const auto now = std::chrono::steady_clock::now();
+            if (presentation && now > next_frame + frame_period) {
+                result.presentation.affect(frame);
+                if (result.presentation.code == "presented")
+                    result.presentation.code = "cadence_degraded";
+                next_frame = now;
+            }
             std::this_thread::sleep_until(next_frame);
         }
-        const auto exhausted = loop.execute_next(operations);
-        if (exhausted.error != qa::ReplayFrameError::input_exhausted) {
-            result.inputs_consumed = loop.frames_completed();
-            return fail_session("recording_input_boundary_failed");
+        if (!cancelled) {
+            const auto exhausted = loop.execute_next(operations);
+            if (exhausted.error != qa::ReplayFrameError::input_exhausted) {
+                result.inputs_consumed = loop.frames_completed();
+                return fail_session("recording_input_boundary_failed");
+            }
         }
         result.inputs_consumed = loop.frames_completed();
         const auto close_operations = qa::engine_replay_production_close_operations(session.get());
-        auto closed = qa::close_replay_production(progress, close_operations);
+        auto closed = qa::close_replay_production(progress, close_operations, cancelled);
         if (closed.error != qa::ReplayProductionCloseError::none)
             return fail_session("audio_production_close_failed");
         std::vector<std::uint8_t> final_state;
@@ -527,6 +608,8 @@ int run_audio_qa_session(const RuntimeOptions &options) noexcept {
         (void)close_watchdog.observe_bytes_received(initial_output_end, 0U);
         (void)close_watchdog.observe_bytes_durable(initial_output_end, 0U);
         while (!closed.drain.output_complete) {
+            if (presentation)
+                (void)presentation->poll(false);
             std::this_thread::sleep_for(std::chrono::milliseconds{1});
             closed.drain = close_operations.drain(close_operations.context);
             if (!closed.drain.succeeded || !closed.drain.accepted || !closed.drain.complete ||
@@ -574,14 +657,24 @@ int run_audio_qa_session(const RuntimeOptions &options) noexcept {
             return send_result(*data, result, writer.next_sequence()) ? qa_execution_error
                                                                       : qa_protocol_error;
         }
-        result.succeeded = true;
-        result.code = "replay_evidence_streamed";
-        return send_result(*data, result, writer.next_sequence()) ? 0 : qa_protocol_error;
+        result.succeeded = !cancelled && result.presentation.complete();
+        result.code =
+            cancelled ? "replay_cancelled"
+                      : (result.succeeded ? "replay_evidence_streamed" : "presentation_incomplete");
+        return send_result(*data, result, writer.next_sequence())
+                   ? (result.succeeded ? 0 : qa_execution_error)
+                   : qa_protocol_error;
     } catch (...) {
         result.code = "runtime_qa_unhandled_error";
         (void)send_result(*data, result);
         return qa_execution_error;
     }
+}
+
+int run_audio_qa_session(const RuntimeOptions &options) noexcept {
+    if (options.qa_presentation == "visible")
+        return run_audio_qa_session_with_bridge<qa::VisibleObservationBridge>(options);
+    return run_audio_qa_session_with_bridge<qa::ProductionObservationBridge>(options);
 }
 
 } // namespace ayther::runtime

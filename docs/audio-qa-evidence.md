@@ -3,6 +3,34 @@
 `ayther_audio_qa` conserva evidencia técnica reabrible. Registra lo observado y
 su integridad; no decide si existe un reinicio o una superposición musical.
 
+## Replay visible
+
+Añade `--presentation visible` a `ayther_audio_qa check` para abrir la presentación
+normal de Runtime con el audio del dispositivo de reproducción. La imagen, la mezcla
+y los registros proceden de una sola sesión alimentada con la toma. El modo
+`--presentation none` (predeterminado) conserva la ejecución automatizada con audio
+dummy; no acredita observación audiovisual.
+
+El modo visible requiere la capacidad `visible_replay_v1`. Los controles de juego,
+rewind y cambios de perfil están bloqueados durante la toma; el cierre de ventana
+cancela y conserva lo disponible. La ventana se cierra después de drenar el audio
+producido, sin seguir ejecutando el juego. Cada toma abre su propia ventana.
+
+`runs/<run_id>/replay-result.toml` conserva atómicamente el terminal 1.3 con el
+modo, backend de audio, perfil efectivo, cuadros presentados, conteo de cuadros
+afectados y su intervalo envolvente (índices de toma desde cero). También conserva
+resolución inicial, HD/shaders y la equivalencia física histórica como no verificada. El lector sigue
+aceptando terminales 1.2 como presentación no solicitada. El intervalo envolvente
+puede incluir cuadros no afectados; no representa una pérdida continua.
+
+Un fallo de ventana, vídeo, audio o cadencia produce un resultado incompleto,
+conservando el replay seguro y sus registros. El umbral de cadencia es un periodo
+del core adicional al vencimiento del cuadro. Ningún estado completo implica que
+se haya evaluado el fallo musical ni medido la sincronía física de los dispositivos.
+Los campos `audible_restart_observed` y `audible_overlap_observed` muestran
+`not_evaluated` cuando no existe evaluación, incluso si la ventana se presentó.
+`false` queda reservado a una evaluación explícita negativa; no es el valor por defecto.
+
 ## Directorio de evidencia
 
 La raíz de `--output` contiene `request-ledger.toml` y un directorio exclusivo
@@ -12,6 +40,7 @@ por `run_id`:
 <output>/
   request-ledger.toml
   runs/<run_id>/
+    replay-result.toml
     fragments/facts-00000000000000000001.aqf
     audio/pcm-00000000000000000001.aqp
     checkpoints/current.toml

@@ -63,6 +63,9 @@ summarize_check_results(std::span<const TakeTechnicalResult> results) {
 }
 
 std::string format_check_summary(const CheckTechnicalSummary &summary) {
+    const auto observation = [](const std::optional<bool> value) {
+        return value ? (*value ? "true" : "false") : "not_evaluated";
+    };
     std::ostringstream output;
     output << "audio_qa_summary: exit_code=" << summary.exit_code
            << " complete=" << summary.complete << " incomplete=" << summary.incomplete
@@ -72,9 +75,8 @@ std::string format_check_summary(const CheckTechnicalSummary &summary) {
         output << "\ntake=" << take.take_id
                << " outcome=" << check_technical_outcome_code(take.outcome)
                << " diagnostic=" << take.diagnostic_code
-               << " audible_restart_observed=" << (take.audible_restart_observed ? "true" : "false")
-               << " audible_overlap_observed="
-               << (take.audible_overlap_observed ? "true" : "false");
+               << " audible_restart_observed=" << observation(take.audible_restart_observed)
+               << " audible_overlap_observed=" << observation(take.audible_overlap_observed);
     return output.str();
 }
 

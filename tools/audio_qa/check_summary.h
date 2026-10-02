@@ -20,8 +20,8 @@ struct TakeTechnicalResult {
     std::string take_id;
     CheckTechnicalOutcome outcome{CheckTechnicalOutcome::incomplete};
     std::string diagnostic_code;
-    bool audible_restart_observed{};
-    bool audible_overlap_observed{};
+    std::optional<bool> audible_restart_observed;
+    std::optional<bool> audible_overlap_observed;
 };
 
 struct CheckTechnicalSummary {

@@ -96,9 +96,9 @@ std::vector<qa::Fact> facts() {
     result.push_back(std::move(request));
     auto decision = fact(5, 4, "hd_playback_decision", {qa::FactId{"run-audit", "engine-5", 3}});
     decision.occurrence_id = {qa::Availability::known, "9", {}};
-    decision.reason_code = {qa::Availability::known, "new_voice", {}};
-    decision.fields = {text("action", "start"), text("reason", "new_voice"),
-                       number("occurrence", 9)};
+    decision.reason_code = {qa::Availability::known, "same_key_same_asset", {}};
+    decision.fields = {text("action", "restart"), text("reason", "same_key_same_asset"),
+                       number("occurrence", 9), number("previous_occurrence", 8)};
     result.push_back(std::move(decision));
     auto effect = fact(5, 5, "hd_playback_effect", {qa::FactId{"run-audit", "engine-5", 4}});
     effect.occurrence_id = {qa::Availability::known, "9", {}};
@@ -134,6 +134,40 @@ std::vector<qa::Fact> facts() {
         number("output_end", 14),    number("source_begin", 20),   number("source_end", 24),
         number("source_limit", 100), number("sample_rate", 44100), boolean("links_complete", true)};
     result.push_back(std::move(position));
+    auto previous_position =
+        fact(6, 3, "hd_voice_position_span", {qa::FactId{"run-audit", "engine-5", 3}});
+    previous_position.occurrence_id = {qa::Availability::known, "8", {}};
+    previous_position.fields = {
+        number("occurrence", 8),     text("key", "music"),         number("output_begin", 6),
+        number("output_end", 10),    number("source_begin", 40),   number("source_end", 44),
+        number("source_limit", 100), number("sample_rate", 44100), boolean("links_complete", true)};
+    result.push_back(std::move(previous_position));
+    auto previous_mix = fact(6, 4, "hd_mix_participant", {qa::FactId{"run-audit", "engine-5", 3}});
+    previous_mix.occurrence_id = {qa::Availability::known, "8", {}};
+    previous_mix.fields = {
+        number("occurrence", 8),
+        text("key", "music"),
+        text("mix_timeline", "engine_main_mix"),
+        number("mix_begin", 6, qa::FactFieldUnit::sample_frame),
+        number("mix_end", 10, qa::FactFieldUnit::sample_frame),
+        number("mix_sample_rate", 44100),
+        text("track_timeline", "hd_asset_pcm"),
+        number("track_begin", 40),
+        number("track_end", 44),
+        number("track_limit", 100),
+        number("track_sample_rate", 44100),
+        {"effective_gain_begin", qa::Availability::known, qa::FactFieldUnit::linear_gain, 1.0, {}},
+        {"effective_gain_end", qa::Availability::known, qa::FactFieldUnit::linear_gain, 1.0, {}},
+        boolean("muted_by_gain", false),
+        boolean("nonzero_contribution", true),
+        boolean("links_complete", true)};
+    result.push_back(std::move(previous_mix));
+    auto output_span =
+        fact(8, 1, "main_mix_output_span",
+             {qa::FactId{"run-audit", "engine-6", 1}, qa::FactId{"run-audit", "engine-7", 2}});
+    output_span.fields = {number("input_begin", 10), number("input_end", 14),
+                          number("output_begin", 10), number("output_end", 14)};
+    result.push_back(std::move(output_span));
     return result;
 }
 
@@ -168,13 +202,41 @@ int main() {
             "audit_fixture_audio_failed");
         const auto audited = qa::audit_campaign_evidence(directory->path(), "run-audit", 1);
         const auto *summary = std::get_if<qa::CampaignAuditSummary>(&audited);
-        require(summary != nullptr && summary->complete && summary->facts == 12U &&
-                    summary->typed_payload_complete && summary->stage_relations_complete &&
-                    summary->audio_complete && summary->query_route_complete &&
-                    summary->selected_assignments == 1U && summary->pending_assignments == 0U &&
-                    summary->pending_assignment_ids.empty() &&
-                    summary->query_audio_begin == 10U && summary->query_audio_end == 14U,
-                "complete_campaign_was_not_audited");
+        require(
+            summary != nullptr && summary->complete && summary->facts == 15U &&
+                summary->typed_payload_complete && summary->invalid_typed_payloads == 0U &&
+                summary->first_invalid_typed_payload_kind.empty() &&
+                summary->stage_relations_complete && summary->audio_complete &&
+                summary->query_route_complete && summary->main_output_spans == 1U &&
+                summary->causal_output_links == 1U && summary->restart_position_complete == 1U &&
+                summary->restart_mix_link_complete == 1U &&
+                summary->restart_output_complete == 1U && summary->restart_chain_complete == 1U &&
+                summary->selected_assignments == 1U && summary->pending_assignments == 0U &&
+                summary->pending_assignment_ids.empty() && summary->query_audio_begin == 10U &&
+                summary->query_audio_end == 14U && summary->restart_candidates.size() == 1U &&
+                summary->restart_candidates.front().occurrence == 9U &&
+                summary->restart_candidates.front().previous_occurrence == 8U &&
+                summary->restart_candidates.front().previous_source_end == 44U &&
+                summary->restart_candidates.front().current_source_begin == 20U &&
+                summary->restart_candidates.front().output_begin == 10U &&
+                summary->restart_candidates.front().output_end == 14U &&
+                summary->restart_candidates.front().event ==
+                    qa::FactId{"run-audit", "engine-3", 1} &&
+                summary->restart_candidates.front().query ==
+                    qa::FactId{"run-audit", "engine-3", 1} &&
+                summary->restart_candidates.front().candidate ==
+                    qa::FactId{"run-audit", "engine-5", 1} &&
+                summary->restart_candidates.front().selection ==
+                    qa::FactId{"run-audit", "engine-5", 2} &&
+                summary->restart_candidates.front().request ==
+                    qa::FactId{"run-audit", "engine-5", 3} &&
+                summary->restart_candidates.front().mix == qa::FactId{"run-audit", "engine-6", 1} &&
+                summary->restart_candidates.front().output_span ==
+                    qa::FactId{"run-audit", "engine-8", 1} &&
+                summary->restart_candidates.front().pcm_sequence == 2U &&
+                summary->restart_candidates.front().pcm_begin == 8U &&
+                summary->restart_candidates.front().pcm_end == 16U,
+            "complete_campaign_was_not_audited");
         std::filesystem::remove_all(root, ignored);
         return 0;
     } catch (const std::exception &error) {

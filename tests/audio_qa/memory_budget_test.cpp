@@ -62,6 +62,11 @@ int child(const std::string_view mode) {
         Sleep(400U);
         return buffers[0].empty() ? 2 : 0;
     }
+    if (mode == "--visible") {
+        auto bridge = std::make_unique<qa::VisibleObservationBridge>("run-visible-memory");
+        Sleep(400U);
+        return bridge->valid() ? 0 : 3;
+    }
     if (mode == "--capture") {
         auto bridge = std::make_unique<ProductionBridge>("run-188");
         if (!bridge->valid()) {
@@ -151,6 +156,9 @@ int wmain(const int argc, wchar_t **argv) {
             if (mode == L"--capture") {
                 return child("--capture");
             }
+            if (mode == L"--visible") {
+                return child("--visible");
+            }
             return 6;
         }
 
@@ -159,6 +167,7 @@ int wmain(const int argc, wchar_t **argv) {
         const auto executable = executable_path();
         std::uint64_t coordinator_peak_delta{};
         std::uint64_t capture_peak_delta{};
+        std::uint64_t visible_peak_delta{};
         for (std::size_t pair{}; pair < measurement_pairs; ++pair) {
             const auto coordinator_off = measure_child(executable, L"--baseline");
             const auto coordinator_on = measure_child(executable, L"--coordinator");
@@ -173,6 +182,11 @@ int wmain(const int argc, wchar_t **argv) {
             require(capture_delta <= capture_increment_limit,
                     "capture_private_memory_increment_exceeded");
             capture_peak_delta = (std::max)(capture_peak_delta, capture_delta);
+            const auto visible_on = measure_child(executable, L"--visible");
+            const auto visible_delta = delta(visible_on, capture_off);
+            require(visible_delta <= capture_increment_limit,
+                    "visible_capture_private_memory_increment_exceeded");
+            visible_peak_delta = (std::max)(visible_peak_delta, visible_delta);
         }
 
         std::printf("memory_budget_test: sample_ms=%lu pairs=%zu coordinator_peak=%llu "
@@ -184,6 +198,9 @@ int wmain(const int argc, wchar_t **argv) {
                     static_cast<unsigned long long>(capture_peak_delta),
                     static_cast<unsigned long long>(capture_increment_limit),
                     sizeof(ProductionBridge), static_cast<unsigned long long>(queue_limit));
+        std::printf("visible_memory_budget: capture_peak=%llu queue_bytes=%zu\n",
+                    static_cast<unsigned long long>(visible_peak_delta),
+                    sizeof(qa::VisibleObservationBridge));
         return 0;
     } catch (const std::exception &error) {
         std::fprintf(stderr, "memory_budget_test: %s\n", error.what());

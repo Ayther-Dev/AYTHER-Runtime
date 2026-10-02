@@ -126,6 +126,16 @@ namespace {
 } // namespace
 
 bool well_formed(const ReplayExecutionResult &result) noexcept {
+    const auto &p = result.presentation;
+    if ((p.mode != "none" && p.mode != "visible") || !identifier(p.code) ||
+        p.output_profile.size() > max_identity_bytes ||
+        p.audio_backend.size() > max_identity_bytes ||
+        p.presented_frames > result.inputs_consumed || p.affected_frames > result.inputs_consumed ||
+        (p.affected_frames != 0U && (p.first_affected_frame > p.last_affected_frame ||
+                                     p.last_affected_frame >= result.inputs_consumed)) ||
+        (result.succeeded &&
+         (!p.complete() || (p.mode == "visible" && p.presented_frames != result.inputs_consumed))))
+        return false;
     return identifier(result.run_id) && !result.take_id.empty() &&
            result.take_id.size() <= max_reference_value_bytes &&
            result.recording_frames <= max_recording_frames &&
@@ -139,11 +149,12 @@ bool well_formed(const ReplayExecutionResult &result) noexcept {
            identifier(result.code) &&
            (!result.succeeded ||
             (result.recording_frames > 0U && result.inputs_consumed == result.recording_frames &&
-             result.assignment_count > 0U && result.initial_game_state.byte_size > 0U &&
+             result.initial_game_state.byte_size > 0U &&
              result.final_game_state.byte_size > 0U && result.trace.observed_fact_count > 0U &&
              result.trace.loss_free &&
              (result.code == "replay_evidence_streamed" ||
-              (result.trace.causally_connected && result.trace.occurrence != 0U &&
+              (result.assignment_count > 0U && result.trace.causally_connected &&
+               result.trace.occurrence != 0U &&
                valid_trace_id(result.trace.ingress) && valid_trace_id(result.trace.candidate) &&
                valid_trace_id(result.trace.selection) &&
                valid_trace_id(result.trace.playback_request) &&
@@ -156,17 +167,33 @@ EncodedReplayExecutionResult encode_replay_execution_result(const ReplayExecutio
                                                             const std::uint64_t sequence) {
     if (!well_formed(result) || sequence == 0U)
         return ReplayExecutionResultError::invalid_model;
-    toml::table document{{"schema", "1.2"},
-                         {"run_id", result.run_id},
-                         {"take_id", result.take_id},
-                         {"recording_frames", static_cast<std::int64_t>(result.recording_frames)},
-                         {"inputs_consumed", static_cast<std::int64_t>(result.inputs_consumed)},
-                         {"assignment_count", static_cast<std::int64_t>(result.assignment_count)},
-                         {"initial_game_state", identity_table(result.initial_game_state)},
-                         {"final_game_state", identity_table(result.final_game_state)},
-                         {"trace", trace_table(result.trace)},
-                         {"succeeded", result.succeeded},
-                         {"code", result.code}};
+    const auto &p = result.presentation;
+    toml::table document{
+        {"schema", "1.3"},
+        {"presentation", toml::table{{"mode", p.mode},
+                                     {"code", p.code},
+                                     {"output_profile", p.output_profile},
+                                     {"audio_backend", p.audio_backend},
+                                     {"initial_width", p.initial_width},
+                                     {"initial_height", p.initial_height},
+                                     {"hd_enabled", p.hd_enabled},
+                                     {"shaders_enabled", p.shaders_enabled},
+                                     {"physical_reference_equivalence", "not_verified"},
+                                     {"presented_frames", p.presented_frames},
+                                     {"affected_frames", p.affected_frames},
+                                     {"first_affected_frame", p.first_affected_frame},
+                                     {"last_affected_frame", p.last_affected_frame},
+                                     {"cancelled", p.cancelled}}},
+        {"run_id", result.run_id},
+        {"take_id", result.take_id},
+        {"recording_frames", static_cast<std::int64_t>(result.recording_frames)},
+        {"inputs_consumed", static_cast<std::int64_t>(result.inputs_consumed)},
+        {"assignment_count", static_cast<std::int64_t>(result.assignment_count)},
+        {"initial_game_state", identity_table(result.initial_game_state)},
+        {"final_game_state", identity_table(result.final_game_state)},
+        {"trace", trace_table(result.trace)},
+        {"succeeded", result.succeeded},
+        {"code", result.code}};
     std::ostringstream output;
     output << document;
     const std::string payload = output.str();
@@ -200,9 +227,36 @@ decode_replay_execution_result(const std::span<const std::byte> message,
         const auto payload = message.subspan(protocol_header_bytes);
         const std::string_view text{reinterpret_cast<const char *>(payload.data()), payload.size()};
         const auto document = toml::parse(text);
-        if (document.size() != 11U || document["schema"].value<std::string>() != "1.2")
+        const bool legacy = document["schema"].value<std::string>() == "1.2";
+        if ((legacy && document.size() != 11U) ||
+            (!legacy &&
+             (document.size() != 12U || document["schema"].value<std::string>() != "1.3")))
             return ReplayExecutionResultError::invalid_payload;
         ReplayExecutionResult result;
+        if (!legacy) {
+            const auto *p = document["presentation"].as_table();
+            if (!p || p->size() != 14U ||
+                (*p)["physical_reference_equivalence"].value<std::string>() != "not_verified")
+                return ReplayExecutionResultError::invalid_payload;
+            const auto mode = (*p)["mode"].value<std::string>();
+            const auto code = (*p)["code"].value<std::string>();
+            const auto profile = (*p)["output_profile"].value<std::string>();
+            const auto backend = (*p)["audio_backend"].value<std::string>();
+            const auto shown = (*p)["presented_frames"].value<std::uint32_t>();
+            const auto affected = (*p)["affected_frames"].value<std::uint32_t>();
+            const auto first = (*p)["first_affected_frame"].value<std::uint32_t>();
+            const auto last = (*p)["last_affected_frame"].value<std::uint32_t>();
+            const auto cancelled = (*p)["cancelled"].value<bool>();
+            const auto width = (*p)["initial_width"].value<std::uint32_t>();
+            const auto height = (*p)["initial_height"].value<std::uint32_t>();
+            const auto hd = (*p)["hd_enabled"].value<bool>();
+            const auto shaders = (*p)["shaders_enabled"].value<bool>();
+            if (!mode || !code || !profile || !backend || !shown || !affected || !first || !last ||
+                !cancelled || !width || !height || !hd || !shaders)
+                return ReplayExecutionResultError::invalid_payload;
+            result.presentation = {*mode, *code,      *profile, *backend, *shown, *affected, *first,
+                                   *last, *cancelled, *width,   *height,  *hd,    *shaders};
+        }
         const auto run_id = document["run_id"].value<std::string>();
         const auto take_id = document["take_id"].value<std::string>();
         const auto frames = document["recording_frames"].value<std::int64_t>();

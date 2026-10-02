@@ -43,7 +43,20 @@ bool test_valid() {
            options->pack == "pack.ay" &&
            options->takes == std::vector<std::string>{"main.ayr", "extra.arp"} &&
            options->output == "evidence" && options->request_id == "request-1" &&
-           options->language == "en" && options->trust_registry == "trust.toml";
+           options->language == "en" && options->trust_registry == "trust.toml" &&
+           options->pack_mode == "hd";
+}
+
+bool test_original_audio_mode() {
+    auto arguments = valid_arguments();
+    arguments.insert(arguments.end(), {"--pack-mode", "original"});
+    const auto parsed = qa::parse_check_options(views(arguments));
+    if (!parsed.options() || parsed.options()->pack_mode != "original")
+        return false;
+    arguments.back() = "invalid";
+    const auto rejected = qa::parse_check_options(views(arguments));
+    return rejected.error() != nullptr &&
+           rejected.error()->code == qa::CheckOptionErrorCode::unsupported_pack_mode;
 }
 
 bool test_required_options() {
@@ -106,4 +119,21 @@ bool test_malformed() {
 
 } // namespace
 
-int main() { return test_valid() && test_required_options() && test_malformed() ? 0 : 1; }
+int main() {
+    auto arguments = valid_arguments();
+    arguments.insert(arguments.end(), {"--presentation", "visible"});
+    const auto visible = qa::parse_check_options(views(arguments));
+    if (!visible.options() || visible.options()->presentation != "visible")
+        return 1;
+    auto duplicate = arguments;
+    duplicate.insert(duplicate.end(), {"--presentation", "none"});
+    if (!has_error(duplicate, qa::CheckOptionErrorCode::duplicate_option, "--presentation"))
+        return 1;
+    arguments.back() = "invalid";
+    if (!qa::parse_check_options(views(arguments)).error())
+        return 1;
+    return test_valid() && test_required_options() && test_malformed() &&
+                   test_original_audio_mode()
+               ? 0
+               : 1;
+}

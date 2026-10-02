@@ -40,13 +40,16 @@ int main() {
                     total.observe_bytes_received(400, 39000) &&
                     total.observe_bytes_durable(400, 39000) && !total.check(39999).has_value(),
                 "closing_total_boundary_fired_early");
-        const auto total_timeout = total.check(40000);
-        require(total_timeout.has_value() &&
-                    total_timeout->reason == qa::WatchdogTimeoutReason::total_time &&
-                    total_timeout->evidence_result == qa::EvidenceResult::incomplete &&
-                    total_timeout->bytes_received == 400 && total_timeout->bytes_durable == 400 &&
-                    total_timeout->elapsed_total_ms == 30000,
-                "closing_total_timeout_was_not_reported");
+        require(!total.check(40000).has_value(),
+                "progressing_large_capture_was_rejected_by_fixed_total_timeout");
+        const auto stalled_after_progress = total.check(49000);
+        require(stalled_after_progress.has_value() &&
+                    stalled_after_progress->reason == qa::WatchdogTimeoutReason::no_progress &&
+                    stalled_after_progress->evidence_result == qa::EvidenceResult::incomplete &&
+                    stalled_after_progress->bytes_received == 400 &&
+                    stalled_after_progress->bytes_durable == 400 &&
+                    stalled_after_progress->last_progress_ms == 39000,
+                "large_capture_no_progress_timeout_was_not_reported");
 
         qa::ProgressWatchdog invalid{qa::WatchdogPhase::closing, 0};
         require(invalid.observe_bytes_received(10, 1) && !invalid.observe_bytes_durable(11, 2) &&

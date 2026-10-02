@@ -54,6 +54,9 @@ int main() {
         const std::array<observation::Cause, 1> decision{observation::FactId{5, 4}};
         emit(collector, {5, 5}, "hd_playback_effect", decision, 7);
         emit(collector, {6, 1}, "hd_mix_participant", request, 7);
+        const std::array<observation::Cause, 2> output_causes{observation::FactId{6, 1},
+                                                              observation::FactId{7, 1}};
+        emit(collector, {8, 1}, "main_mix_output_span", output_causes, 7);
 
         const auto summary = collector.summarize(true);
         require(summary.causally_connected && summary.loss_free, "connected_trace_not_recognized");
@@ -67,6 +70,17 @@ int main() {
         std::rotate(reordered.begin(), reordered.begin() + 1, reordered.end());
         const auto reordered_summary = qa::summarize_replay_facts(reordered, true);
         require(reordered_summary == summary, "cross_producer_arrival_order_changed_trace");
+
+        auto unresolved_output = collector.facts();
+        const std::array<observation::Cause, 2> invalid_output_causes{observation::FactId{6, 1},
+                                                                      observation::FactId{9, 1}};
+        const observation::FactView invalid_output_view{
+            {8, 2}, "main_mix_output_span", {}, invalid_output_causes, {}, {}};
+        const auto invalid_output = qa::copy_replay_trace_fact("run-171", invalid_output_view);
+        require(invalid_output.has_value(), "invalid_output_fixture_rejected");
+        unresolved_output.push_back(*invalid_output);
+        require(!qa::summarize_replay_facts(unresolved_output, true).loss_free,
+                "missing_non_pcm_output_cause_was_ignored");
         const auto &durable_ingress = collector.facts().front();
         require(durable_ingress.decision_id.reason_code == "compact_default" &&
                     durable_ingress.assignment_id.reason_code == "compact_default" &&

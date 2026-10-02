@@ -62,6 +62,14 @@ int main() {
                 "identical_resend_was_not_idempotent");
 
         auto changed_options = first_options;
+        changed_options.presentation = "visible";
+        const auto changed_presentation =
+            qa::make_check_request(changed_options, selection, "request-a", "run-visible");
+        require(changed_presentation.request.conditions_id !=
+                    qa::make_check_request(first_options, selection, "request-a", "run-a")
+                        .request.conditions_id,
+                "presentation_mode_did_not_change_request_identity");
+        changed_options = first_options;
         changed_options.pack = "changed.ay";
         const auto conflict = qa::admit_check_request(
             ledger, occupancy,

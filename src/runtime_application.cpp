@@ -344,7 +344,19 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
     }
     log_startup_milestone("SDL gamepad");
     if (!SDL_Init(SDL_INIT_AUDIO)) {
-        std::fprintf(stderr, "SDL_Init(audio) failed: %s\n", SDL_GetError());
+        const std::string cause = SDL_GetError();
+        std::fprintf(stderr, "SDL_Init(audio) failed: %s\n", cause.c_str());
+        const auto now = std::chrono::steady_clock::now().time_since_epoch();
+        emit_status(ayther::runtime::AudioWarningStatus{
+            ayther::runtime::AudioDiagnosticAggregate{
+                ayther::runtime::AudioDiagnostic{
+                    ayther::runtime::AudioDiagnosticCode::output_failure, "output:default",
+                    "main-output", cause, std::string{ayther::runtime::runtime_version},
+                    ayther::runtime::linked_engine_version(),
+                    static_cast<std::uint64_t>(
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(now).count())},
+                1U, 0U},
+            "No se pudo inicializar el dispositivo de audio."});
         return 1;
     }
     log_startup_milestone("SDL audio");

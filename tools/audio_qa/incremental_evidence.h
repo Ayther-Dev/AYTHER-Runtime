@@ -28,7 +28,8 @@ class IncrementalEvidenceWriter final {
     append_facts(std::span<const Fact> facts) noexcept;
     [[nodiscard]] std::optional<IntegratedEvidenceError>
     append_pcm(const AudioChunk &chunk) noexcept;
-    [[nodiscard]] IntegratedEvidenceResult finish(const ReplayTraceSummary &transport_trace) noexcept;
+    [[nodiscard]] IntegratedEvidenceResult finish(const ReplayTraceSummary &transport_trace,
+                                                  bool require_hd_relationships = true) noexcept;
     [[nodiscard]] ReplayTraceSummary trace() const noexcept;
 
   private:

@@ -37,7 +37,9 @@ std::string conditions_id(const CheckOptions &options, const TakeSelection &sele
     hash_text(hasher, options.reference);
     hash_text(hasher, options.play_manifest);
     hash_text(hasher, options.pack);
+    hash_text(hasher, options.pack_mode);
     hash_text(hasher, options.trust_registry);
+    hash_text(hasher, options.presentation);
     for (const auto &take : selection.takes)
         hash_text(hasher, take);
     const auto identity = hasher.finish();

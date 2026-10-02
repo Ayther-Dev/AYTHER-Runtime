@@ -4,9 +4,10 @@ namespace ayther::audio_qa {
 
 ReplayProductionCloseResult
 close_replay_production(const ReplayProgressPublisher &progress,
-                        const ReplayProductionCloseOperations &operations) noexcept {
+                        const ReplayProductionCloseOperations &operations,
+                        const bool cancelled) noexcept {
     ReplayProductionCloseResult result;
-    if (!progress.finished()) {
+    if (!progress.finished() && !(cancelled && progress.accepted())) {
         result.error = ReplayProductionCloseError::replay_not_finished;
         return result;
     }
@@ -21,7 +22,9 @@ close_replay_production(const ReplayProgressPublisher &progress,
         result.error = ReplayProductionCloseError::freeze_failed;
         return result;
     }
-    if (!result.limit.frozen || result.limit.last_emulation_frame != progress.last_engine_frame()) {
+    if (!result.limit.frozen ||
+        (progress.frames_completed() != 0U &&
+         result.limit.last_emulation_frame != progress.last_engine_frame())) {
         result.error = ReplayProductionCloseError::invalid_limit;
         return result;
     }

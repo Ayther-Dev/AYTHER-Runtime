@@ -71,6 +71,12 @@ bool validation_and_formatting() {
 } // namespace
 
 int main() {
+    const std::array unevaluated{
+        qa::TakeTechnicalResult{"main", qa::CheckTechnicalOutcome::complete, "complete"}};
+    const auto summary = qa::summarize_check_results(unevaluated);
+    if (!summary || qa::format_check_summary(*summary).find(
+                        "audible_restart_observed=not_evaluated") == std::string::npos)
+        return 1;
     return priority_is_4320() && audible_observations_are_neutral() && validation_and_formatting()
                ? 0
                : 1;

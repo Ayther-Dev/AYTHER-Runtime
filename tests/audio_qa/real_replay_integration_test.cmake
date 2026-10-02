@@ -131,11 +131,39 @@ foreach(expected IN ITEMS
         "status=replay_evidence_reopened"
         "outcome=complete"
         "diagnostic=replay_evidence_complete"
-        "audible_restart_observed=false"
-        "audible_overlap_observed=false")
+        "audible_restart_observed=not_evaluated"
+        "audible_overlap_observed=not_evaluated")
     string(FIND "${report}" "${expected}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR "Real replay omitted ${expected}:\n${report}")
+    endif()
+endforeach()
+
+execute_process(
+    COMMAND "${CHECK_EXE}" check
+        --runtime "${RUNTIME_EXE}"
+        --reference "${REFERENCE}"
+        --play-manifest "${MANIFEST}"
+        --pack "${PACK_FILE}"
+        --pack-mode original
+        --trust-registry "${TRUST_REGISTRY}"
+        --take "${TAKE_FILE}"
+        --output "${TEST_ROOT}/original-evidence"
+        --request-id "qa170-public-original-request"
+        --language es
+    RESULT_VARIABLE original_result
+    OUTPUT_VARIABLE original_output
+    ERROR_VARIABLE original_errors
+    TIMEOUT 30)
+if(NOT original_result EQUAL 0)
+    message(FATAL_ERROR "Original-audio replay returned ${original_result}:\n${original_output}\n${original_errors}")
+endif()
+set(original_report "${original_output}${original_errors}")
+foreach(expected IN ITEMS "inputs_consumed=6" "assignments=0" "outcome=complete"
+                          "diagnostic=replay_evidence_complete")
+    string(FIND "${original_report}" "${expected}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR "Original-audio replay omitted ${expected}:\n${original_report}")
     endif()
 endforeach()
 file(READ "${TEST_ROOT}/evidence/request-ledger.toml" ledger)

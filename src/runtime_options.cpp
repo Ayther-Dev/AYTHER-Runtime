@@ -18,8 +18,7 @@ using ValueResult = std::variant<std::string_view, RuntimeOptionError>;
                                             const std::string_view option,
                                             const std::string_view value,
                                             const std::size_t argument_index) {
-    return RuntimeOptionError{code, std::string{option}, std::string{value},
-                              argument_index};
+    return RuntimeOptionError{code, std::string{option}, std::string{value}, argument_index};
 }
 
 template <typename UInt> using UnsignedResult = std::variant<UInt, RuntimeOptionError>;
@@ -31,25 +30,21 @@ parse_unsigned(const std::string_view text, const std::string_view option,
     static_assert(std::is_unsigned_v<UInt>);
 
     if (text.empty()) {
-        return make_error(RuntimeOptionErrorCode::empty_value, option, text,
-                          argument_index);
+        return make_error(RuntimeOptionErrorCode::empty_value, option, text, argument_index);
     }
     if (text.front() == '+' || text.front() == '-') {
-        return make_error(RuntimeOptionErrorCode::invalid_sign, option, text,
-                          argument_index);
+        return make_error(RuntimeOptionErrorCode::invalid_sign, option, text, argument_index);
     }
 
     UInt value{};
-    const char* const begin = text.data();
-    const char* const end = begin + text.size();
+    const char *const begin = text.data();
+    const char *const end = begin + text.size();
     const auto parsed = std::from_chars(begin, end, value, 10);
     if (parsed.ec == std::errc::invalid_argument) {
-        return make_error(RuntimeOptionErrorCode::invalid_integer, option, text,
-                          argument_index);
+        return make_error(RuntimeOptionErrorCode::invalid_integer, option, text, argument_index);
     }
     if (parsed.ec == std::errc::result_out_of_range) {
-        return make_error(RuntimeOptionErrorCode::integer_overflow, option, text,
-                          argument_index);
+        return make_error(RuntimeOptionErrorCode::integer_overflow, option, text, argument_index);
     }
     if (parsed.ptr != end) {
         return make_error(RuntimeOptionErrorCode::trailing_characters, option, text,
@@ -68,13 +63,10 @@ using CaptureListResult = std::variant<std::vector<std::uint64_t>, RuntimeOption
                                                    const std::size_t argument_index) {
     constexpr std::string_view option = "--capture-at";
     if (text.empty()) {
-        return make_error(RuntimeOptionErrorCode::empty_value, option, text,
-                          argument_index);
+        return make_error(RuntimeOptionErrorCode::empty_value, option, text, argument_index);
     }
-    if (text.front() == ',' || text.back() == ',' ||
-        text.find(",,") != std::string_view::npos) {
-        return make_error(RuntimeOptionErrorCode::malformed_list, option, text,
-                          argument_index);
+    if (text.front() == ',' || text.back() == ',' || text.find(",,") != std::string_view::npos) {
+        return make_error(RuntimeOptionErrorCode::malformed_list, option, text, argument_index);
     }
 
     std::vector<std::uint64_t> frames;
@@ -83,9 +75,8 @@ using CaptureListResult = std::variant<std::vector<std::uint64_t>, RuntimeOption
         const std::size_t comma = text.find(',', begin);
         const std::size_t end = comma == std::string_view::npos ? text.size() : comma;
         const std::string_view element = text.substr(begin, end - begin);
-        auto parsed =
-            parse_unsigned<std::uint64_t>(element, option, argument_index, true);
-        if (const auto* error = std::get_if<RuntimeOptionError>(&parsed)) {
+        auto parsed = parse_unsigned<std::uint64_t>(element, option, argument_index, true);
+        if (const auto *error = std::get_if<RuntimeOptionError>(&parsed)) {
             return *error;
         }
         frames.push_back(std::get<std::uint64_t>(parsed));
@@ -97,7 +88,7 @@ using CaptureListResult = std::variant<std::vector<std::uint64_t>, RuntimeOption
     return frames;
 }
 
-[[nodiscard]] const char* error_reason(const RuntimeOptionErrorCode code) {
+[[nodiscard]] const char *error_reason(const RuntimeOptionErrorCode code) {
     switch (code) {
     case RuntimeOptionErrorCode::missing_value:
         return "falta un valor";
@@ -121,7 +112,7 @@ using CaptureListResult = std::variant<std::vector<std::uint64_t>, RuntimeOption
     return "el valor no es valido";
 }
 
-}  // namespace
+} // namespace
 
 RuntimeOptionsParseResult::RuntimeOptionsParseResult(RuntimeOptions options)
     : result_(std::move(options)) {}
@@ -129,19 +120,19 @@ RuntimeOptionsParseResult::RuntimeOptionsParseResult(RuntimeOptions options)
 RuntimeOptionsParseResult::RuntimeOptionsParseResult(RuntimeOptionError error)
     : result_(std::move(error)) {}
 
-RuntimeOptions* RuntimeOptionsParseResult::options() noexcept {
+RuntimeOptions *RuntimeOptionsParseResult::options() noexcept {
     return std::get_if<RuntimeOptions>(&result_);
 }
 
-const RuntimeOptions* RuntimeOptionsParseResult::options() const noexcept {
+const RuntimeOptions *RuntimeOptionsParseResult::options() const noexcept {
     return std::get_if<RuntimeOptions>(&result_);
 }
 
-const RuntimeOptionError* RuntimeOptionsParseResult::error() const noexcept {
+const RuntimeOptionError *RuntimeOptionsParseResult::error() const noexcept {
     return std::get_if<RuntimeOptionError>(&result_);
 }
 
-RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char* const argv[]) {
+RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char *const argv[]) {
     RuntimeOptions options;
     std::vector<std::string> positional;
 
@@ -154,9 +145,8 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char* const argv
                 return make_error(RuntimeOptionErrorCode::missing_value, option, {},
                                   static_cast<std::size_t>(index));
             }
-            const std::string_view candidate = argv[index + 1] != nullptr
-                                                   ? std::string_view{argv[index + 1]}
-                                                   : std::string_view{};
+            const std::string_view candidate =
+                argv[index + 1] != nullptr ? std::string_view{argv[index + 1]} : std::string_view{};
             if (candidate.starts_with("--")) {
                 return make_error(RuntimeOptionErrorCode::missing_value, option, {},
                                   static_cast<std::size_t>(index));
@@ -167,9 +157,9 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char* const argv
 
         const auto read_string =
             [&](const std::string_view option,
-                std::string& destination) -> std::optional<RuntimeOptionError> {
+                std::string &destination) -> std::optional<RuntimeOptionError> {
             auto value = next_value(option);
-            if (const auto* error = std::get_if<RuntimeOptionError>(&value)) {
+            if (const auto *error = std::get_if<RuntimeOptionError>(&value)) {
                 return *error;
             }
             destination = std::get<std::string_view>(value);
@@ -185,33 +175,33 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char* const argv
                 return RuntimeOptionsParseResult{std::move(*error)};
             }
         } else if (argument == "--rom-revision" || argument == "--pack-revision") {
-            auto& revision = argument == "--rom-revision"
-                ? options.rom_revision : options.pack_revision;
+            auto &revision =
+                argument == "--rom-revision" ? options.rom_revision : options.pack_revision;
             if (auto error = read_string(argument, revision)) {
                 return RuntimeOptionsParseResult{std::move(*error)};
             }
             if (revision.empty()) {
-                return RuntimeOptionsParseResult{make_error(
-                    RuntimeOptionErrorCode::empty_value, argument, {},
-                    static_cast<std::size_t>(index))};
+                return RuntimeOptionsParseResult{make_error(RuntimeOptionErrorCode::empty_value,
+                                                            argument, {},
+                                                            static_cast<std::size_t>(index))};
             }
         } else if (argument == "--pack") {
             if (auto error = read_string(argument, options.pack_path)) {
                 return RuntimeOptionsParseResult{std::move(*error)};
             }
             if (options.pack_path.empty()) {
-                return RuntimeOptionsParseResult{make_error(
-                    RuntimeOptionErrorCode::empty_value, argument, {},
-                    static_cast<std::size_t>(index))};
+                return RuntimeOptionsParseResult{make_error(RuntimeOptionErrorCode::empty_value,
+                                                            argument, {},
+                                                            static_cast<std::size_t>(index))};
             }
         } else if (argument == "--trust-registry") {
             if (auto error = read_string(argument, options.trust_registry_path)) {
                 return RuntimeOptionsParseResult{std::move(*error)};
             }
             if (options.trust_registry_path.empty()) {
-                return RuntimeOptionsParseResult{make_error(
-                    RuntimeOptionErrorCode::empty_value, argument, {},
-                    static_cast<std::size_t>(index))};
+                return RuntimeOptionsParseResult{make_error(RuntimeOptionErrorCode::empty_value,
+                                                            argument, {},
+                                                            static_cast<std::size_t>(index))};
             }
         } else if (argument == "--patch") {
             if (auto error = read_string(argument, options.patch_path)) {
@@ -234,9 +224,9 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char* const argv
                 return RuntimeOptionsParseResult{std::move(*error)};
             }
             if (options.input_map_path.empty()) {
-                return RuntimeOptionsParseResult{make_error(
-                    RuntimeOptionErrorCode::empty_value, argument, {},
-                    static_cast<std::size_t>(index))};
+                return RuntimeOptionsParseResult{make_error(RuntimeOptionErrorCode::empty_value,
+                                                            argument, {},
+                                                            static_cast<std::size_t>(index))};
             }
         } else if (argument == "--rom-crc32") {
             if (auto error = read_string(argument, options.rom_crc32)) {
@@ -254,16 +244,34 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char* const argv
             if (auto error = read_string(argument, options.probe_core)) {
                 return RuntimeOptionsParseResult{std::move(*error)};
             }
+        } else if (argument == "--qa-presentation") {
+            if (auto error = read_string(argument, options.qa_presentation))
+                return RuntimeOptionsParseResult{std::move(*error)};
+            if (options.qa_presentation != "none" && options.qa_presentation != "visible")
+                return RuntimeOptionsParseResult{RuntimeOptionError{
+                    RuntimeOptionErrorCode::value_out_of_domain, std::string{argument},
+                    options.qa_presentation, static_cast<std::size_t>(index)}};
+        } else if (argument == "--qa-control-channel") {
+            if (auto error = read_string(argument, options.qa_control_channel)) {
+                return RuntimeOptionsParseResult{std::move(*error)};
+            }
+        } else if (argument == "--qa-data-channel") {
+            if (auto error = read_string(argument, options.qa_data_channel)) {
+                return RuntimeOptionsParseResult{std::move(*error)};
+            }
+        } else if (argument == "--qa-run-id") {
+            if (auto error = read_string(argument, options.qa_run_id)) {
+                return RuntimeOptionsParseResult{std::move(*error)};
+            }
         } else if (argument == "--subsystems" || argument == "--mute-buses" ||
                    argument == "--play-protocol-version") {
             auto value = next_value(argument);
-            if (const auto* error = std::get_if<RuntimeOptionError>(&value)) {
+            if (const auto *error = std::get_if<RuntimeOptionError>(&value)) {
                 return RuntimeOptionsParseResult{*error};
             }
-            auto parsed = parse_unsigned<std::uint32_t>(
-                std::get<std::string_view>(value), argument,
-                static_cast<std::size_t>(index));
-            if (const auto* error = std::get_if<RuntimeOptionError>(&parsed)) {
+            auto parsed = parse_unsigned<std::uint32_t>(std::get<std::string_view>(value), argument,
+                                                        static_cast<std::size_t>(index));
+            if (const auto *error = std::get_if<RuntimeOptionError>(&parsed)) {
                 return RuntimeOptionsParseResult{*error};
             }
             if (argument == "--subsystems") {
@@ -271,45 +279,42 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char* const argv
             } else if (argument == "--mute-buses") {
                 options.mute_buses = std::get<std::uint32_t>(parsed);
             } else {
-                options.play_protocol_version =
-                    std::get<std::uint32_t>(parsed);
+                options.play_protocol_version = std::get<std::uint32_t>(parsed);
             }
         } else if (argument == "--frames") {
             auto value = next_value(argument);
-            if (const auto* error = std::get_if<RuntimeOptionError>(&value)) {
+            if (const auto *error = std::get_if<RuntimeOptionError>(&value)) {
                 return RuntimeOptionsParseResult{*error};
             }
-            auto parsed = parse_unsigned<std::uint64_t>(
-                std::get<std::string_view>(value), argument,
-                static_cast<std::size_t>(index));
-            if (const auto* error = std::get_if<RuntimeOptionError>(&parsed)) {
+            auto parsed = parse_unsigned<std::uint64_t>(std::get<std::string_view>(value), argument,
+                                                        static_cast<std::size_t>(index));
+            if (const auto *error = std::get_if<RuntimeOptionError>(&parsed)) {
                 return RuntimeOptionsParseResult{*error};
             }
             options.frames_limit = std::get<std::uint64_t>(parsed);
         } else if (argument == "--capture-at") {
             auto value = next_value(argument);
-            if (const auto* error = std::get_if<RuntimeOptionError>(&value)) {
+            if (const auto *error = std::get_if<RuntimeOptionError>(&value)) {
                 return RuntimeOptionsParseResult{*error};
             }
             auto parsed = parse_capture_list(std::get<std::string_view>(value),
                                              static_cast<std::size_t>(index));
-            if (const auto* error = std::get_if<RuntimeOptionError>(&parsed)) {
+            if (const auto *error = std::get_if<RuntimeOptionError>(&parsed)) {
                 return RuntimeOptionsParseResult{*error};
             }
-            auto& frames = std::get<std::vector<std::uint64_t>>(parsed);
-            options.capture_at.insert(options.capture_at.end(), frames.begin(),
-                                      frames.end());
+            auto &frames = std::get<std::vector<std::uint64_t>>(parsed);
+            options.capture_at.insert(options.capture_at.end(), frames.begin(), frames.end());
         } else if (argument == "--core-option") {
             auto value = next_value(argument);
-            if (const auto* error = std::get_if<RuntimeOptionError>(&value)) {
+            if (const auto *error = std::get_if<RuntimeOptionError>(&value)) {
                 return RuntimeOptionsParseResult{*error};
             }
             const std::string_view core_option = std::get<std::string_view>(value);
             const std::size_t equals = core_option.find('=');
             if (equals == std::string_view::npos || equals == 0) {
                 return RuntimeOptionsParseResult{
-                    make_error(RuntimeOptionErrorCode::malformed_core_option, argument,
-                               core_option, static_cast<std::size_t>(index))};
+                    make_error(RuntimeOptionErrorCode::malformed_core_option, argument, core_option,
+                               static_cast<std::size_t>(index))};
             }
             options.core_options.emplace_back(core_option.substr(0, equals),
                                               core_option.substr(equals + 1));
@@ -321,6 +326,10 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char* const argv
             options.crash_test = true;
         } else if (argument == "--hd-compose") {
             options.hd_compose = true;
+        } else if (argument == "--qa-capabilities") {
+            options.qa_capabilities = true;
+        } else if (argument == "--qa-session") {
+            options.qa_session = true;
         } else {
             positional.emplace_back(argument);
         }
@@ -335,7 +344,7 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char* const argv
     return RuntimeOptionsParseResult{std::move(options)};
 }
 
-std::string describe(const RuntimeOptionError& error) {
+std::string describe(const RuntimeOptionError &error) {
     std::string message = error.option;
     message += ": ";
     message += error_reason(error.code);
@@ -347,4 +356,4 @@ std::string describe(const RuntimeOptionError& error) {
     return message;
 }
 
-}  // namespace ayther::runtime
+} // namespace ayther::runtime

@@ -75,6 +75,7 @@ struct ReplayProductionCloseResult {
 
 [[nodiscard]] ReplayProductionCloseResult
 close_replay_production(const ReplayProgressPublisher &progress,
-                        const ReplayProductionCloseOperations &operations) noexcept;
+                        const ReplayProductionCloseOperations &operations,
+                        bool cancelled = false) noexcept;
 
 } // namespace ayther::audio_qa

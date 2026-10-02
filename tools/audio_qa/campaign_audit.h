@@ -18,11 +18,36 @@ enum class CampaignAuditError {
     audio_integrity_failed,
 };
 
+struct RestartCandidate {
+    FactId decision;
+    FactId event;
+    FactId query;
+    FactId candidate;
+    FactId selection;
+    FactId request;
+    FactId mix;
+    FactId output_span;
+    std::string reason;
+    std::uint64_t occurrence{};
+    std::uint64_t previous_occurrence{};
+    std::uint64_t previous_source_end{};
+    std::uint64_t current_source_begin{};
+    std::uint64_t output_begin{};
+    std::uint64_t output_end{};
+    std::uint64_t pcm_sequence{};
+    std::uint64_t pcm_begin{};
+    std::uint64_t pcm_end{};
+};
+
 struct CampaignAuditSummary {
     std::string run_id;
     std::uint64_t fact_fragments{};
     std::uint64_t facts{};
     std::uint64_t typed_fields{};
+    std::uint64_t invalid_typed_payloads{};
+    std::string first_invalid_typed_payload_kind;
+    FactId first_invalid_typed_payload_id;
+    std::string first_invalid_typed_payload_detail;
     std::uint64_t declared_assignments{};
     std::uint64_t parsed_assignments{};
     std::uint64_t loaded_assignments{};
@@ -40,12 +65,25 @@ struct CampaignAuditSummary {
     std::uint64_t position_spans{};
     std::uint64_t loop_crossings{};
     std::uint64_t voice_ends{};
+    std::uint64_t main_output_spans{};
+    std::uint64_t causal_output_links{};
+    std::uint64_t restart_position_complete{};
+    std::uint64_t restart_mix_link_complete{};
+    std::uint64_t restart_output_complete{};
+    std::uint64_t restart_chain_complete{};
+    std::uint64_t restart_request_parent_complete{};
+    std::uint64_t restart_selection_parent_complete{};
+    std::uint64_t restart_candidate_parent_complete{};
+    std::uint64_t first_unmatched_pcm_sequence{};
+    std::uint64_t first_pcm_identity{};
+    std::uint64_t last_pcm_identity{};
     std::uint64_t reasoned_decisions{};
     std::uint64_t reasoned_ends{};
     std::uint64_t pcm_blocks{};
     std::uint64_t pcm_bytes{};
     std::uint64_t audio_begin{};
     std::uint64_t audio_end{};
+    std::vector<RestartCandidate> restart_candidates;
     ReplayTraceSummary trace;
     FactId query_origin;
     FactId query_mix;

@@ -189,7 +189,8 @@ IncrementalEvidenceWriter::append_pcm(const AudioChunk &chunk) noexcept {
 }
 
 IntegratedEvidenceResult
-IncrementalEvidenceWriter::finish(const ReplayTraceSummary &transport_trace) noexcept {
+IncrementalEvidenceWriter::finish(const ReplayTraceSummary &transport_trace,
+                                  const bool require_hd_relationships) noexcept {
     if (!impl_ || !impl_->valid || impl_->finished || impl_->facts == 0U ||
         impl_->pcm_blocks == 0U || impl_->facts != transport_trace.observed_fact_count)
         return IntegratedEvidenceError::invalid_input;
@@ -235,7 +236,8 @@ IncrementalEvidenceWriter::finish(const ReplayTraceSummary &transport_trace) noe
         return IntegratedEvidenceError::pcm_reopen_failed;
 
     impl_->final_trace = reopened_trace.summarize(transport_trace.loss_free);
-    if (transport_trace.loss_free && !impl_->final_trace.causally_connected)
+    if (require_hd_relationships && transport_trace.loss_free &&
+        !impl_->final_trace.causally_connected)
         return IntegratedEvidenceError::relationship_reopen_failed;
     return IntegratedEvidenceSummary{impl_->directory.path(),
                                      impl_->facts,

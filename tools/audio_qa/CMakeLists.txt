@@ -78,6 +78,17 @@ if(AYTHER_CLANG_TIDY_COMMAND)
     set_target_properties(ayther_audio_qa_evidence PROPERTIES
         CXX_CLANG_TIDY "${AYTHER_CLANG_TIDY_COMMAND}")
 endif()
+
+add_executable(ayther_audio_qa_wav_export wav_export_main.cpp)
+target_link_libraries(ayther_audio_qa_wav_export PRIVATE ayther_audio_qa_evidence)
+target_compile_features(ayther_audio_qa_wav_export PRIVATE cxx_std_20)
+set_target_properties(ayther_audio_qa_wav_export PROPERTIES CXX_EXTENSIONS OFF)
+if(MSVC)
+    target_compile_options(ayther_audio_qa_wav_export PRIVATE /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(ayther_audio_qa_wav_export PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+endif()
 if(MSVC)
     target_compile_options(ayther_audio_qa_evidence PRIVATE
         /W4 /WX /permissive- /EHsc)
@@ -138,6 +149,10 @@ if(AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE)
     target_link_libraries(ayther_audio_qa_engine_replay PUBLIC
         ayther_audio_qa_domain Ayther::engine PRIVATE
         ayther_audio_qa_model_toml)
+    if(TARGET Ayther::vpx)
+        target_link_libraries(ayther_audio_qa_engine_replay PRIVATE
+            Ayther::vpx)
+    endif()
     set_target_properties(ayther_audio_qa_engine_replay PROPERTIES
         CXX_EXTENSIONS OFF)
     if(AYTHER_CLANG_TIDY_COMMAND)

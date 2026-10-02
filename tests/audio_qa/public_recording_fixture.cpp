@@ -20,7 +20,7 @@ namespace qa = ayther::audio_qa;
 
 namespace {
 
-constexpr std::array<std::uint16_t, 6> known_inputs{0x0000, 0x0001, 0x0002, 0x0004, 0x0008, 0x0801};
+std::vector<std::uint16_t> known_inputs{0x0000, 0x0001, 0x0002, 0x0004, 0x0008, 0x0801};
 std::uint16_t current_input{};
 
 void require(bool condition, const char *message) {
@@ -119,8 +119,15 @@ void write_recording(const std::filesystem::path &path, const std::vector<std::b
 } // namespace
 
 int main(int argc, char **argv) {
-    if (argc != 2 || argv[1] == nullptr)
+    if ((argc != 2 && argc != 3) || argv[1] == nullptr)
         return 2;
+    if (argc == 3) {
+        if (std::string_view{argv[2]} != "--long")
+            return 2;
+        const auto cycle = known_inputs;
+        for (std::size_t repeat = 1; repeat < 100; ++repeat)
+            known_inputs.insert(known_inputs.end(), cycle.begin(), cycle.end());
+    }
     const std::filesystem::path output{argv[1]};
     try {
         std::filesystem::create_directories(output.parent_path());

@@ -67,6 +67,7 @@ std::string qa_capabilities_report() {
         report.push_back('"');
     }
     const auto &limits = ayther::audio_qa::required_limits;
+    report.append(R"(,"visible_replay_v1")");
     report.append(R"(],"limits":{"fact_bytes":)");
     report.append(std::to_string(limits.fact_bytes));
     report.append(R"(,"batch_bytes":)");

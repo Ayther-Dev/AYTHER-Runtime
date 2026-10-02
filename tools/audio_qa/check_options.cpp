@@ -39,7 +39,7 @@ CheckOptionsParseResult parse_check_options(std::span<const std::string_view> ar
             make_error(CheckOptionErrorCode::too_many_arguments, {}, arguments.size())};
 
     CheckOptions options;
-    std::array<bool, 8> seen{};
+    std::array<bool, 10> seen{};
 
     for (std::size_t index = 0; index < arguments.size(); ++index) {
         const auto option = arguments[index];
@@ -84,6 +84,12 @@ CheckOptionsParseResult parse_check_options(std::span<const std::string_view> ar
         } else if (option == "--trust-registry") {
             destination = &options.trust_registry;
             slot = 7;
+        } else if (option == "--presentation") {
+            destination = &options.presentation;
+            slot = 8;
+        } else if (option == "--pack-mode") {
+            destination = &options.pack_mode;
+            slot = 9;
         } else if (option == "--take") {
             if (options.takes.size() == max_check_takes)
                 return CheckOptionsParseResult{
@@ -118,6 +124,12 @@ CheckOptionsParseResult parse_check_options(std::span<const std::string_view> ar
         return CheckOptionsParseResult{
             make_error(CheckOptionErrorCode::unsupported_language, "--language", arguments.size())};
 
+    if (options.presentation != "none" && options.presentation != "visible")
+        return CheckOptionsParseResult{make_error(CheckOptionErrorCode::unsupported_presentation,
+                                                  "--presentation", arguments.size())};
+    if (options.pack_mode != "hd" && options.pack_mode != "original")
+        return CheckOptionsParseResult{make_error(CheckOptionErrorCode::unsupported_pack_mode,
+                                                  "--pack-mode", arguments.size())};
     return CheckOptionsParseResult{std::move(options)};
 }
 
@@ -143,6 +155,10 @@ std::string_view check_option_error_code(CheckOptionErrorCode code) noexcept {
         return "unsupported_language";
     case CheckOptionErrorCode::invalid_number:
         return "invalid_number";
+    case CheckOptionErrorCode::unsupported_presentation:
+        return "unsupported_presentation";
+    case CheckOptionErrorCode::unsupported_pack_mode:
+        return "unsupported_pack_mode";
     }
     return "invalid_option";
 }

@@ -10,6 +10,7 @@
 #include <limits>
 #include <optional>
 #include <sstream>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -23,6 +24,45 @@ struct MixRange {
     std::uint64_t begin{};
     std::uint64_t end{};
 };
+
+struct VoiceRange {
+    std::uint64_t first_source{(std::numeric_limits<std::uint64_t>::max)()};
+    std::uint64_t last_source{};
+    std::uint64_t first_output{(std::numeric_limits<std::uint64_t>::max)()};
+    std::uint64_t last_output{};
+};
+
+struct PendingRestart {
+    FactId decision;
+    FactId request;
+    std::string reason;
+    std::uint64_t occurrence{};
+    std::uint64_t previous_occurrence{};
+};
+
+struct FactIdHash {
+    std::size_t operator()(const FactId &id) const noexcept {
+        const auto text_hash = std::hash<std::string>{};
+        const auto number_hash = std::hash<std::uint64_t>{};
+        return text_hash(id.run_id) ^ (text_hash(id.producer_id) << 1U) ^
+               (number_hash(id.producer_sequence) << 2U);
+    }
+};
+
+struct OutputLink {
+    FactId output;
+    FactId mix;
+    std::uint64_t pcm_sequence{};
+};
+
+std::optional<FactId> fact_cause(const Fact &fact, const std::string_view producer = {}) {
+    for (const auto &cause : fact.cause_ids) {
+        const auto *id = std::get_if<FactId>(&cause);
+        if (id != nullptr && (producer.empty() || id->producer_id == producer))
+            return *id;
+    }
+    return std::nullopt;
+}
 
 bool identity(const std::string_view value) noexcept {
     return !value.empty() && value.size() <= max_identity_bytes;
@@ -150,6 +190,12 @@ CampaignAuditResult audit_campaign_evidence(const std::filesystem::path &run_dir
         std::unordered_set<std::string> effect_occurrences;
         std::unordered_set<std::string> mix_occurrences;
         std::vector<MixRange> mix_ranges;
+        std::unordered_map<std::uint64_t, VoiceRange> voice_ranges;
+        std::unordered_map<FactId, FactId, FactIdHash> causal_parent;
+        std::unordered_set<FactId, FactIdHash> candidate_ids;
+        std::unordered_map<std::uint64_t, std::vector<FactId>> occurrence_mixes;
+        std::vector<OutputLink> output_links;
+        std::vector<PendingRestart> pending_restarts;
         std::uint64_t expected_fragment_sequence{1U};
 
         for (const auto &path : fragments) {
@@ -160,6 +206,7 @@ CampaignAuditResult audit_campaign_evidence(const std::filesystem::path &run_dir
             ++expected_fragment_sequence;
             ++summary.fact_fragments;
             for (const auto &fact : fragment->facts) {
+                const bool payload_was_complete = summary.typed_payload_complete;
                 if (fact.id.run_id != run_id || !trace.consume(fact) ||
                     !add_checked(summary.facts, 1U) ||
                     !add_checked(summary.typed_fields, fact.fields.size()))
@@ -192,6 +239,9 @@ CampaignAuditResult audit_campaign_evidence(const std::filesystem::path &run_dir
                     summary.typed_payload_complete =
                         summary.typed_payload_complete &&
                         has_fields(fact, {"signature", "rule", "origin"});
+                    if (const auto parent = fact_cause(fact))
+                        causal_parent.emplace(fact.id, *parent);
+                    candidate_ids.insert(fact.id);
                 } else if (fact.kind == "assignment_selection") {
                     ++summary.selections;
                     const auto result = text(fact, "result");
@@ -200,14 +250,34 @@ CampaignAuditResult audit_campaign_evidence(const std::filesystem::path &run_dir
                         selected_signatures.insert(std::to_string(*signature));
                     summary.typed_payload_complete = summary.typed_payload_complete && result &&
                                                      signature && text(fact, "branch");
+                    for (const auto &cause : fact.cause_ids)
+                        if (const auto *id = std::get_if<FactId>(&cause);
+                            id != nullptr && candidate_ids.contains(*id)) {
+                            causal_parent.emplace(fact.id, *id);
+                            break;
+                        }
+                } else if (fact.kind == "assignment_query") {
+                    if (const auto parent = fact_cause(fact))
+                        causal_parent.emplace(fact.id, *parent);
                 } else if (fact.kind == "hd_playback_request") {
                     ++summary.playback_requests;
                     if (fact.occurrence_id.value)
                         request_occurrences.insert(*fact.occurrence_id.value);
-                    summary.typed_payload_complete =
-                        summary.typed_payload_complete && fact.assignment_id.value &&
-                        fact.occurrence_id.value &&
-                        has_fields(fact, {"selection", "links_complete"});
+                    const bool assignment = fact.assignment_id.value.has_value();
+                    const bool occurrence = fact.occurrence_id.value.has_value();
+                    const bool selection = known_field(fact, "selection") != nullptr;
+                    const bool links = known_field(fact, "links_complete") != nullptr;
+                    if (summary.typed_payload_complete &&
+                        !(assignment && occurrence && selection && links)) {
+                        std::ostringstream detail;
+                        detail << "assignment=" << assignment << ",occurrence=" << occurrence
+                               << ",selection=" << selection << ",links=" << links;
+                        summary.first_invalid_typed_payload_detail = detail.str();
+                    }
+                    summary.typed_payload_complete = summary.typed_payload_complete && assignment &&
+                                                     occurrence && selection && links;
+                    if (const auto parent = fact_cause(fact))
+                        causal_parent.emplace(fact.id, *parent);
                 } else if (fact.kind == "hd_playback_decision") {
                     ++summary.playback_decisions;
                     if (fact.occurrence_id.value)
@@ -217,6 +287,14 @@ CampaignAuditResult audit_campaign_evidence(const std::filesystem::path &run_dir
                     summary.typed_payload_complete =
                         summary.typed_payload_complete &&
                         has_fields(fact, {"action", "reason", "occurrence"});
+                    const auto action = text(fact, "action");
+                    const auto reason = text(fact, "reason");
+                    const auto current = number(fact, "occurrence");
+                    const auto previous = number(fact, "previous_occurrence");
+                    if (action && *action == "restart" && reason && current && previous)
+                        if (const auto request = fact_cause(fact))
+                            pending_restarts.push_back(
+                                {fact.id, *request, std::string{*reason}, *current, *previous});
                 } else if (fact.kind == "hd_playback_effect") {
                     ++summary.playback_effects;
                     if (fact.occurrence_id.value)
@@ -233,10 +311,25 @@ CampaignAuditResult audit_campaign_evidence(const std::filesystem::path &run_dir
                         mix_ranges.push_back(std::move(range));
                     else
                         summary.typed_payload_complete = false;
+                    if (const auto occurrence = number(fact, "occurrence"))
+                        occurrence_mixes[*occurrence].push_back(fact.id);
                 } else if (fact.kind == "hd_voice_position_span") {
                     ++summary.position_spans;
-                    summary.typed_payload_complete =
-                        summary.typed_payload_complete && valid_position(fact);
+                    const bool valid = valid_position(fact);
+                    summary.typed_payload_complete = summary.typed_payload_complete && valid;
+                    const auto occurrence = number(fact, "occurrence");
+                    const auto source_begin = number(fact, "source_begin");
+                    const auto source_end = number(fact, "source_end");
+                    const auto output_begin = number(fact, "output_begin");
+                    const auto output_end = number(fact, "output_end");
+                    if (valid && occurrence && source_begin && source_end && output_begin &&
+                        output_end) {
+                        auto &range = voice_ranges[*occurrence];
+                        range.first_source = (std::min)(range.first_source, *source_begin);
+                        range.last_source = (std::max)(range.last_source, *source_end);
+                        range.first_output = (std::min)(range.first_output, *output_begin);
+                        range.last_output = (std::max)(range.last_output, *output_end);
+                    }
                 } else if (fact.kind == "hd_voice_loop_crossing") {
                     ++summary.loop_crossings;
                     summary.typed_payload_complete =
@@ -252,6 +345,19 @@ CampaignAuditResult audit_campaign_evidence(const std::filesystem::path &run_dir
                         summary.typed_payload_complete && fact.reason_code.value &&
                         has_fields(fact, {"occurrence", "key", "reason", "source_position",
                                           "source_limit", "links_complete"});
+                } else if (fact.kind == "main_mix_output_span") {
+                    ++summary.main_output_spans;
+                    const auto pcm = fact_cause(fact, "engine-7");
+                    if (pcm)
+                        for (const auto &cause : fact.cause_ids)
+                            if (const auto *id = std::get_if<FactId>(&cause);
+                                id != nullptr && id->producer_id == "engine-6")
+                                output_links.push_back({fact.id, *id, pcm->producer_sequence});
+                }
+                if (payload_was_complete && !summary.typed_payload_complete) {
+                    summary.invalid_typed_payloads = 1U;
+                    summary.first_invalid_typed_payload_kind = fact.kind;
+                    summary.first_invalid_typed_payload_id = fact.id;
                 }
             }
         }
@@ -290,6 +396,7 @@ CampaignAuditResult audit_campaign_evidence(const std::filesystem::path &run_dir
             !audio_audit.last_verified_sample)
             return CampaignAuditError::audio_integrity_failed;
         std::vector<SampleFrameRange> audio_ranges;
+        std::vector<std::pair<std::uint64_t, SampleFrameRange>> pcm_identity_ranges;
         audio_ranges.reserve(audio.size());
         for (const auto &path : audio) {
             const auto reopened = read_pcm_block(path);
@@ -298,11 +405,71 @@ CampaignAuditResult audit_campaign_evidence(const std::filesystem::path &run_dir
                 !add_checked(summary.pcm_bytes, block->chunk.bytes.size()))
                 return CampaignAuditError::audio_integrity_failed;
             audio_ranges.push_back(block->chunk.range);
+            pcm_identity_ranges.emplace_back(block->chunk.producer_sequence, block->chunk.range);
+            if (summary.first_pcm_identity == 0U)
+                summary.first_pcm_identity = block->chunk.producer_sequence;
+            summary.last_pcm_identity = block->chunk.producer_sequence;
         }
         summary.pcm_blocks = audio.size();
         summary.audio_begin = audio_ranges.front().begin;
         summary.audio_end = audio_ranges.back().end;
         summary.audio_complete = summary.audio_begin < summary.audio_end && summary.pcm_bytes > 0U;
+        summary.causal_output_links = output_links.size();
+
+        for (const auto &restart : pending_restarts) {
+            const auto current = voice_ranges.find(restart.occurrence);
+            const auto previous = voice_ranges.find(restart.previous_occurrence);
+            const auto mixes = occurrence_mixes.find(restart.occurrence);
+            if (current == voice_ranges.end() || previous == voice_ranges.end() ||
+                mixes == occurrence_mixes.end())
+                continue;
+            ++summary.restart_position_complete;
+            const auto output = std::find_if(
+                output_links.begin(), output_links.end(), [&mixes](const OutputLink &item) {
+                    return std::ranges::find(mixes->second, item.mix) != mixes->second.end();
+                });
+            if (output == output_links.end())
+                continue;
+            ++summary.restart_mix_link_complete;
+            const auto pcm = std::find_if(pcm_identity_ranges.begin(), pcm_identity_ranges.end(),
+                                          [&pcm_identity_ranges, &output](const auto &item) {
+                                              const auto next = &item + 1;
+                                              return item.first <= output->pcm_sequence &&
+                                                     (next == pcm_identity_ranges.data() +
+                                                                  pcm_identity_ranges.size() ||
+                                                      output->pcm_sequence < next->first);
+                                          });
+            if (pcm == pcm_identity_ranges.end()) {
+                if (summary.first_unmatched_pcm_sequence == 0U)
+                    summary.first_unmatched_pcm_sequence = output->pcm_sequence;
+                continue;
+            }
+            ++summary.restart_output_complete;
+            const auto selection = causal_parent.find(restart.request);
+            if (selection == causal_parent.end())
+                continue;
+            ++summary.restart_request_parent_complete;
+            const auto candidate = causal_parent.find(selection->second);
+            if (candidate == causal_parent.end())
+                continue;
+            ++summary.restart_selection_parent_complete;
+            const auto event = causal_parent.find(candidate->second);
+            if (event == causal_parent.end())
+                continue;
+            ++summary.restart_candidate_parent_complete;
+            const auto query_id = event->second;
+            auto event_id = query_id;
+            if (const auto source = causal_parent.find(query_id); source != causal_parent.end())
+                event_id = source->second;
+            ++summary.restart_chain_complete;
+            summary.restart_candidates.push_back(
+                {restart.decision, event_id, query_id, candidate->second, selection->second,
+                 restart.request, output->mix, output->output, restart.reason, restart.occurrence,
+                 restart.previous_occurrence, previous->second.last_source,
+                 current->second.first_source, current->second.first_output,
+                 current->second.last_output, output->pcm_sequence, pcm->second.begin,
+                 pcm->second.end});
+        }
 
         summary.query_origin = {std::string{run_id},
                                 "engine-" + std::to_string(summary.trace.ingress.producer),
@@ -341,6 +508,20 @@ std::string format_campaign_audit(const CampaignAuditSummary &summary) {
            << " complete=" << (summary.complete ? "true" : "false")
            << " fragments=" << summary.fact_fragments << " facts=" << summary.facts
            << " typed_fields=" << summary.typed_fields
+           << " invalid_typed_payloads=" << summary.invalid_typed_payloads
+           << " first_invalid_typed_payload_kind="
+           << (summary.first_invalid_typed_payload_kind.empty()
+                   ? "none"
+                   : summary.first_invalid_typed_payload_kind)
+           << " first_invalid_typed_payload_id="
+           << (summary.first_invalid_typed_payload_id.producer_id.empty()
+                   ? "none"
+                   : summary.first_invalid_typed_payload_id.producer_id + "/" +
+                         std::to_string(summary.first_invalid_typed_payload_id.producer_sequence))
+           << " first_invalid_typed_payload_detail="
+           << (summary.first_invalid_typed_payload_detail.empty()
+                   ? "none"
+                   : summary.first_invalid_typed_payload_detail)
            << " assignments=" << summary.loaded_assignments
            << " selected_assignments=" << summary.selected_assignments
            << " pending_assignments=" << summary.pending_assignments << " pending_assignment_ids=[";
@@ -349,16 +530,28 @@ std::string format_campaign_audit(const CampaignAuditSummary &summary) {
             output << ',';
         output << summary.pending_assignment_ids[index];
     }
-    output << ']'
-           << " detector_inputs=" << summary.detector_inputs
+    output << ']' << " detector_inputs=" << summary.detector_inputs
            << " detector_batches=" << summary.detector_batches
            << " candidates=" << summary.candidates << " selections=" << summary.selections
            << " requests=" << summary.playback_requests
            << " decisions=" << summary.playback_decisions << " effects=" << summary.playback_effects
            << " mix_spans=" << summary.mix_spans << " position_spans=" << summary.position_spans
            << " loop_crossings=" << summary.loop_crossings << " voice_ends=" << summary.voice_ends
-           << " pcm_blocks=" << summary.pcm_blocks << " pcm_bytes=" << summary.pcm_bytes
-           << " audio=[" << summary.audio_begin << ',' << summary.audio_end << ')'
+           << " restart_candidates=" << summary.restart_candidates.size()
+           << " main_output_spans=" << summary.main_output_spans
+           << " causal_output_links=" << summary.causal_output_links
+           << " restart_position_complete=" << summary.restart_position_complete
+           << " restart_mix_link_complete=" << summary.restart_mix_link_complete
+           << " restart_output_complete=" << summary.restart_output_complete
+           << " restart_chain_complete=" << summary.restart_chain_complete
+           << " restart_request_parent_complete=" << summary.restart_request_parent_complete
+           << " restart_selection_parent_complete=" << summary.restart_selection_parent_complete
+           << " restart_candidate_parent_complete=" << summary.restart_candidate_parent_complete
+           << " first_unmatched_pcm_sequence=" << summary.first_unmatched_pcm_sequence
+           << " pcm_identity_range=[" << summary.first_pcm_identity << ','
+           << summary.last_pcm_identity << ']' << " pcm_blocks=" << summary.pcm_blocks
+           << " pcm_bytes=" << summary.pcm_bytes << " audio=[" << summary.audio_begin << ','
+           << summary.audio_end << ')'
            << " typed_payload_complete=" << (summary.typed_payload_complete ? "true" : "false")
            << " stage_relations_complete=" << (summary.stage_relations_complete ? "true" : "false")
            << " audio_complete=" << (summary.audio_complete ? "true" : "false")
@@ -369,6 +562,27 @@ std::string format_campaign_audit(const CampaignAuditSummary &summary) {
                << " mix=" << summary.query_mix.run_id << '/' << summary.query_mix.producer_id << '/'
                << summary.query_mix.producer_sequence << " audio=[" << summary.query_audio_begin
                << ',' << summary.query_audio_end << ") relation=" << summary.query_relation;
+    for (const auto &restart : summary.restart_candidates) {
+        output << "\nrestart decision=" << restart.decision.run_id << '/'
+               << restart.decision.producer_id << '/' << restart.decision.producer_sequence
+               << " reason=" << restart.reason
+               << " previous_occurrence=" << restart.previous_occurrence
+               << " occurrence=" << restart.occurrence << " source=" << restart.previous_source_end
+               << "->" << restart.current_source_begin << " output=[" << restart.output_begin << ','
+               << restart.output_end << ") chain=" << restart.event.producer_id << '/'
+               << restart.event.producer_sequence;
+        if (restart.query != restart.event)
+            output << "->" << restart.query.producer_id << '/' << restart.query.producer_sequence;
+        output << "->" << restart.candidate.producer_id << '/'
+               << restart.candidate.producer_sequence << "->" << restart.selection.producer_id
+               << '/' << restart.selection.producer_sequence << "->" << restart.request.producer_id
+               << '/' << restart.request.producer_sequence << "->" << restart.decision.producer_id
+               << '/' << restart.decision.producer_sequence << "->" << restart.mix.producer_id
+               << '/' << restart.mix.producer_sequence << "->" << restart.output_span.producer_id
+               << '/' << restart.output_span.producer_sequence << "->engine-7/"
+               << restart.pcm_sequence << " pcm=[" << restart.pcm_begin << ',' << restart.pcm_end
+               << ')';
+    }
     return output.str();
 }
 

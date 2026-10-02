@@ -77,12 +77,12 @@ class RuntimeObservationBridge final {
 
     using FactQueue = ayther::engine::audio_observation::BoundedFactQueue<FactCapacity>;
     // Selection facts share one session-thread producer. Their schemas use at
-    // most four causes, no state-order entries and 11 fields. A 12-field,
-    // 1024-byte slot preserves that schema while leaving enough fixed storage
-    // for the measured full-take backlog without multiplying the regular queue
-    // footprint.
+    // most four causes, no state-order entries and 11 fields. An 11-field,
+    // 512-byte text storage covers the measured schema payload. Keeping this
+    // lane compact lets the delivered Release build retain a larger close
+    // backlog without exceeding the fixed queue-memory budget.
     using BurstFactQueue =
-        ayther::engine::audio_observation::BoundedFactQueue<BurstFactCapacity, 4U, 0U, 12U, 1024U>;
+        ayther::engine::audio_observation::BoundedFactQueue<BurstFactCapacity, 4U, 0U, 11U, 512U>;
     // The second dedicated lane is the detector-input producer in the
     // production bridge. Detector-input and source-interval facts have at
     // most three causes, no state-order entries and 24 fields. The 1536-byte
@@ -148,7 +148,7 @@ class RuntimeObservationBridge final {
         // occupancies for every item adds avoidable work to the frame thread.
         // The run limit forces a fresh normalized-occupancy decision often
         // enough to preserve progress for lower-volume producers.
-        constexpr std::size_t maximum_drain_run = 4096U;
+        constexpr std::size_t maximum_drain_run = 1024U;
         if (drain_fact_ < ProducerSlots && drain_fact_count_ < maximum_drain_run &&
             current_fact_occupancy_by_producer_[drain_fact_].load(std::memory_order_acquire) !=
                 0U &&
@@ -500,7 +500,14 @@ class RuntimeObservationBridge final {
     std::atomic<std::uint64_t> maximum_fact_occupancy_{0};
 };
 
-using ProductionObservationBridge = RuntimeObservationBridge<9U, 54U, 1U, 5U, 4096U, 3U, 4096U, 7U,
+using ProductionObservationBridge = RuntimeObservationBridge<9U, 54U, 1U, 5U, 6144U, 3U, 4096U, 7U,
                                                              2048U, 6U, 384U, 1024U, 4U, 1024U>;
+
+// Physical devices produce larger callbacks than the 64-frame automated sink.
+// Keep the same fact lanes, with bounded full-size PCM slots for visible replay.
+using VisibleObservationBridge =
+    RuntimeObservationBridge<9U, 54U, 1U, 5U, 4096U, 3U, 4096U, 7U, 64U, 6U, 384U,
+                             ayther::engine::audio_observation::max_pcm_bytes, 4U, 1024U>;
+static_assert(sizeof(VisibleObservationBridge) <= 64U * 1024U * 1024U);
 
 } // namespace ayther::audio_qa

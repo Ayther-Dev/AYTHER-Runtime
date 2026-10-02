@@ -269,7 +269,9 @@ int main(int argc, char **argv) {
     std::vector<ayther::audio_qa::TakeTechnicalResult> results;
     results.reserve(selection->takes.size());
     bool all_replays_completed = true;
-    std::uint64_t last_frame{};
+    bool all_inputs_completed = true;
+    bool any_cancelled = false;
+    std::optional<std::uint64_t> last_frame;
     for (std::size_t index{}; index < selection->takes.size(); ++index) {
         auto request = admitted_request;
         request.take_ids = {selection->takes[index]};
@@ -281,10 +283,15 @@ int main(int argc, char **argv) {
                 std::get_if<ayther::audio_qa::CheckExecutionEvidence>(&executed)) {
             const auto *preserved = evidence->preserved ? &*evidence->preserved : nullptr;
             const auto &replay = evidence->replay;
-            if (replay.recording_frames > 0U)
-                last_frame = replay.recording_frames - 1U;
+            any_cancelled = any_cancelled || replay.presentation.cancelled;
+            all_inputs_completed = all_inputs_completed && replay.recording_frames > 0U &&
+                                   replay.inputs_consumed == replay.recording_frames &&
+                                   replay.final_game_state.byte_size > 0U;
+            if (replay.inputs_consumed > 0U)
+                last_frame = replay.inputs_consumed - 1U;
             const bool complete =
-                replay.succeeded && preserved != nullptr && preserved->relationships_reopened;
+                replay.succeeded && preserved != nullptr &&
+                (replay.assignment_count == 0U || preserved->relationships_reopened);
             all_replays_completed = all_replays_completed && complete;
             std::cerr << "audio_qa_replay: run_id=" << replay.run_id << " take=" << replay.take_id
                       << " recording_frames=" << replay.recording_frames
@@ -322,35 +329,49 @@ int main(int argc, char **argv) {
                 std::cerr << " evidence_error="
                           << ayther::audio_qa::integrated_evidence_error_code(
                                  *evidence->preservation_error);
-            std::cerr << " status=" << (complete ? "replay_evidence_reopened" : replay.code)
+            std::cerr << " presentation=" << replay.presentation.mode
+                      << " presentation_status=" << replay.presentation.code
+                      << " presented_frames=" << replay.presentation.presented_frames
+                      << " affected_frames=" << replay.presentation.affected_frames
+                      << " audio_backend=" << replay.presentation.audio_backend
+                      << " status=" << (complete ? "replay_evidence_reopened" : replay.code)
                       << '\n';
-            results.push_back(
-                {replay.take_id,
-                 complete ? ayther::audio_qa::CheckTechnicalOutcome::complete
-                          : ayther::audio_qa::CheckTechnicalOutcome::incomplete,
-                 complete ? "replay_evidence_complete"
-                          : (replay.succeeded ? "evidence_reopen_failed" : replay.code),
-                 false, false});
+            results.push_back({replay.take_id,
+                               complete ? ayther::audio_qa::CheckTechnicalOutcome::complete
+                                        : ayther::audio_qa::CheckTechnicalOutcome::incomplete,
+                               complete
+                                   ? "replay_evidence_complete"
+                                   : (replay.succeeded ? "evidence_reopen_failed" : replay.code),
+                               std::nullopt, std::nullopt});
         } else {
             all_replays_completed = false;
+            all_inputs_completed = false;
             const auto error = std::get<ayther::audio_qa::CheckExecutionError>(executed);
             const auto code = ayther::audio_qa::check_execution_error_code(error);
             std::cerr << "audio_qa_error: " << code << ": " << selection->takes[index] << '\n';
             results.push_back({selection->takes[index],
                                ayther::audio_qa::CheckTechnicalOutcome::incomplete,
-                               std::string{code}, false, false});
+                               std::string{code}, std::nullopt, std::nullopt});
+        }
+        if (any_cancelled) {
+            for (std::size_t pending = index + 1U; pending < selection->takes.size(); ++pending)
+                results.push_back({selection->takes[pending],
+                                   ayther::audio_qa::CheckTechnicalOutcome::incomplete,
+                                   "not_started_after_cancellation", std::nullopt, std::nullopt});
+            break;
         }
     }
 
     auto final_run = admitted.run;
     final_run.phase = ayther::audio_qa::Phase::closed;
-    final_run.playback_result = all_replays_completed
+    final_run.playback_result = any_cancelled ? ayther::audio_qa::PlaybackResult::cancelled
+                                : all_inputs_completed
                                     ? ayther::audio_qa::PlaybackResult::natural_end
                                     : ayther::audio_qa::PlaybackResult::error;
     final_run.evidence_result = all_replays_completed
                                     ? ayther::audio_qa::EvidenceResult::complete
                                     : ayther::audio_qa::EvidenceResult::incomplete;
-    if (all_replays_completed)
+    if (all_inputs_completed || any_cancelled)
         final_run.last_executed_frame = last_frame;
     final_run.cessation_confirmed = true;
     const auto ledger_update = ledger->update_run(final_run);

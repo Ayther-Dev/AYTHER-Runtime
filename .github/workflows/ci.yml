@@ -114,6 +114,14 @@ jobs:
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) { exit $exitCode }
 
+      - name: Verify RF-18 CTest registration
+        shell: pwsh
+        run: |
+          $listing = & ctest --preset $env:CI_PRESET -N -R "^music_(evidence_bundle|warning|three_consumer_semantics|product_flow)$" 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "RF-18 CTest enumeration failed" }
+          $count = ([regex]::Matches($listing, 'Test\s+#\d+:')).Count
+          if ($count -ne 4) { throw "No RF-18 Runtime tests registered: expected 4, got $count" }
+
       - name: Verify build is up to date
         shell: pwsh
         run: |

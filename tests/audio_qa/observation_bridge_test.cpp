@@ -78,6 +78,14 @@ struct PcmCount final {
     }
 };
 
+struct FactCount final {
+    std::size_t value{};
+
+    static void consume(void *context, std::string_view, const qa::EngineFactView &) noexcept {
+        ++static_cast<FactCount *>(context)->value;
+    }
+};
+
 } // namespace
 
 int main() {
@@ -174,6 +182,30 @@ int main() {
         while (production->try_consume_pcm(&production_pcm, PcmCount::consume)) {
         }
         require(production_pcm.value == callback_count, "main_output_pcm_burst_not_preserved");
+
+        production_observer.observe(obs::FactView{{8, 1}, "main_mix_output_span", {}, {}, {}, {}});
+        FactCount production_facts;
+        require(production->losses().invalid_producer == 0U &&
+                    production->try_consume_fact(&production_facts, FactCount::consume) &&
+                    production_facts.value == 1U,
+                "observation_api_1_1_main_mix_producers_rejected");
+
+        auto visible_bridge = std::make_unique<qa::VisibleObservationBridge>("run-physical-output");
+        const auto visible_observer = visible_bridge->observer();
+        std::vector<std::byte> physical_bytes(obs::max_pcm_bytes);
+        visible_observer.observe(
+            obs::PcmView{{7, 1},
+                         "sdl_logical_device_postmix",
+                         {"engine_main_output", 192000, 0, obs::max_pcm_bytes / 32U},
+                         obs::PcmFormat::f32_le,
+                         8,
+                         physical_bytes,
+                         {}});
+        PcmCount physical_pcm;
+        require(visible_bridge->losses().invalid_pcm == 0U &&
+                    visible_bridge->try_consume_pcm(&physical_pcm, PcmCount::consume) &&
+                    physical_pcm.value == 1U,
+                "physical_device_pcm_block_was_rejected");
 
         auto saturated =
             std::make_unique<qa::RuntimeObservationBridge<4, 1, 1>>("run-saturated-producer");

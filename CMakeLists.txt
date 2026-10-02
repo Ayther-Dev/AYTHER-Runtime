@@ -11,11 +11,15 @@
 #   cmake -S . -B build_rt -DCMAKE_PREFIX_PATH=<Engine bootstrap prefix>
 #   cmake --build build_rt
 # ---------------------------------------------------------------------------
-set(AYTHER_RUNTIME_VERSION "0.1.0-beta.7")
+set(AYTHER_RUNTIME_VERSION "0.1.0-beta.6")
 set(AYTHER_RUNTIME_PROJECT_VERSION "0.1.0")
 set(AYTHER_ENGINE_MIN_VERSION "0.1.0")
 set(AYTHER_ENGINE_MAX_VERSION_EXCLUSIVE "0.2.0")
-set(AYTHER_ENGINE_LOCKED_RELEASE "v0.1.0-rc.10")
+set(AYTHER_ENGINE_LOCKED_RELEASE "v0.1.0-rc.9")
+if(AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE)
+    set(AYTHER_ENGINE_LOCKED_RELEASE
+        "ayther-engine-vpx-audio-qa-final-qa208r23-20260929")
+endif()
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     cmake_minimum_required(VERSION 3.21)
@@ -46,7 +50,7 @@ configure_file(
 if(WIN32)
     include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/AytherWindowsToolchain.cmake")
     ayther_validate_windows_engine_toolchain(
-        ENGINE_RELEASE "v0.1.0-rc.10"
+        ENGINE_RELEASE "${AYTHER_ENGINE_LOCKED_RELEASE}"
         MIN_TOOLSET_VERSION "14.51"
     )
     enable_language(RC)
@@ -91,11 +95,11 @@ if(NOT IS_DIRECTORY "${Ayther_SHADER_DIR}")
         "${Ayther_SHADER_DIR}")
 endif()
 
-# The rc.10 Windows archive is built with clang-cl over the MSVC v145 14.51
+# The locked Windows archive is built with clang-cl over the MSVC v145 14.51
 # ABI/STL. Prove compatibility with a real executable link against the package.
 if(WIN32)
     ayther_verify_windows_engine_link(
-        ENGINE_RELEASE "v0.1.0-rc.10"
+        ENGINE_RELEASE "${AYTHER_ENGINE_LOCKED_RELEASE}"
         MIN_TOOLSET_VERSION "14.51"
         TARGET Ayther::engine
     )
@@ -175,6 +179,8 @@ endif()
 add_executable(ayther_runtime
     src/main.cpp
     src/runtime_application.cpp # MAD-039: process composition and orchestration
+    src/qa_capabilities.cpp
+    src/audio_diagnostic.cpp # RF-17.10: typed, rate-limited audio diagnostics
     src/status_emitter.cpp     # MAD-007: typed line-delimited JSON events
     src/runtime_options.cpp     # MAD-006: typed, strict command-line parsing
     src/trust_registry.cpp
@@ -316,6 +322,11 @@ add_custom_target(ayther_stage_shaders ALL
     DEPENDS "${AYTHER_SHADER_STAGE_STAMP}"
 )
 add_dependencies(ayther_runtime ayther_stage_shaders)
+add_custom_command(TARGET ayther_runtime POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
+        "${SHADER_BIN_DIR}" "$<TARGET_FILE_DIR:ayther_runtime>/shaders"
+    COMMENT "Staging shaders next to the configuration-specific Runtime executable"
+    VERBATIM)
 
 # Produce the same self-contained runtime layout that the package smoke tests.
 # The install-time import scan follows exact linked artifacts and excludes the
@@ -367,3 +378,26 @@ include(CPack)
 option(AYTHER_ENABLE_GPU_TESTS
     "Run SDL/Vulkan presentation tests on a real GPU" OFF)
 add_subdirectory(tests)
+
+# The external QA coordinator is delivered beside Runtime so an installed
+# package can run and supervise the QA-enabled process without build-tree paths.
+install(TARGETS ayther_audio_qa
+    RUNTIME_DEPENDENCIES
+        PRE_EXCLUDE_REGEXES
+            "api-ms-.*"
+            "ext-ms-.*"
+        POST_EXCLUDE_REGEXES
+            ".*[\\/][Ss][Yy][Ss][Tt][Ee][Mm]32[\\/].*"
+            "^/lib/.*"
+            "^/usr/lib/.*"
+    RUNTIME DESTINATION bin COMPONENT Runtime
+)
+
+if(AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE)
+    target_sources(ayther_runtime PRIVATE src/audio_qa_runtime_session.cpp src/audio_qa_presentation.cpp)
+    target_link_libraries(ayther_runtime PRIVATE
+        ayther_audio_qa_engine_replay
+        ayther_audio_qa_model_toml
+        ayther_audio_qa_transport)
+    target_compile_definitions(ayther_runtime PRIVATE AYTHER_RUNTIME_AUDIO_QA=1)
+endif()

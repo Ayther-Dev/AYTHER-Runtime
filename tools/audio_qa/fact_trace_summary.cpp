@@ -42,6 +42,7 @@ enum class TraceKind : std::uint8_t {
     decision,
     effect,
     mix,
+    output_span,
 };
 
 enum class TraceStage : std::uint8_t {
@@ -70,6 +71,8 @@ TraceKind trace_kind(const std::string_view kind) noexcept {
         return TraceKind::effect;
     if (kind == "hd_mix_participant")
         return TraceKind::mix;
+    if (kind == "main_mix_output_span" || kind == "auxiliary_output_span")
+        return TraceKind::output_span;
     return TraceKind::other;
 }
 
@@ -142,8 +145,7 @@ struct ReplayFactTraceAccumulator::Impl {
     }
 
     [[nodiscard]] std::uint32_t add_chain(const TraceStage stage, const CompactId id,
-                                          const std::uint32_t parent,
-                                          const std::uint64_t value) {
+                                          const std::uint32_t parent, const std::uint64_t value) {
         if (chains.size() >= missing_token)
             throw std::bad_alloc{};
         const auto index = static_cast<std::uint32_t>(chains.size());
@@ -209,13 +211,11 @@ struct ReplayFactTraceAccumulator::Impl {
         }
         const auto &mix_chain = chains[mix->second];
         complete.mix_span = {mix_chain.id.producer, mix_chain.id.sequence};
-        complete.causally_connected = complete.occurrence != 0U && complete.ingress.producer != 0U &&
-                                      complete.candidate.producer != 0U &&
-                                      complete.selection.producer != 0U &&
-                                      complete.playback_request.producer != 0U &&
-                                      complete.playback_decision.producer != 0U &&
-                                      complete.playback_effect.producer != 0U &&
-                                      complete.mix_span.producer != 0U;
+        complete.causally_connected =
+            complete.occurrence != 0U && complete.ingress.producer != 0U &&
+            complete.candidate.producer != 0U && complete.selection.producer != 0U &&
+            complete.playback_request.producer != 0U && complete.playback_decision.producer != 0U &&
+            complete.playback_effect.producer != 0U && complete.mix_span.producer != 0U;
     }
 
     [[nodiscard]] std::uint32_t resolve(const PendingFact &fact) {
@@ -332,8 +332,8 @@ bool ReplayFactTraceAccumulator::consume(const Fact &fact) noexcept {
             return impl_->valid = false;
         token = unresolved_token;
 
-        Impl::PendingFact compact{{*producer, fact.id.producer_sequence}, trace_kind(fact.kind),
-                                  occurrence(fact), {}};
+        Impl::PendingFact compact{
+            {*producer, fact.id.producer_sequence}, trace_kind(fact.kind), occurrence(fact), {}};
         compact.causes.reserve(fact.cause_ids.size());
         for (const auto &cause : fact.cause_ids) {
             const auto *id = std::get_if<FactId>(&cause);
@@ -342,6 +342,10 @@ bool ReplayFactTraceAccumulator::consume(const Fact &fact) noexcept {
             const auto cause_producer = producer_number(id->producer_id);
             if (!cause_producer || id->run_id != impl_->run_id || id->producer_sequence == 0U)
                 return impl_->valid = false;
+            constexpr std::uint32_t main_output_pcm_producer = 7U;
+            if (compact.kind == TraceKind::output_span &&
+                *cause_producer == main_output_pcm_producer)
+                continue;
             compact.causes.push_back({*cause_producer, id->producer_sequence});
         }
         ++impl_->fact_count;

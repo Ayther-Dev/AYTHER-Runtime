@@ -9,17 +9,17 @@ namespace ayther::runtime {
 
 /// Owns window-side Vulkan objects and fixes their teardown order.
 class PresentationController final {
-public:
+  public:
     PresentationController() = default;
     ~PresentationController() { shutdown(); }
 
-    PresentationController(const PresentationController&) = delete;
-    PresentationController& operator=(const PresentationController&) = delete;
+    PresentationController(const PresentationController &) = delete;
+    PresentationController &operator=(const PresentationController &) = delete;
 
-    [[nodiscard]] VkContext& context() noexcept { return context_; }
-    [[nodiscard]] VkSwapchain& swapchain() noexcept { return swapchain_; }
-    [[nodiscard]] VkPostProcess& postprocess() noexcept { return postprocess_; }
-    [[nodiscard]] ayther::PlayerOverlay& overlay() noexcept { return overlay_; }
+    [[nodiscard]] VkContext &context() noexcept { return context_; }
+    [[nodiscard]] VkSwapchain &swapchain() noexcept { return swapchain_; }
+    [[nodiscard]] VkPostProcess &postprocess() noexcept { return postprocess_; }
+    [[nodiscard]] ayther::PlayerOverlay &overlay() noexcept { return overlay_; }
 
     void shutdown() noexcept {
         overlay_.shutdown(context_);
@@ -28,11 +28,11 @@ public:
         context_.shutdown();
     }
 
-private:
+  private:
     VkContext context_;
     VkSwapchain swapchain_;
     VkPostProcess postprocess_;
     ayther::PlayerOverlay overlay_;
 };
 
-}  // namespace ayther::runtime
+} // namespace ayther::runtime

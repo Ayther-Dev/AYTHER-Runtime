@@ -135,6 +135,11 @@ int main() {
                     fixture.close_calls == 3,
                 "unfinished_replay_reached_engine_close_operations");
 
+        fixture.close_calls = 0;
+        const auto cancelled = qa::close_replay_production(unfinished, close_operations, true);
+        require(cancelled.error == qa::ReplayProductionCloseError::none &&
+                    fixture.close_calls == 3 && fixture.step_calls == 2 && !unfinished.finished(),
+                "cancelled_replay_was_not_drained_without_extra_steps");
         std::puts("replay_production_close_test: passed");
         return 0;
     } catch (const std::exception &error) {
