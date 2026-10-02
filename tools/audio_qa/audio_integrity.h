@@ -27,6 +27,7 @@ enum class AudioIntegrityIssueKind {
 };
 
 struct AudioIntegrityIssue {
+    // clang-format off
     AudioIntegrityIssue(AudioIntegrityIssueKind issue_kind,
                         std::filesystem::path block_path = {},
                         std::optional<SampleFrameRange> range = std::nullopt,
@@ -34,6 +35,7 @@ struct AudioIntegrityIssue {
                         std::optional<PcmBlockStoreError> error = std::nullopt)
         : kind(issue_kind), block(std::move(block_path)), affected_range(range),
           expected_sequence(expected), observed_sequence(observed), store_error(error) {}
+    // clang-format on
 
     AudioIntegrityIssueKind kind{AudioIntegrityIssueKind::empty_capture};
     std::filesystem::path block;

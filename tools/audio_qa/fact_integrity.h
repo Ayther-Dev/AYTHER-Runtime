@@ -9,6 +9,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace ayther::audio_qa {
@@ -25,6 +26,16 @@ enum class FactIntegrityIssueKind {
 };
 
 struct FactIntegrityIssue {
+    FactIntegrityIssue(FactIntegrityIssueKind issue_kind, std::filesystem::path fragment_path = {},
+                       std::optional<FactId> fact = std::nullopt,
+                       std::optional<FactId> related = std::nullopt, std::uint64_t expected = 0,
+                       std::uint64_t observed = 0,
+                       std::optional<FactFragmentStoreError> error = std::nullopt,
+                       std::string shared_state_id = {})
+        : kind(issue_kind), fragment(std::move(fragment_path)), fact_id(std::move(fact)),
+          related_fact_id(std::move(related)), expected_sequence(expected),
+          observed_sequence(observed), store_error(error), state_id(std::move(shared_state_id)) {}
+
     FactIntegrityIssueKind kind{FactIntegrityIssueKind::empty_segment};
     std::filesystem::path fragment;
     std::optional<FactId> fact_id;
