@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <optional>
 #include <span>
+#include <utility>
 
 namespace ayther::audio_qa {
 
@@ -26,6 +27,14 @@ enum class AudioIntegrityIssueKind {
 };
 
 struct AudioIntegrityIssue {
+    AudioIntegrityIssue(AudioIntegrityIssueKind issue_kind,
+                        std::filesystem::path block_path = {},
+                        std::optional<SampleFrameRange> range = std::nullopt,
+                        std::uint64_t expected = 0, std::uint64_t observed = 0,
+                        std::optional<PcmBlockStoreError> error = std::nullopt)
+        : kind(issue_kind), block(std::move(block_path)), affected_range(range),
+          expected_sequence(expected), observed_sequence(observed), store_error(error) {}
+
     AudioIntegrityIssueKind kind{AudioIntegrityIssueKind::empty_capture};
     std::filesystem::path block;
     std::optional<SampleFrameRange> affected_range;

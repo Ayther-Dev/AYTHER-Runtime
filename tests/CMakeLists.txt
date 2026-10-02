@@ -622,7 +622,7 @@ add_executable(music_three_consumer_semantics_tests
     music_three_consumer_semantics_test.cpp)
 target_include_directories(music_three_consumer_semantics_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../AYTHER-Lab/src)
+    ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/lab)
 target_link_libraries(music_three_consumer_semantics_tests PRIVATE Ayther::engine)
 set_target_properties(music_three_consumer_semantics_tests PROPERTIES
     CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
