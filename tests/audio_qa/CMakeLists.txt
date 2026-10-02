@@ -5,6 +5,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     enable_testing()
 endif()
 
+if(AYTHER_CLANG_TIDY_COMMAND)
+    set(CMAKE_CXX_CLANG_TIDY "${AYTHER_CLANG_TIDY_COMMAND}")
+endif()
+
 add_executable(audio_qa_campaign_audit_test campaign_audit_test.cpp)
 target_link_libraries(audio_qa_campaign_audit_test PRIVATE
     ayther_audio_qa_cli ayther_audio_qa_evidence ayther_audio_qa_model_toml)
@@ -18,10 +22,6 @@ endif()
 add_test(NAME audio_qa_campaign_audit COMMAND audio_qa_campaign_audit_test)
 set_tests_properties(audio_qa_campaign_audit PROPERTIES
     LABELS "audio_qa;campaign;evidence;integration" TIMEOUT 15)
-
-if(AYTHER_CLANG_TIDY_COMMAND)
-    set(CMAKE_CXX_CLANG_TIDY "${AYTHER_CLANG_TIDY_COMMAND}")
-endif()
 
 if(AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE)
     get_target_property(qa_engine_include_directories

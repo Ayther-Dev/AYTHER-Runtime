@@ -40,6 +40,15 @@ foreach(token IN ITEMS
     endif()
 endforeach()
 
+string(FIND "${audio_qa_cmake_text}"
+    "set(CMAKE_CXX_CLANG_TIDY" audio_qa_tidy_default_position)
+string(FIND "${audio_qa_cmake_text}"
+    "add_executable(audio_qa_campaign_audit_test" audio_qa_first_target_position)
+if(audio_qa_tidy_default_position GREATER audio_qa_first_target_position)
+    message(FATAL_ERROR
+        "audio QA must enable clang-tidy before creating its first target")
+endif()
+
 foreach(token IN ITEMS
         "AYTHER_ENABLE_CLANG_TIDY" "AYTHER_ENABLE_COVERAGE"
         "AYTHER_ENABLE_SANITIZERS" "AYTHER_ENABLE_FUZZING")
