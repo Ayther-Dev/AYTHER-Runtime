@@ -219,7 +219,9 @@ CoverageAggregation aggregate_assignment_coverage(std::span<const Coverage> cove
                                            return candidate.assignment_id == coverage.assignment_id;
                                        });
         if (assignment == result.assignments.end()) {
-            result.assignments.push_back({coverage.assignment_id});
+            AggregatedAssignmentCoverage aggregated;
+            aggregated.assignment_id = coverage.assignment_id;
+            result.assignments.push_back(std::move(aggregated));
             assignment = std::prev(result.assignments.end());
         }
         const auto append = [&](std::vector<ProvenancedStageObservation> &target,

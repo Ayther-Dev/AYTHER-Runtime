@@ -145,6 +145,7 @@ struct Diagnostic {
     Field<std::uint64_t> last_confirmed_frame;
     Field<std::uint64_t> lost_fact_count;
     std::string detail;
+    bool operator==(const Diagnostic &) const = default;
 };
 
 [[nodiscard]] bool well_formed(const Assignment &assignment) noexcept;

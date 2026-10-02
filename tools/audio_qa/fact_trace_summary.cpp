@@ -248,6 +248,7 @@ struct ReplayFactTraceAccumulator::Impl {
             if (best_stage >= TraceStage::request && occurrence_matches(best, fact.occurrence))
                 return add_chain(TraceStage::mix, fact.id, best, fact.occurrence);
             break;
+        case TraceKind::output_span:
         case TraceKind::other:
             break;
         }
