@@ -42,7 +42,16 @@ void requests() {
     require(std::holds_alternative<qa::CodecError>(qa::to_toml(bounded)), "identity_limit_ignored");
 }
 void runs() {
-    qa::Run run{"run-1", "request-1", "take-A"};
+    qa::Run run{"run-1",
+                "request-1",
+                "take-A",
+                qa::Phase::preparing,
+                qa::PlaybackResult::not_started,
+                qa::EvidenceResult::pending,
+                qa::EquivalenceResult::unknown,
+                std::nullopt,
+                std::nullopt,
+                false};
     const auto untouched = qa::run_from_toml(encoded(qa::to_toml(run)));
     require(std::holds_alternative<qa::Run>(untouched) && std::get<qa::Run>(untouched) == run,
             "unknown_progress_became_zero");
@@ -72,7 +81,16 @@ void rejects() {
     require(std::get<qa::CodecError>(qa::run_from_toml("schema_version=1\nschema_minor=1")) ==
                 qa::CodecError::incompatible_version,
             "unknown_minor_accepted");
-    const qa::Run run{"r", "q", "t"};
+    const qa::Run run{"r",
+                      "q",
+                      "t",
+                      qa::Phase::preparing,
+                      qa::PlaybackResult::not_started,
+                      qa::EvidenceResult::pending,
+                      qa::EquivalenceResult::unknown,
+                      std::nullopt,
+                      std::nullopt,
+                      false};
     const auto text = encoded(qa::to_toml(run));
     for (const auto *suffix :
          {"last_executed_frame = '-1'\n", "last_executed_frame = '18446744073709551616'\n",
