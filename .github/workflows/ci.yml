@@ -100,7 +100,7 @@ jobs:
               "-DQA_BUILD_DIRECTORY=$($PWD.Path)/out/build/$env:CI_PRESET" `
               "-DQA_CTEST_COMMAND=$((Get-Command ctest -ErrorAction Stop).Source)" `
               -DQA_CONFIGURATION=RelWithDebInfo `
-              -DQA_REQUIRED_FAMILIES=audio_qa,unit,contract,integration,limits,protocol,fixture `
+              '-DQA_REQUIRED_FAMILIES=audio_qa,unit,contract,integration,limits,protocol,fixture' `
               -P tools/check_ctest_families.cmake 2>&1 |
               Tee-Object -FilePath artifacts/ctest-families.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -266,7 +266,7 @@ jobs:
           & cmake `
               "-DQA_BUILD_DIRECTORY=$($PWD.Path)/out/build/$env:CI_PRESET" `
               "-DQA_CTEST_COMMAND=$((Get-Command ctest -ErrorAction Stop).Source)" `
-              -DQA_REQUIRED_FAMILIES=audio_qa,unit,contract,integration,limits,protocol,fixture `
+              '-DQA_REQUIRED_FAMILIES=audio_qa,unit,contract,integration,limits,protocol,fixture' `
               -P tools/check_ctest_families.cmake 2>&1 |
               Tee-Object -FilePath artifacts/ctest-families.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

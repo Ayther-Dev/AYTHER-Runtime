@@ -777,15 +777,13 @@ EncodedFactBatch encode_fact_batch(const std::vector<Fact> &facts, const std::ui
         std::vector<std::byte> payload;
         append_le(payload, static_cast<std::uint32_t>(facts.size()));
         for (const auto &fact : facts) {
-            const auto record = fact.fields.empty()
-                                    ? [&] {
-                                          const auto text = encode_fact(fact);
-                                          return std::vector<std::byte>{
-                                              reinterpret_cast<const std::byte *>(text.data()),
-                                              reinterpret_cast<const std::byte *>(text.data() +
-                                                                                  text.size())};
-                                      }()
-                                    : encode_binary_fact(fact);
+            const auto record = fact.fields.empty() ? [&] {
+                const auto text = encode_fact(fact);
+                return std::vector<std::byte>{
+                    reinterpret_cast<const std::byte *>(text.data()),
+                    reinterpret_cast<const std::byte *>(text.data() + text.size())};
+            }()
+                                                    : encode_binary_fact(fact);
             if (record.empty() || record.size() + sizeof(std::uint32_t) > max_encoded_fact_bytes) {
                 return FactBatchError::fact_too_large;
             }
@@ -849,10 +847,11 @@ DecodedFactBatch decode_fact_batch(const std::span<const std::byte> message,
                 return FactBatchError::truncated;
             }
             const auto record = payload.subspan(cursor, length);
-            facts.push_back(is_binary_fact(record)
-                                ? decode_binary_fact(record)
-                                : decode_fact(std::string_view{
-                                      reinterpret_cast<const char *>(record.data()), record.size()}));
+            facts.push_back(
+                is_binary_fact(record)
+                    ? decode_binary_fact(record)
+                    : decode_fact(std::string_view{reinterpret_cast<const char *>(record.data()),
+                                                   record.size()}));
             cursor += length;
         }
     } catch (const FactBatchError error) {

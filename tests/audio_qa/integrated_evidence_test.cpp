@@ -1,5 +1,5 @@
-#include "integrated_evidence.h"
 #include "incremental_evidence.h"
+#include "integrated_evidence.h"
 #include "pcm_message.h"
 
 #include <array>
@@ -91,8 +91,7 @@ int main() {
             if (cause)
                 value.cause_ids.emplace_back(std::move(*cause));
             if (occurrence != 0U)
-                value.occurrence_id = {qa::Availability::known,
-                                       std::to_string(occurrence), {}};
+                value.occurrence_id = {qa::Availability::known, std::to_string(occurrence), {}};
             return value;
         };
         const std::array producer_five{
@@ -109,9 +108,8 @@ int main() {
         const std::array mix{make_trace_fact("engine-6", 1U, "hd_mix_participant",
                                              qa::FactId{"run-streaming", "engine-5", 3U}, 7U)};
         const std::array ingress{make_trace_fact("engine-3", 1U, "detector_input")};
-        const std::array late_sequence{
-            make_trace_fact("engine-9", 2U, "auxiliary_output_span"),
-            make_trace_fact("engine-9", 1U, "auxiliary_output_span")};
+        const std::array late_sequence{make_trace_fact("engine-9", 2U, "auxiliary_output_span"),
+                                       make_trace_fact("engine-9", 1U, "auxiliary_output_span")};
         require(!writer->append_facts(producer_five) && !writer->append_facts(mix) &&
                     !writer->append_facts(ingress) &&
                     !writer->append_facts(std::span{late_sequence}.first(1U)) &&
@@ -135,7 +133,8 @@ int main() {
         const auto *streamed_summary = std::get_if<qa::IntegratedEvidenceSummary>(&streamed);
         const auto streamed_trace = writer->trace();
         require(streamed_summary != nullptr && streamed_summary->facts == 9U &&
-                    streamed_summary->pcm_blocks == 2U && streamed_summary->fact_integrity_complete &&
+                    streamed_summary->pcm_blocks == 2U &&
+                    streamed_summary->fact_integrity_complete &&
                     streamed_summary->relationships_reopened && streamed_trace.occurrence == 7U &&
                     streamed_trace.causally_connected,
                 "incremental_evidence_was_not_reopened");

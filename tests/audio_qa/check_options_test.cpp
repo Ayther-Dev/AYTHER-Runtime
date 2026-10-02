@@ -132,8 +132,7 @@ int main() {
     arguments.back() = "invalid";
     if (!qa::parse_check_options(views(arguments)).error())
         return 1;
-    return test_valid() && test_required_options() && test_malformed() &&
-                   test_original_audio_mode()
+    return test_valid() && test_required_options() && test_malformed() && test_original_audio_mode()
                ? 0
                : 1;
 }

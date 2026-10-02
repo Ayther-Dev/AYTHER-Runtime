@@ -2,9 +2,9 @@
 
 #include "checkpoint_store.h"
 
-#include <limits>
 #include <algorithm>
 #include <functional>
+#include <limits>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -19,8 +19,8 @@ struct FactIdHash {
         auto result = std::hash<std::string>{}(id.run_id);
         result ^= std::hash<std::string>{}(id.producer_id) + 0x9e3779b9U + (result << 6U) +
                   (result >> 2U);
-        result ^= std::hash<std::uint64_t>{}(id.producer_sequence) + 0x9e3779b9U +
-                  (result << 6U) + (result >> 2U);
+        result ^= std::hash<std::uint64_t>{}(id.producer_sequence) + 0x9e3779b9U + (result << 6U) +
+                  (result >> 2U);
         return result;
     }
 };
@@ -28,8 +28,8 @@ struct FactIdHash {
 struct StringPairHash {
     std::size_t operator()(const std::pair<std::string, std::string> &value) const noexcept {
         auto result = std::hash<std::string>{}(value.first);
-        result ^= std::hash<std::string>{}(value.second) + 0x9e3779b9U + (result << 6U) +
-                  (result >> 2U);
+        result ^=
+            std::hash<std::string>{}(value.second) + 0x9e3779b9U + (result << 6U) + (result >> 2U);
         return result;
     }
 };
@@ -48,9 +48,8 @@ void fail(FactIntegrityAudit &audit, FactIntegrityIssue issue) {
 
 } // namespace
 
-FactIntegrityAudit
-audit_fact_integrity(const std::span<const std::filesystem::path> fragment_paths,
-                     std::vector<Fact> *const reopened_facts) noexcept {
+FactIntegrityAudit audit_fact_integrity(const std::span<const std::filesystem::path> fragment_paths,
+                                        std::vector<Fact> *const reopened_facts) noexcept {
     FactIntegrityAudit audit;
     try {
         if (reopened_facts != nullptr)

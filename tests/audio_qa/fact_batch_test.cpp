@@ -87,8 +87,8 @@ int main() {
         const auto encoded = qa::encode_fact_batch(facts, 31);
         const auto *bytes = std::get_if<std::vector<std::byte>>(&encoded);
         require(bytes != nullptr, "fact_batch_encoding_failed");
-        constexpr std::size_t first_record = qa::protocol_header_bytes + sizeof(std::uint32_t) +
-                                             sizeof(std::uint32_t);
+        constexpr std::size_t first_record =
+            qa::protocol_header_bytes + sizeof(std::uint32_t) + sizeof(std::uint32_t);
         require(bytes->size() > first_record + 6U &&
                     std::to_integer<unsigned char>((*bytes)[first_record]) == 'A' &&
                     std::to_integer<unsigned char>((*bytes)[first_record + 1U]) == 'Q' &&

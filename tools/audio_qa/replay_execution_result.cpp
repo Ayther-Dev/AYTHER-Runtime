@@ -149,14 +149,12 @@ bool well_formed(const ReplayExecutionResult &result) noexcept {
            identifier(result.code) &&
            (!result.succeeded ||
             (result.recording_frames > 0U && result.inputs_consumed == result.recording_frames &&
-             result.initial_game_state.byte_size > 0U &&
-             result.final_game_state.byte_size > 0U && result.trace.observed_fact_count > 0U &&
-             result.trace.loss_free &&
+             result.initial_game_state.byte_size > 0U && result.final_game_state.byte_size > 0U &&
+             result.trace.observed_fact_count > 0U && result.trace.loss_free &&
              (result.code == "replay_evidence_streamed" ||
               (result.assignment_count > 0U && result.trace.causally_connected &&
-               result.trace.occurrence != 0U &&
-               valid_trace_id(result.trace.ingress) && valid_trace_id(result.trace.candidate) &&
-               valid_trace_id(result.trace.selection) &&
+               result.trace.occurrence != 0U && valid_trace_id(result.trace.ingress) &&
+               valid_trace_id(result.trace.candidate) && valid_trace_id(result.trace.selection) &&
                valid_trace_id(result.trace.playback_request) &&
                valid_trace_id(result.trace.playback_decision) &&
                valid_trace_id(result.trace.playback_effect) &&

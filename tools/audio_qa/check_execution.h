@@ -7,9 +7,9 @@
 #include "model.h"
 #include "replay_execution_result.h"
 
+#include <optional>
 #include <string>
 #include <string_view>
-#include <optional>
 #include <variant>
 #include <vector>
 

@@ -275,38 +275,56 @@ int main() {
                          {}};
             }
             const std::array<obs::FieldView, 11> selection_fields{
-                obs::FieldView{"signature", obs::Availability::known, obs::Unit::none,
-                               std::uint64_t{1U}, {}},
-                obs::FieldView{"instrument", obs::Availability::known, obs::Unit::none,
-                               std::uint64_t{2U}, {}},
-                obs::FieldView{"pitch", obs::Availability::known, obs::Unit::none,
-                               std::uint64_t{3U}, {}},
-                obs::FieldView{"use", obs::Availability::known, obs::Unit::none,
-                               std::string_view{"runtime_selection"}, {}},
+                obs::FieldView{
+                    "signature", obs::Availability::known, obs::Unit::none, std::uint64_t{1U}, {}},
+                obs::FieldView{
+                    "instrument", obs::Availability::known, obs::Unit::none, std::uint64_t{2U}, {}},
+                obs::FieldView{
+                    "pitch", obs::Availability::known, obs::Unit::none, std::uint64_t{3U}, {}},
+                obs::FieldView{"use",
+                               obs::Availability::known,
+                               obs::Unit::none,
+                               std::string_view{"runtime_selection"},
+                               {}},
                 obs::FieldView{"source", obs::Availability::unknown, obs::Unit::none,
                                std::monostate{}, "not_observed"},
-                obs::FieldView{"provenance_complete", obs::Availability::known,
-                               obs::Unit::none, false, {}},
-                obs::FieldView{"source_kind", obs::Availability::known, obs::Unit::none,
-                               std::string_view{"detector_event"}, {}},
-                obs::FieldView{"source_index", obs::Availability::known, obs::Unit::count,
-                               std::uint64_t{4U}, {}},
-                obs::FieldView{"event_start", obs::Availability::known,
-                               obs::Unit::emulation_frame, std::uint64_t{5U}, {}},
-                obs::FieldView{"event_end", obs::Availability::known,
-                               obs::Unit::emulation_frame, std::uint64_t{6U}, {}},
-                obs::FieldView{"evaluated_frame", obs::Availability::known,
-                               obs::Unit::emulation_frame, std::uint64_t{7U}, {}}};
+                obs::FieldView{
+                    "provenance_complete", obs::Availability::known, obs::Unit::none, false, {}},
+                obs::FieldView{"source_kind",
+                               obs::Availability::known,
+                               obs::Unit::none,
+                               std::string_view{"detector_event"},
+                               {}},
+                obs::FieldView{"source_index",
+                               obs::Availability::known,
+                               obs::Unit::count,
+                               std::uint64_t{4U},
+                               {}},
+                obs::FieldView{"event_start",
+                               obs::Availability::known,
+                               obs::Unit::emulation_frame,
+                               std::uint64_t{5U},
+                               {}},
+                obs::FieldView{"event_end",
+                               obs::Availability::known,
+                               obs::Unit::emulation_frame,
+                               std::uint64_t{6U},
+                               {}},
+                obs::FieldView{"evaluated_frame",
+                               obs::Availability::known,
+                               obs::Unit::emulation_frame,
+                               std::uint64_t{7U},
+                               {}}};
             const auto causes = producer == 3U ? std::span<const obs::Cause>{detector_causes}
                                 : producer == 4U
                                     ? std::span<const obs::Cause>{detector_causes}.first(2U)
                                 : producer == 5U ? std::span<const obs::Cause>{selection_causes}
                                                  : std::span<const obs::Cause>{};
-            const auto fields =
-                producer == 3U   ? std::span<const obs::FieldView>{detector_fields}
-                : producer == 4U ? std::span<const obs::FieldView>{detector_fields}.first(12U)
-                : producer == 5U ? std::span<const obs::FieldView>{selection_fields}
-                                 : std::span<const obs::FieldView>{};
+            const auto fields = producer == 3U ? std::span<const obs::FieldView>{detector_fields}
+                                : producer == 4U
+                                    ? std::span<const obs::FieldView>{detector_fields}.first(12U)
+                                : producer == 5U ? std::span<const obs::FieldView>{selection_fields}
+                                                 : std::span<const obs::FieldView>{};
             const std::array<obs::StateOrder, 1> detector_order{{"audio_detector_analysis", 1U}};
             const auto state_orders = producer == 4U
                                           ? std::span<const obs::StateOrder>{detector_order}
