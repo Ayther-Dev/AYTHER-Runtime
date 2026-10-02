@@ -58,13 +58,13 @@ jobs:
           }
           "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: Bootstrap locked Engine rc.10
+      - name: Bootstrap locked Engine rc.13
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $lock = Get-Content dependencies/ayther-engine.lock.json -Raw | ConvertFrom-Json
-          if ($lock.release.tag -cne "v0.1.0-rc.10") {
-              throw "MAD-005 only accepts Engine v0.1.0-rc.10; lock contains '$($lock.release.tag)'."
+          if ($lock.release.tag -cne "v0.1.0-rc.13") {
+              throw "RF-18 requires Engine v0.1.0-rc.13; lock contains '$($lock.release.tag)'."
           }
 
           Start-Transcript -Path artifacts/bootstrap.log
@@ -225,13 +225,13 @@ jobs:
           BASE_REVISION: ${{ github.event.pull_request.base.sha }}
         run: bash tools/run_clang_format_changed.sh "${BASE_REVISION}" HEAD
 
-      - name: Bootstrap locked Engine rc.10
+      - name: Bootstrap locked Engine rc.13
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $lock = Get-Content dependencies/ayther-engine.lock.json -Raw | ConvertFrom-Json
-          if ($lock.release.tag -cne "v0.1.0-rc.10") {
-              throw "MAD-005 only accepts Engine v0.1.0-rc.10; lock contains '$($lock.release.tag)'."
+          if ($lock.release.tag -cne "v0.1.0-rc.13") {
+              throw "RF-18 requires Engine v0.1.0-rc.13; lock contains '$($lock.release.tag)'."
           }
 
           Start-Transcript -Path artifacts/bootstrap.log
