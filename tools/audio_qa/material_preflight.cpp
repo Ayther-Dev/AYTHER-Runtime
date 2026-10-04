@@ -265,7 +265,7 @@ Identification identify(const std::filesystem::path &path, std::vector<std::byte
             return MaterialPinError::is_link;
         return MaterialPinError::unreadable;
     }
-    struct stat information{};
+    struct stat information = {};
     if (::fstat(descriptor.get(), &information) != 0)
         return MaterialPinError::unreadable;
     if (S_ISDIR(information.st_mode))

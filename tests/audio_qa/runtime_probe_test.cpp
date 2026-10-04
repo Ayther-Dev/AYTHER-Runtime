@@ -176,9 +176,7 @@ void real_probes(const std::filesystem::path &runtime_path, const std::filesyste
            "RF-2.2: the synthetic core loads its ROM and reports 60 fps without running it");
 
     const auto empty_rom = std::filesystem::temp_directory_path() / "ayther-qa-empty.aytest";
-    {
-        std::ofstream{empty_rom, std::ios::binary | std::ios::trunc};
-    }
+    std::ofstream{empty_rom, std::ios::binary | std::ios::trunc}.close();
     const auto rejected =
         qa::probe_core(*runtime, core, qa::CoreProbeLaunch{empty_rom, {}, std::nullopt}, {});
     const auto *rejection = std::get_if<qa::CoreProbe>(&rejected);

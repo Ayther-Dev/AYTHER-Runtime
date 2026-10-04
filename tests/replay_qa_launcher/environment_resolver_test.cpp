@@ -32,9 +32,7 @@ int main() {
     std::filesystem::remove_all(root, ignored);
     const auto install = root / "install" / "bin";
     std::filesystem::create_directories(install);
-    {
-        std::ofstream{install / la::runtime_executable_name(), std::ios::binary} << "runtime";
-    }
+    std::ofstream{install / la::runtime_executable_name(), std::ios::binary} << "runtime";
     const auto config = root / "appdata" / "Ayther" / "play_config.toml";
     std::filesystem::create_directories(config.parent_path());
     {

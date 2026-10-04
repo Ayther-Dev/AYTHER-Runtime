@@ -55,11 +55,15 @@ std::optional<PresentationEvent> translate_window_event(const SDL_Event &event,
         return std::nullopt;
     case SDL_EVENT_KEY_DOWN: {
         using replay_inspection::ScrollKey;
-        const auto scroll = event.key.scancode == SDL_SCANCODE_PAGEUP     ? ScrollKey::page_up
-                            : event.key.scancode == SDL_SCANCODE_PAGEDOWN ? ScrollKey::page_down
-                            : event.key.scancode == SDL_SCANCODE_HOME     ? ScrollKey::home
-                            : event.key.scancode == SDL_SCANCODE_END ? ScrollKey::end
-                                                                     : std::optional<ScrollKey>{};
+        std::optional<ScrollKey> scroll;
+        if (event.key.scancode == SDL_SCANCODE_PAGEUP)
+            scroll = ScrollKey::page_up;
+        else if (event.key.scancode == SDL_SCANCODE_PAGEDOWN)
+            scroll = ScrollKey::page_down;
+        else if (event.key.scancode == SDL_SCANCODE_HOME)
+            scroll = ScrollKey::home;
+        else if (event.key.scancode == SDL_SCANCODE_END)
+            scroll = ScrollKey::end;
         if (scroll)
             return PresentationEvent{Kind::scroll, Key::other, event.key.repeat, true, *scroll};
         return PresentationEvent{Kind::key_down, key_of(event.key.scancode), event.key.repeat,

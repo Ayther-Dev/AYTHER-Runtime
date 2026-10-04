@@ -47,6 +47,7 @@ constexpr std::uintmax_t max_play_config_bytes = 1024U * 1024U;
     return nullptr;
 }
 
+#ifdef _WIN32
 [[nodiscard]] std::string lowercase(std::string_view text) {
     std::string result{text};
     std::transform(result.begin(), result.end(), result.begin(), [](unsigned char character) {
@@ -54,6 +55,7 @@ constexpr std::uintmax_t max_play_config_bytes = 1024U * 1024U;
     });
     return result;
 }
+#endif
 
 // Same file when both exist; otherwise the same normalized path, ignoring case on
 // Windows, where Play CE and the Lab write the paths.
