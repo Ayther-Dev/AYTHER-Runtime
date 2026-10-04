@@ -8,12 +8,54 @@ once stable compatibility guarantees are defined.
 
 > [!WARNING]
 > AYTHER Runtime is in early development. The build reports product version
-> `0.1.0-beta.8`; this is an internal prerelease and is not supported for
+> `0.1.0-beta.9`; this is an internal prerelease and is not supported for
 > production use. The Runtime–Play process
 > protocol v1 is the exception: its documented wire fields, reason identifiers,
 > and exit codes are stable within v1.
 
 ## [Unreleased]
+
+## [0.1.0-beta.9] - 2026-10-04
+
+### Added
+
+- Replay inspection in the visible Runtime (spec 002): pause and resume with
+  Space, one-frame steps forward and back while paused with recovery from
+  checkpoints, the debug overlay with I, the protocol 1.1 live state and the
+  evidence of every visit (`inspection_event`, `render_frame`).
+- The replay QA launcher `ayther_replay_qa` in the `qa` component, with the
+  checker preflight and runner of `ayther_audio_qa check`, effective values and
+  material pinning.
+- Render QA observation of each presented frame (contracts C3 and C4), including
+  the frame start on the device output line (`audio_frame_output_boundary`).
+- The `Windows / QA` pull request job, a required check of `main`, which builds
+  the QA variant and runs `ctest --preset windows-qa -L audio_qa -LE gpu`.
+- The QA input script retries a pause that did not land
+  (`paused=<k> retry=<ms>`) instead of waiting forever, and the measurement
+  program for plan §8 reports it.
+
+### Changed
+
+- The reproducible Engine lock moves from `v0.1.0-rc.13` to `v0.1.0-rc.15`.
+- The QA Engine lock pins the published Windows `engine-vpx` artifact of
+  `v0.1.0-rc.15` by URL, SHA-256, release `CHECKSUMS.sha256` and SLSA
+  provenance; the QA bootstrap downloads and verifies it and no longer names a
+  local path.
+- After frame N−1 of an intermediate take, the next take starts on the next
+  cadence slot (RF-2.8), so a pause requested in that wait keeps the take on its
+  last frame. Each take boundary gains at most one period, outside the take
+  time.
+
+### Fixed
+
+- A pause requested while no frame is in progress keeps the last completed
+  frame instead of running the next one (RF-4.1); a frame being produced still
+  finishes first, and resume runs the next frame.
+- The QA session waits for the next frame while attending keys, so a pause is
+  read within a millisecond instead of after the cadence wait.
+- Linux builds compile every QA source and test without warnings under Clang
+  `-Wextra`, and the inspection session test checks Engine facts per frame
+  instead of device PCM, which varied between runs.
 
 ## [0.1.0-beta.8] - 2026-10-02
 
