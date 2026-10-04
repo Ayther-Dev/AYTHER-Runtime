@@ -52,22 +52,36 @@ enum class RecoveryOutcome { presented, failed_restored, failed_unrecoverable };
 
 using Commands = std::vector<Command>;
 
+// Where the take is when a key arrives (spec.md, Pausa; RF-4.1): producing a frame, or waiting
+// between two. A pause while producing finishes that frame; between frames there is no frame in
+// progress and the last completed one stays.
+enum class FrameActivity { between_frames, producing };
+
 class InspectionController final {
   public:
     InspectionController(std::uint32_t frames, bool last_take) noexcept;
 
     Commands prepared();
-    Commands key(KeyAction action);
+    Commands key(KeyAction action, FrameActivity activity = FrameActivity::between_frames);
     // The adapter produced frame k (playing or finishing a pause).
     Commands frame_completed(std::uint32_t frame);
+    // RF-2.8, RF-4.1 (DI-13): after N−1 of an intermediate take the next take starts on the next
+    // cadence slot, not at once, so that a pause asked for in that wait stays on N−1. The adapter
+    // calls this when the slot comes; it gives way to the next take unless a pause came first.
+    Commands take_slot_reached();
     Commands recovery_finished(RecoveryOutcome outcome);
     Commands presentation_interrupted(std::string cause);
     Commands presentation_recovered();
     Commands cancel();
 
     [[nodiscard]] InspectionPhase phase() const noexcept { return phase_; }
-    // Only `playing` starts frames.
-    [[nodiscard]] bool may_run_frame() const noexcept { return phase_ == InspectionPhase::playing; }
+    // Only `playing` starts frames, and not while waiting for the slot of the next take.
+    [[nodiscard]] bool may_run_frame() const noexcept {
+        return phase_ == InspectionPhase::playing && !take_end_pending_;
+    }
+    [[nodiscard]] bool take_end_pending() const noexcept {
+        return phase_ == InspectionPhase::playing && take_end_pending_;
+    }
     [[nodiscard]] std::optional<std::uint32_t> position() const noexcept { return position_; }
     [[nodiscard]] std::uint32_t next_frame() const noexcept;
     [[nodiscard]] std::optional<std::uint32_t> target() const noexcept { return target_; }
@@ -88,12 +102,12 @@ class InspectionController final {
     bool debug_visible_{};
     bool inspected_{};
     bool ended_naturally_{};
+    bool take_end_pending_{};
     std::string cause_;
 };
 
 // P-2 (RF-4.1): whether the loop starts the next frame now. Playback waits for the turn of each
-// frame (`due`); a requested pause finishes the frame in progress at once, without waiting for
-// its turn, so that the paused image follows the key by one production and one presentation.
+// frame (`due`); a pause pending on a frame in progress (or on frame 0) finishes it at once.
 [[nodiscard]] bool start_frame_now(InspectionPhase phase, std::chrono::steady_clock::time_point now,
                                    std::chrono::steady_clock::time_point due) noexcept;
 

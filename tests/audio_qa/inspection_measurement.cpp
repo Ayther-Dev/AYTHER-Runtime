@@ -212,7 +212,7 @@ int main(int argc, char **argv) {
     for (std::uint32_t cycle = 0; cycle < 30U; ++cycle) {
         const auto frame = 15U + cycle * 18U;
         pauses += "frame=" + std::to_string(frame) + " key space down\nafter=0 key space up\n" +
-                  "paused=" + std::to_string(frame + 1U) + retry + " key other up\n" +
+                  "paused=" + std::to_string(frame) + retry + " key other up\n" +
                   "after=150 key space down\nafter=0 key space up\n";
     }
     // A long take is closed once its measures are taken.
@@ -221,7 +221,7 @@ int main(int argc, char **argv) {
     // P-3 and P-4: ten steps forward and ten back in three zones of the take.
     std::string steps;
     for (const std::uint32_t zone : zones) {
-        steps += "frame=" + std::to_string(zone - 1U) + " key space down\nafter=0 key space up\n";
+        steps += "frame=" + std::to_string(zone) + " key space down\nafter=0 key space up\n";
         auto position = zone;
         steps += "paused=" + std::to_string(position) + retry + " key other up\n";
         for (int step = 0; step < 10; ++step, ++position)

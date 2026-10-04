@@ -33,7 +33,7 @@ Se instala con el componente `qa`, junto a `ayther_audio_qa`, y nunca con el com
 
 Con presentación visible, el Runtime abre su propia ventana por toma. Los controles son:
 
-- **Espacio:** pausa al terminar el frame en curso y reanuda.
+- **Espacio:** pausa al terminar el frame en curso (si no hay ninguno, en el último mostrado) y reanuda.
 - **← y →:** en pausa, retroceden y avanzan un frame.
 - **I:** muestra u oculta el registro de depuración.
 

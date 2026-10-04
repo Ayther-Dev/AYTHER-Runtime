@@ -1563,6 +1563,20 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                 // P-2: the wait for the turn of the next frame attends the keys; a pause
                 // requested during it finishes that frame at once.
                 const auto now = std::chrono::steady_clock::now();
+                // RF-2.8, RF-4.1 (DI-13): after N−1 of an intermediate take the next take starts
+                // on the next cadence slot, so that a pause in that wait stays on N−1. It costs at
+                // most one period per take boundary, outside the take time (frames only).
+                if (controller.take_end_pending()) {
+                    if (now < next_frame) {
+                        const std::chrono::steady_clock::duration poll{
+                            std::chrono::milliseconds{1}};
+                        const auto remaining = next_frame - now;
+                        std::this_thread::sleep_for(remaining < poll ? remaining : poll);
+                    } else {
+                        apply(controller.take_slot_reached());
+                    }
+                    break;
+                }
                 if (!ri::start_frame_now(controller.phase(), now, next_frame)) {
                     const std::chrono::steady_clock::duration poll{std::chrono::milliseconds{1}};
                     const auto remaining = next_frame - now;

@@ -213,16 +213,19 @@ int main(int argc, char **argv) {
     const auto paused_state =
         std::find_if(paused.states.begin(), paused.states.end(),
                      [](const qa::ReplayStateView &state) { return state.phase == "paused"; });
-    expect(paused_state != paused.states.end() && paused_state->frame == 3U,
-           "RF-4.1: the pause requested after frame 2 lands at the end of frame 3");
+    // The key arrives in the wait after frame 2, with no frame in progress: frame 2 stays and
+    // frame 3 is never started (spec.md, Pausa; RF-4.1).
+    expect(paused_state != paused.states.end() && paused_state->frame == 2U,
+           "RF-4.1: the pause requested after frame 2 keeps frame 2");
     expect(paused.events.size() == 1U && paused.events[0].control == "pause" &&
-               paused.events[0].seq == 1U && paused.events[0].frame_before == 3U &&
-               paused.events[0].frame_after == 3U && paused.events[0].visit == 1U &&
-               paused.events[0].elapsed_ms == 66U,
-           "C2: the pause is an inspection_event at frame 3, first visit, 66 ms of take");
+               paused.events[0].seq == 1U && paused.events[0].frame_before == 2U &&
+               paused.events[0].frame_after == 2U && paused.events[0].visit == 1U &&
+               paused.events[0].elapsed_ms == 50U,
+           "C2: the pause is an inspection_event at frame 2, first visit, 50 ms of take");
     expect(paused.terminal && paused.terminal->playback == "cancelled" &&
-               paused.terminal->traversal == "linear" && paused.terminal->inputs_consumed == 4U,
-           "RF-2.5: a cancel while paused ends the take cancelled at frame 3");
+               paused.terminal->traversal == "linear" && paused.terminal->inputs_consumed == 3U,
+           "RF-2.5, RF-4.1: a cancel while paused ends the take at frame 2; the input of frame 3 "
+           "was not consumed");
     expect(paused.cancel_to_terminal_ms > 0.0 && paused.cancel_to_terminal_ms < 2000.0,
            "P-6: the paused Runtime attends the cancel within 2 s");
     expect(!paused.states.empty() && paused.states.back().phase == "closing",
@@ -237,7 +240,7 @@ int main(int argc, char **argv) {
 
     // RNF-6: a 1.0 request is served without the messages of 1.1.
     const auto legacy = run(paths, "legacy", paths.take, std::nullopt,
-                            "frame=2 key space down\nafter=0 key space up\npaused=3 key space "
+                            "frame=2 key space down\nafter=0 key space up\npaused=2 key space "
                             "down\nafter=0 key space up\n",
                             CancelWhen::never);
     expect(legacy.statuses == 0U && legacy.events.empty(),

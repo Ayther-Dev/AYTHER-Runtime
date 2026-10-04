@@ -56,10 +56,10 @@ ri::InspectionController playing_until(std::uint32_t k, bool last_take = true) {
     return controller;
 }
 
+// Paused at k by Space during the wait after k (RF-4.1: no frame in progress).
 ri::InspectionController paused_at(std::uint32_t k) {
-    auto controller = playing_until(k - 1U);
+    auto controller = playing_until(k);
     (void)controller.key(Key::toggle);
-    (void)controller.frame_completed(k);
     return controller;
 }
 
@@ -75,18 +75,34 @@ void playback_and_pause() {
            "RF-4.10: Space while preparing leaves no pending order");
     (void)controller.frame_completed(0);
     (void)controller.frame_completed(1);
-    (void)controller.key(Key::toggle);
+    // Space during the wait after frame 1: no frame is in progress, so the last completed one
+    // stays (spec.md, Pausa; RF-4.1). Frame 2 is not started.
+    const auto waiting = controller.key(Key::toggle, ri::FrameActivity::between_frames);
+    expect(controller.phase() == Phase::paused && controller.position() == 1U &&
+               !controller.may_run_frame() && has(waiting, Kind::present_frame, 1) &&
+               has(waiting, Kind::pause_audio) && !has(waiting, Kind::present_frame, 2),
+           "RF-4.1: Space between frames pauses at the last completed frame, presented once");
+    expect(notice(controller.key(Key::toggle) /* resume */, Notice::none) ||
+               controller.phase() == Phase::playing,
+           "RF-4.4: Space in pause resumes");
+    expect(controller.phase() == Phase::playing && controller.next_frame() == 2U,
+           "RF-4.4: playback resumes at k+1");
+
+    // Space while frame 2 is being produced: that frame finishes and is presented in pause.
+    (void)controller.key(Key::toggle, ri::FrameActivity::producing);
     expect(controller.phase() == Phase::pausing && !controller.may_run_frame(),
-           "RF-4.1: Space while playing starts pausing; no new frame starts");
+           "RF-4.1: Space during a frame starts pausing; no new frame starts after it");
     const auto paused = controller.frame_completed(2);
     expect(controller.phase() == Phase::paused && controller.position() == 2U &&
                has(paused, Kind::present_frame, 2) && has(paused, Kind::pause_audio),
            "RF-4.1, RF-4.2: the pause happens at the end of the frame in progress");
-    expect(notice(controller.key(Key::toggle) /* resume */, Notice::none) ||
-               controller.phase() == Phase::playing,
-           "RF-4.4: Space in pause resumes");
-    expect(controller.phase() == Phase::playing && controller.next_frame() == 3U,
-           "RF-4.4: playback resumes at k+1");
+
+    // Before the first frame there is no completed frame to keep: frame 0 finishes.
+    ri::InspectionController first{10, true};
+    (void)first.prepared();
+    (void)first.key(Key::toggle, ri::FrameActivity::between_frames);
+    expect(first.phase() == Phase::pausing && first.next_frame() == 0U,
+           "RF-4.1: Space before the first frame pauses at the end of frame 0");
 }
 
 // P-2 (RF-4.1): playback waits for the turn of each frame; Space during that wait finishes the
@@ -130,7 +146,7 @@ void navigation() {
                start.phase() == Phase::paused,
            "RF-5.5: ← at frame 0 stays at 0");
     auto end = playing_until(8, false);
-    (void)end.key(Key::toggle);
+    (void)end.key(Key::toggle, ri::FrameActivity::producing);
     (void)end.frame_completed(9);
     const auto beyond = end.key(Key::right);
     expect(end.position() == 9U && !has(beyond, Kind::recover_frame) &&
@@ -164,7 +180,7 @@ void info_and_debug() {
     expect(controller.debug_visible() && has(shown, Kind::toggle_debug) &&
                controller.phase() == Phase::playing,
            "RF-6.1: I toggles while playing without changing the state");
-    (void)controller.key(Key::toggle);
+    (void)controller.key(Key::toggle, ri::FrameActivity::producing);
     (void)controller.frame_completed(3);
     (void)controller.key(Key::info);
     expect(!controller.debug_visible() && controller.phase() == Phase::paused &&
@@ -208,10 +224,28 @@ void interruption_and_cancellation() {
 }
 
 void natural_end() {
+    // RF-2.8, RF-4.1 (DI-13): after N−1 of an intermediate take the next take starts on the next
+    // cadence slot; until then no frame runs and the take still shows N−1.
     auto middle = playing_until(8, false);
     const auto next = middle.frame_completed(9);
-    expect(has(next, Kind::advance_take) && middle.phase() == Phase::closing,
-           "RF-2.8: an intermediate take gives way to the next one");
+    expect(!has(next, Kind::advance_take) && middle.phase() == Phase::playing &&
+               middle.take_end_pending() && !middle.may_run_frame() && middle.position() == 9U,
+           "RF-2.8: after N−1 the next take waits for the next cadence slot");
+    const auto slot = middle.take_slot_reached();
+    expect(has(slot, Kind::advance_take) && middle.phase() == Phase::closing &&
+               !middle.take_end_pending(),
+           "RF-2.8: an intermediate take gives way to the next one on its slot");
+
+    // Space in that wait: no frame is in progress, so N−1 stays and the next take does not start.
+    auto held_end = playing_until(9, false);
+    const auto stop = held_end.key(Key::toggle);
+    expect(held_end.phase() == Phase::paused && held_end.position() == 9U &&
+               has(stop, Kind::present_frame, 9) && has(stop, Kind::pause_audio) &&
+               !has(stop, Kind::advance_take) && !held_end.take_end_pending() &&
+               held_end.take_slot_reached().empty(),
+           "RF-2.8, RF-4.1: a pause before the next take starts stays on N−1 of this take");
+    expect(has(held_end.key(Key::toggle), Kind::advance_take),
+           "RF-4.8: Space at the paused N−1 starts the next take");
     auto last = playing_until(8, true);
     const auto ended = last.frame_completed(9);
     expect(last.phase() == Phase::paused && last.position() == 9U && last.ended_naturally() &&
@@ -220,7 +254,7 @@ void natural_end() {
     expect(notice(last.key(Key::toggle), Notice::no_next_frame),
            "RF-4.8: Space at N−1 without more takes says there is no next frame");
     auto pending = playing_until(8, false);
-    (void)pending.key(Key::toggle);
+    (void)pending.key(Key::toggle, ri::FrameActivity::producing);
     const auto held = pending.frame_completed(9);
     expect(pending.phase() == Phase::paused && pending.position() == 9U &&
                !has(held, Kind::advance_take),
