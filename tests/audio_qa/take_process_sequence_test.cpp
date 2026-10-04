@@ -17,11 +17,9 @@ void require(const bool condition, const char *const message) {
 
 int main() {
     try {
-        const qa::Request request{"request-127",
-                                  "session-127",
-                                  "conditions-127",
-                                  {"take-main", "take-complementary"},
-                                  qa::Admission::accepted};
+        const qa::Request request{"request-127",           "session-127",
+                                  "conditions-127",        {"take-main", "take-complementary"},
+                                  qa::Admission::accepted, std::nullopt};
         qa::TakeRunSequence selected{request, {"run-main", "run-complementary"}};
         require(selected.error() == qa::TakeRunSequenceError::none,
                 "selected_take_sequence_was_invalid");

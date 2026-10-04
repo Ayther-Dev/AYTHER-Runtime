@@ -1,5 +1,6 @@
 #include "check_execution.h"
 
+#include "cancellation_message.h"
 #include "capability_gate.h"
 #include "capability_report.h"
 #include "control_message.h"
@@ -7,6 +8,7 @@
 #include "fact_batch.h"
 #include "incremental_evidence.h"
 #include "inherited_channel.h"
+#include "inspection_evidence.h"
 #include "isolated_runtime_data.h"
 #include "pcm_message.h"
 #include "play_launch_manifest.h"
@@ -18,26 +20,20 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
 namespace ayther::audio_qa {
 namespace {
-
-[[nodiscard]] const std::string *material_path(const Reference &reference,
-                                               const MaterialRole role) noexcept {
-    for (const auto &material : reference.materials) {
-        if (material.role == role && material.source_locator.value)
-            return &*material.source_locator.value;
-    }
-    return nullptr;
-}
 
 [[nodiscard]] std::wstring wide(const std::string &value) {
     return std::filesystem::path{value}.wstring();
@@ -89,65 +85,120 @@ struct RuntimeDataLocation {
 #endif
 }
 
-[[nodiscard]] const std::string *condition_value(const Reference &reference,
-                                                 const std::string_view key) noexcept {
-    for (const auto &condition : reference.conditions) {
-        if (condition.key == key && condition.value.value)
-            return &*condition.value.value;
+// Watches the cancel token while a take runs and sends `cancel` (contracts.md C1) over
+// the control channel once. The channel stays open until stop(), after the terminal.
+class CancellationForwarder final {
+  public:
+    CancellationForwarder(OwnedChannelHandle &channel, const CancelToken *token,
+                          std::string request_id, std::string run_id)
+        : channel_(channel), token_(token), request_id_(std::move(request_id)),
+          run_id_(std::move(run_id)) {
+        if (token_ != nullptr)
+            watcher_ = std::thread{[this] { watch(); }};
     }
-    return nullptr;
-}
+    ~CancellationForwarder() { stop(); }
+    CancellationForwarder(const CancellationForwarder &) = delete;
+    CancellationForwarder &operator=(const CancellationForwarder &) = delete;
+
+    void stop() noexcept {
+        stopping_.store(true, std::memory_order_release);
+        if (watcher_.joinable())
+            watcher_.join();
+        channel_.reset();
+    }
+
+  private:
+    void watch() noexcept {
+        while (!stopping_.load(std::memory_order_acquire)) {
+            if (token_->requested()) {
+                const auto encoded = encode_cancellation_message(
+                    {request_id_, run_id_, CancellationStage::requested, 0U, std::nullopt}, 2U);
+                if (const auto *bytes = std::get_if<std::vector<std::byte>>(&encoded))
+                    (void)write_channel(channel_, *bytes);
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds{20});
+        }
+    }
+
+    OwnedChannelHandle &channel_;
+    const CancelToken *token_;
+    std::string request_id_;
+    std::string run_id_;
+    std::atomic<bool> stopping_{};
+    std::thread watcher_;
+};
 
 void append_value_argument(std::vector<std::wstring> &arguments, const std::wstring_view option,
-                           const std::string *const value) {
-    if (value == nullptr || value->empty())
+                           const std::optional<std::string> &value) {
+    if (!value || value->empty())
         return;
     arguments.emplace_back(option);
     arguments.push_back(wide(*value));
 }
 
-[[nodiscard]] std::optional<bool> boolean_condition(const Reference &reference,
-                                                    const std::string_view key) noexcept {
-    const auto *value = condition_value(reference, key);
-    if (value == nullptr)
-        return std::nullopt;
-    if (*value == "true")
-        return true;
-    if (*value == "false")
-        return false;
-    return std::nullopt;
-}
-
 } // namespace
 
-CheckExecutionResult execute_check_replay(const CheckOptions &options, const Request &request,
-                                          std::string run_id) noexcept {
+std::vector<std::wstring>
+runtime_replay_arguments(const EffectiveRequest &request, const std::string_view control_token,
+                         const std::string_view data_token, const std::string_view run_id,
+                         const std::size_t take_position, const bool last_take) {
+    std::vector<std::wstring> arguments{L"--qa-session",
+                                        L"--qa-control-channel",
+                                        wide(std::string{control_token}),
+                                        L"--qa-data-channel",
+                                        wide(std::string{data_token}),
+                                        L"--qa-run-id",
+                                        wide(std::string{run_id}),
+                                        L"--core",
+                                        wide(request.core),
+                                        L"--rom",
+                                        wide(request.rom)};
+    if (request.pack && request.pack_mode == "hd") {
+        arguments.emplace_back(L"--pack");
+        arguments.push_back(wide(*request.pack));
+    }
+    append_value_argument(arguments, L"--manifest", request.play_manifest);
+    append_value_argument(arguments, L"--qa-presentation", request.presentation);
+    const auto &conditions = request.conditions;
+    append_value_argument(arguments, L"--profile", conditions.profile);
+    append_value_argument(arguments, L"--subsystems", conditions.subsystems);
+    append_value_argument(arguments, L"--mute-buses", conditions.mute_buses);
+    append_value_argument(arguments, L"--output", conditions.video_output);
+    append_value_argument(arguments, L"--patch", conditions.patch);
+    if (conditions.shaders)
+        arguments.emplace_back(*conditions.shaders ? L"--shaders" : L"--no-shaders");
+    for (const auto &option : conditions.core_options) {
+        arguments.emplace_back(L"--core-option");
+        arguments.push_back(wide(option));
+    }
+    if (!request.trust_registry.empty()) {
+        arguments.emplace_back(L"--trust-registry");
+        arguments.push_back(wide(request.trust_registry));
+    }
+    arguments.emplace_back(L"--qa-take-position");
+    arguments.push_back(std::to_wstring(take_position));
+    if (last_take)
+        arguments.emplace_back(L"--qa-last-take");
+    return arguments;
+}
+
+CheckExecutionResult execute_check_replay(const EffectiveRequest &effective, const Request &request,
+                                          std::string run_id, const ReplayExecutionControl &control,
+                                          ReplayCessation &cessation) noexcept {
+    cessation = {};
     try {
         if (request.take_ids.size() != 1U || run_id.empty())
             return CheckExecutionError::result_mismatch;
-        const auto loaded =
-            load_play_launch_manifest(options.play_manifest, "qa-check-baseline",
-                                      "qa-check-execution", "qa-check-play-manifest");
-        const auto *reference = std::get_if<Reference>(&loaded);
-        if (reference == nullptr)
-            return CheckExecutionError::manifest_unavailable;
-        const auto stored_reference = read_reference(options.reference);
-        const auto *campaign_reference = std::get_if<StoredReference>(&stored_reference);
-        if (campaign_reference == nullptr)
-            return CheckExecutionError::reference_unavailable;
-        const auto *core = material_path(*reference, MaterialRole::core);
-        const auto *rom = material_path(*reference, MaterialRole::rom);
-        if (core == nullptr || rom == nullptr)
-            return CheckExecutionError::manifest_missing_material;
 
-        const auto identified = identify_runtime_binary(options.runtime);
+        const auto identified = identify_runtime_binary(effective.runtime);
         const auto *runtime = std::get_if<RuntimeBinaryIdentity>(&identified);
         if (runtime == nullptr)
             return CheckExecutionError::runtime_identity_unavailable;
 
         const auto data_location = runtime_data_location();
         auto prepared_data = prepare_isolated_runtime_data(data_location.user_root,
-                                                           std::filesystem::path{options.output} /
+                                                           std::filesystem::path{effective.output} /
                                                                (".runtime-data-" + run_id));
         auto *prepared = std::get_if<IsolatedRuntimeData>(&prepared_data);
         if (prepared == nullptr)
@@ -155,13 +206,16 @@ CheckExecutionResult execute_check_replay(const CheckOptions &options, const Req
         auto isolated_data = std::move(*prepared);
         std::vector<RuntimeEnvironmentEntry> environment{
             {data_location.environment_key, isolated_data.directory().wstring()}};
-        if (options.presentation == "visible") {
+        if (effective.presentation == "visible") {
             for (const auto key :
                  {"SystemRoot", "WINDIR", "TEMP", "TMP", "SDL_VIDEO_DRIVER", "SDL_AUDIO_DRIVER",
                   "SDL_AUDIO_FREQUENCY", "SDL_AUDIO_CHANNELS", "SDL_AUDIO_DEVICE_SAMPLE_FRAMES"})
                 if (const auto value = environment_path(key))
                     environment.emplace_back(wide(key), value->wstring());
         }
+        // BR-153: the scripted input of the QA tests reaches the Runtime in both modes.
+        if (const auto script = environment_path("AYTHER_QA_INPUT_SCRIPT"))
+            environment.emplace_back(L"AYTHER_QA_INPUT_SCRIPT", script->wstring());
         const auto capability_query = query_runtime_process(*runtime, {L"--qa-capabilities"},
                                                             environment, 64U * 1024U, 2000U);
         const auto *capability_output = std::get_if<RuntimeQueryOutput>(&capability_query);
@@ -173,63 +227,36 @@ CheckExecutionResult execute_check_replay(const CheckOptions &options, const Req
         CapabilityGate capability_gate;
         if (offer == nullptr || !capability_gate.negotiate(*offer))
             return CheckExecutionError::runtime_incompatible;
-        if (options.presentation == "visible" &&
-            std::find(offer->capabilities.begin(), offer->capabilities.end(),
-                      "visible_replay_v1") == offer->capabilities.end())
+        // Contracts.md C1: visible replay negotiates 1.1; without presentation 1.1 is chosen
+        // when offered and a 1.0 Runtime keeps working (RNF-6).
+        const auto protocol = negotiate_runtime_protocol(*offer, effective.presentation);
+        const auto *negotiated = std::get_if<ContractVersion>(&protocol);
+        if (negotiated == nullptr)
             return CheckExecutionError::runtime_incompatible;
+        // C1-2: a 1.1 request carries its language; the ledger keeps the 1.0 request.
+        auto delivered_request = request;
+        if (*negotiated == runtime_protocol_v11)
+            delivered_request.language = effective.language;
 
         auto control_created = create_inherited_control_channel();
         auto data_created = create_inherited_data_channel();
-        auto *control = std::get_if<InheritedControlChannel>(&control_created);
+        auto *channels = std::get_if<InheritedControlChannel>(&control_created);
         auto *data = std::get_if<InheritedDataChannel>(&data_created);
-        if (control == nullptr || data == nullptr)
+        if (channels == nullptr || data == nullptr)
             return CheckExecutionError::channel_unavailable;
 
-        const auto encoded = encode_request_message(request, 1U);
+        const auto encoded = encode_request_message(delivered_request, 1U);
         const auto *message = std::get_if<std::vector<std::byte>>(&encoded);
         if (message == nullptr)
             return CheckExecutionError::request_encoding_failed;
 
-        std::vector<std::wstring> arguments{
-            L"--qa-session",
-            L"--qa-control-channel",
-            wide(inherited_data_channel_token(control->runtime_read.get())),
-            L"--qa-data-channel",
-            wide(inherited_data_channel_token(data->runtime_write.get())),
-            L"--qa-run-id",
-            wide(run_id),
-            L"--core",
-            wide(*core),
-            L"--rom",
-            wide(*rom)};
-        if (options.pack_mode == "hd") {
-            arguments.emplace_back(L"--pack");
-            arguments.push_back(wide(options.pack));
-        }
-        append_value_argument(arguments, L"--manifest", &options.play_manifest);
-        append_value_argument(arguments, L"--qa-presentation", &options.presentation);
-        append_value_argument(arguments, L"--profile", condition_value(*reference, "profile"));
-        append_value_argument(arguments, L"--subsystems",
-                              condition_value(*reference, "subsystems"));
-        append_value_argument(arguments, L"--mute-buses",
-                              condition_value(*reference, "muted_buses"));
-        append_value_argument(arguments, L"--output", condition_value(*reference, "output"));
-        append_value_argument(arguments, L"--patch", condition_value(*reference, "patch"));
-        if (const auto shaders = boolean_condition(*reference, "shaders"))
-            arguments.emplace_back(*shaders ? L"--shaders" : L"--no-shaders");
-        for (const auto &condition : campaign_reference->reference.conditions) {
-            if (condition.key == "core_option" && condition.value.value) {
-                arguments.emplace_back(L"--core-option");
-                arguments.push_back(wide(*condition.value.value));
-            }
-        }
-        if (!options.trust_registry.empty()) {
-            arguments.emplace_back(L"--trust-registry");
-            arguments.push_back(wide(options.trust_registry));
-        }
-        const std::array<NativeChannelHandle, 2> inherited{control->runtime_read.get(),
+        const auto arguments = runtime_replay_arguments(
+            effective, inherited_data_channel_token(channels->runtime_read.get()),
+            inherited_data_channel_token(data->runtime_write.get()), run_id, control.take_position,
+            control.last_take);
+        const std::array<NativeChannelHandle, 2> inherited{channels->runtime_read.get(),
                                                            data->runtime_write.get()};
-        if (options.presentation == "none")
+        if (effective.presentation == "none")
             environment.insert(environment.end(), {{L"SDL_AUDIO_DRIVER", L"dummy"},
                                                    {L"SDL_AUDIO_FREQUENCY", L"44100"},
                                                    {L"SDL_AUDIO_CHANNELS", L"2"},
@@ -239,12 +266,16 @@ CheckExecutionResult execute_check_replay(const CheckOptions &options, const Req
         auto *process = std::get_if<OwnedRuntimeProcess>(&launched);
         if (process == nullptr)
             return CheckExecutionError::runtime_launch_failed;
-        control->runtime_read.reset();
+        cessation.launched = true;
+        channels->runtime_read.reset();
         data->runtime_write.reset();
 
-        if (!write_channel(control->supervisor_write, *message))
+        if (!write_channel(channels->supervisor_write, *message))
             return CheckExecutionError::request_delivery_failed;
-        control->supervisor_write.reset();
+        // Spec 002 (contracts.md C1): the control channel stays open until the terminal; a
+        // cancellation is forwarded over it as soon as it is requested.
+        CancellationForwarder forwarder{channels->supervisor_write, control.cancel,
+                                        request.request_id, run_id};
 
         const auto admission_message = read_protocol_message(data->supervisor_read, 2U);
         const auto *admission_bytes = std::get_if<std::vector<std::byte>>(&admission_message);
@@ -255,28 +286,76 @@ CheckExecutionResult execute_check_replay(const CheckOptions &options, const Req
         if (accepted == nullptr || accepted->admission != Admission::accepted ||
             accepted->request_id != request.request_id)
             return CheckExecutionError::admission_failed;
+        if (control.on_running)
+            control.on_running();
 
-        auto opened_evidence = open_incremental_evidence(options.output, run_id);
+        auto opened_evidence = open_incremental_evidence(effective.output, run_id);
         auto *evidence_writer = std::get_if<IncrementalEvidenceWriter>(&opened_evidence);
         if (evidence_writer == nullptr)
             return CheckExecutionError::evidence_stream_invalid;
 
         CheckExecutionEvidence evidence;
+        std::vector<InspectionEvent> inspection_events;
         std::uint64_t sequence = 2U;
+        // RF-2.8: after the confirmed result of the last take the Runtime stays paused at N−1
+        // with its window; the channel stays open until the window closes.
+        bool ended_paused{};
+        // RF-2.9: a post-end inspection is a run of its own, never part of the confirmed one.
+        std::optional<IncrementalEvidenceWriter> post_writer;
+        std::string post_run;
+        std::vector<InspectionEvent> post_events;
         for (;;) {
             const auto received = read_protocol_message(data->supervisor_read, 2U);
             const auto *bytes = std::get_if<std::vector<std::byte>>(&received);
+            if (ended_paused && (bytes == nullptr || bytes->size() < protocol_header_bytes))
+                break;
             if (bytes == nullptr || bytes->size() < protocol_header_bytes)
                 return CheckExecutionError::evidence_stream_invalid;
             const auto header =
                 decode_protocol_header(std::span{*bytes}.first(protocol_header_bytes), 2U);
             if (header.error != HeaderError::none || header.header.channel_sequence != sequence)
                 return CheckExecutionError::evidence_stream_invalid;
-            if (header.header.type == MessageType::fact_batch) {
+            if (ended_paused && header.header.type != MessageType::session_status &&
+                header.header.type != MessageType::fact_batch &&
+                header.header.type != MessageType::terminal)
+                return CheckExecutionError::evidence_stream_invalid;
+            if (ended_paused && header.header.type == MessageType::fact_batch) {
+                const auto decoded = decode_fact_batch(*bytes, sequence);
+                const auto *facts = std::get_if<std::vector<Fact>>(&decoded);
+                if (facts == nullptr || !post_writer)
+                    return CheckExecutionError::evidence_stream_invalid;
+                for (const auto &fact : *facts)
+                    if (auto event = read_inspection_event(fact))
+                        post_events.push_back(std::move(*event));
+                (void)post_writer->append_facts(*facts);
+            } else if (ended_paused && header.header.type == MessageType::terminal) {
+                const auto decoded = decode_replay_execution_result(*bytes, sequence);
+                const auto *closed = std::get_if<ReplayExecutionResult>(&decoded);
+                if (closed == nullptr || !post_writer || closed->run_id != post_run ||
+                    closed->traversal != std::optional<std::string>{"post_end_inspection"})
+                    return CheckExecutionError::evidence_stream_invalid;
+                const auto directory = std::filesystem::path{effective.output} / "runs" / post_run;
+                const auto payload = std::span{*bytes}.subspan(protocol_header_bytes);
+                auto traversal = traversal_of_take(closed->recording_frames,
+                                                   closed->inputs_consumed, post_events);
+                traversal.kind = TraversalKind::post_end_inspection;
+                traversal.linear_completed = false;
+                if (!std::holds_alternative<DurablePublishedFile>(
+                        publish_durable_file(directory / "replay-result.toml", payload)) ||
+                    !std::holds_alternative<DurablePublishedFile>(
+                        write_traversal(directory / "traversal.toml", traversal)))
+                    return CheckExecutionError::evidence_stream_invalid;
+                (void)post_writer->finish(closed->trace, false);
+                post_writer.reset();
+            } else if (header.header.type == MessageType::fact_batch) {
                 const auto decoded = decode_fact_batch(*bytes, sequence);
                 const auto *facts = std::get_if<std::vector<Fact>>(&decoded);
                 if (facts == nullptr)
                     return CheckExecutionError::evidence_stream_invalid;
+                // C2: inspection events build the traversal of the take (RF-5.8).
+                for (const auto &fact : *facts)
+                    if (auto event = read_inspection_event(fact))
+                        inspection_events.push_back(std::move(*event));
                 if (!evidence.preservation_error) {
                     if (const auto error = evidence_writer->append_facts(*facts))
                         evidence.preservation_error = *error;
@@ -290,6 +369,26 @@ CheckExecutionResult execute_check_replay(const CheckOptions &options, const Req
                     if (const auto error = evidence_writer->append_pcm(*chunk))
                         evidence.preservation_error = *error;
                 }
+            } else if (header.header.type == MessageType::session_status) {
+                // Protocol 1.1 (contracts.md C1-3, C1-6): live state and post-end runs.
+                const auto status = decode_session_status(*bytes, sequence);
+                if (std::holds_alternative<ProtocolV11Error>(status))
+                    return CheckExecutionError::evidence_stream_invalid;
+                if (const auto *opened = std::get_if<RunOpened>(&status)) {
+                    // C1-6: only after the confirmed result of the last take.
+                    if (!ended_paused || post_writer)
+                        return CheckExecutionError::evidence_stream_invalid;
+                    auto opened_post = open_incremental_evidence(effective.output, opened->run_id);
+                    auto *writer = std::get_if<IncrementalEvidenceWriter>(&opened_post);
+                    if (writer == nullptr)
+                        return CheckExecutionError::evidence_stream_invalid;
+                    post_writer.emplace(std::move(*writer));
+                    post_run = opened->run_id;
+                    post_events.clear();
+                }
+                if (const auto *state = std::get_if<ReplayStateView>(&status);
+                    state != nullptr && control.on_replay_state)
+                    control.on_replay_state(*state);
             } else if (header.header.type == MessageType::terminal) {
                 const auto decoded = decode_replay_execution_result(*bytes, sequence);
                 const auto *result = std::get_if<ReplayExecutionResult>(&decoded);
@@ -297,12 +396,22 @@ CheckExecutionResult execute_check_replay(const CheckOptions &options, const Req
                     return CheckExecutionError::terminal_failed;
                 evidence.replay = *result;
                 const auto payload = std::span{*bytes}.subspan(protocol_header_bytes);
-                const auto published = publish_durable_file(
-                    std::filesystem::path{options.output} / "runs" / run_id / "replay-result.toml",
-                    payload);
+                const auto published =
+                    publish_durable_file(std::filesystem::path{effective.output} / "runs" / run_id /
+                                             "replay-result.toml",
+                                         payload);
                 if (!std::holds_alternative<DurablePublishedFile>(published))
                     return CheckExecutionError::evidence_stream_invalid;
-                break;
+                // Spec 002 (RF-5.8, RF-2.13): the traversal is confirmed with the result.
+                if (!std::holds_alternative<DurablePublishedFile>(write_traversal(
+                        std::filesystem::path{effective.output} / "runs" / run_id /
+                            "traversal.toml",
+                        traversal_of_take(result->recording_frames, result->inputs_consumed,
+                                          inspection_events))))
+                    return CheckExecutionError::evidence_stream_invalid;
+                if (!result->ended_paused || effective.presentation != "visible")
+                    break;
+                ended_paused = true;
             } else {
                 return CheckExecutionError::evidence_stream_invalid;
             }
@@ -320,10 +429,15 @@ CheckExecutionResult execute_check_replay(const CheckOptions &options, const Req
                 evidence.preservation_error = std::get<IntegratedEvidenceError>(publication);
             }
         }
+        // RNF-5: the stream ended with the terminal and the writer concluded, complete or
+        // not; nothing more is written for this take.
+        cessation.evidence_closed = true;
 
         std::int32_t exit_code{};
         if (!process->wait(30000U, exit_code))
             return CheckExecutionError::runtime_timeout;
+        cessation.exited = true;
+        forwarder.stop();
         if (result.run_id != run_id || result.take_id != request.take_ids[0])
             return CheckExecutionError::result_identity_mismatch;
         if (result.succeeded && result.inputs_consumed != result.recording_frames)

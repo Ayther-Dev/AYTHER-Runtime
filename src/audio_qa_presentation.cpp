@@ -1,17 +1,25 @@
 #include "audio_qa_presentation.h"
 
 #include "pack_layers.h"
+#include "qa_window_events.h"
 #include "vulkan_backend/aspect_fit.h"
 #include "vulkan_backend/vk_present.h"
 
+#include <chrono>
 #include <filesystem>
 
 namespace ayther::runtime {
+namespace {
+
+using replay_inspection::VideoResult;
+
+} // namespace
 
 AudioQaPresentation::~AudioQaPresentation() {
     auto &context = presentation_.context();
     if (const auto failure = context.wait_idle("AudioQaPresentation teardown"))
         vulkan::log_vk_failure(*failure);
+    debug_overlay_.shutdown(context);
     if (renderer_ready_)
         renderer_.shutdown(context.engine_view());
     presentation_.shutdown();
@@ -89,6 +97,8 @@ void AudioQaPresentation::initialize(AytherSession &session, const RuntimeOption
         postprocess.set_source(context, renderer_.render_image());
     else
         degrade("postprocess_unavailable");
+    // RF-6.1: the replay QA has its own overlay; without it the replay is still presented.
+    (void)debug_overlay_.init(context, swapchain, window_);
     ready_ = true;
 }
 
@@ -106,9 +116,123 @@ bool AudioQaPresentation::poll(const bool allow_cancel) {
                 report_.cancelled = true;
             return false;
         }
-        // All keyboard, gamepad and gameplay shortcuts are intentionally ignored.
+        // While closing, keyboard, gamepad and gameplay shortcuts are ignored.
     }
     return true;
+}
+
+void AudioQaPresentation::poll_events(std::vector<PresentationEvent> &events) {
+    if (!video_initialized_)
+        return;
+    const auto own = window_ != nullptr ? SDL_GetWindowID(window_) : SDL_WindowID{0};
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        const auto translated = translate_window_event(event, own);
+        if (!translated)
+            continue;
+        if (translated->kind == PresentationEvent::Kind::audio_removed)
+            audio_removed_ = true;
+        if (translated->kind == PresentationEvent::Kind::audio_added)
+            audio_removed_ = false;
+        events.push_back(*translated);
+    }
+}
+
+void AudioQaPresentation::deliver(const replay_inspection::ScriptAction &action) {
+    using replay_inspection::ScriptActionKind;
+    SDL_Event event{};
+    const auto window = window_ != nullptr ? SDL_GetWindowID(window_) : SDL_WindowID{0};
+    switch (action.kind) {
+    case ScriptActionKind::key_down:
+    case ScriptActionKind::key_repeat:
+    case ScriptActionKind::key_up:
+        event.type =
+            action.kind == ScriptActionKind::key_up ? SDL_EVENT_KEY_UP : SDL_EVENT_KEY_DOWN;
+        event.key.windowID = window;
+        event.key.scancode = scancode_of(action.key);
+        event.key.down = action.kind != ScriptActionKind::key_up;
+        event.key.repeat = action.kind == ScriptActionKind::key_repeat;
+        break;
+    case ScriptActionKind::focus_lost:
+    case ScriptActionKind::focus_gained:
+        event.type = action.kind == ScriptActionKind::focus_gained ? SDL_EVENT_WINDOW_FOCUS_GAINED
+                                                                   : SDL_EVENT_WINDOW_FOCUS_LOST;
+        event.window.windowID = window;
+        break;
+    case ScriptActionKind::minimize:
+    case ScriptActionKind::restore:
+        event.type = action.kind == ScriptActionKind::minimize ? SDL_EVENT_WINDOW_MINIMIZED
+                                                               : SDL_EVENT_WINDOW_RESTORED;
+        event.window.windowID = window;
+        break;
+    case ScriptActionKind::audio_removed:
+    case ScriptActionKind::audio_added:
+        event.type = action.kind == ScriptActionKind::audio_removed ? SDL_EVENT_AUDIO_DEVICE_REMOVED
+                                                                    : SDL_EVENT_AUDIO_DEVICE_ADDED;
+        event.adevice.recording = false;
+        break;
+    case ScriptActionKind::close:
+        event.type = SDL_EVENT_WINDOW_CLOSE_REQUESTED;
+        event.window.windowID = window;
+        break;
+    case ScriptActionKind::video_fail:
+        injected_video_failures_ += action.count;
+        return;
+    case ScriptActionKind::corrupt_checkpoints:
+    case ScriptActionKind::corrupt_visual_state:
+        return;
+    case ScriptActionKind::scroll:
+        if (action.scroll == replay_inspection::ScrollKey::wheel_up ||
+            action.scroll == replay_inspection::ScrollKey::wheel_down) {
+            event.type = SDL_EVENT_MOUSE_WHEEL;
+            event.wheel.windowID = window;
+            event.wheel.y = action.scroll == replay_inspection::ScrollKey::wheel_up ? 1.0F : -1.0F;
+        } else {
+            event.type = SDL_EVENT_KEY_DOWN;
+            event.key.windowID = window;
+            event.key.down = true;
+            event.key.scancode =
+                action.scroll == replay_inspection::ScrollKey::page_up     ? SDL_SCANCODE_PAGEUP
+                : action.scroll == replay_inspection::ScrollKey::page_down ? SDL_SCANCODE_PAGEDOWN
+                : action.scroll == replay_inspection::ScrollKey::home      ? SDL_SCANCODE_HOME
+                                                                           : SDL_SCANCODE_END;
+        }
+        break;
+    }
+    (void)SDL_PushEvent(&event);
+}
+
+void AudioQaPresentation::set_debug(bool visible, std::vector<replay_inspection::DebugLine> lines,
+                                    std::string notice) {
+    if (visible && !debug_visible_)
+        debug_overlay_.reset_scroll();
+    debug_visible_ = visible;
+    debug_lines_ = std::move(lines);
+    debug_notice_ = std::move(notice);
+}
+
+std::string AudioQaPresentation::device_name() const {
+    auto &context = const_cast<PresentationController &>(presentation_).context();
+    if (!ready_ || context.physical_device() == VK_NULL_HANDLE)
+        return {};
+    VkPhysicalDeviceProperties properties{};
+    vkGetPhysicalDeviceProperties(context.physical_device(), &properties);
+    return properties.deviceName;
+}
+
+float AudioQaPresentation::refresh_hz() const {
+    if (window_ == nullptr)
+        return 0.0F;
+    const auto *mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window_));
+    return mode != nullptr ? mode->refresh_rate : 0.0F;
+}
+
+bool AudioQaPresentation::recover_video() {
+    if (!ready_ || window_ == nullptr || injected_video_failures_ != 0U)
+        return false;
+    int width{}, height{};
+    SDL_GetWindowSizeInPixels(window_, &width, &height);
+    return rebuild(width, height);
 }
 
 bool AudioQaPresentation::rebuild(const int width, const int height) {
@@ -122,6 +246,7 @@ bool AudioQaPresentation::rebuild(const int width, const int height) {
     if (!renderer_.resize(context.engine_view(), static_cast<std::uint32_t>(canvas.w),
                           static_cast<std::uint32_t>(canvas.h)))
         return false;
+    (void)debug_overlay_.rebuild(context, swapchain);
     if (postprocess_ready_) {
         postprocess_ready_ = presentation_.postprocess().rebuild(context, swapchain);
         if (postprocess_ready_)
@@ -132,12 +257,21 @@ bool AudioQaPresentation::rebuild(const int width, const int height) {
     return true;
 }
 
-void AudioQaPresentation::present(AytherSession &session, const FrameView &view,
-                                  const std::uint32_t recording_frame) {
+VideoResult AudioQaPresentation::present(AytherSession &session, const FrameView &view,
+                                         const std::uint32_t recording_frame, const bool linear) {
+    composed_at_.reset();
+    draw_report_.reset();
+    // BR-148: an injected loss behaves as a failed acquisition.
+    if (injected_video_failures_ != 0U) {
+        --injected_video_failures_;
+        report_.affect(recording_frame);
+        degrade("video_acquire_failed");
+        return VideoResult::acquire_failed;
+    }
     if (!ready_ || !view.fb_pixels || (SDL_GetWindowFlags(window_) & SDL_WINDOW_MINIMIZED)) {
         report_.affect(recording_frame);
         degrade("video_frame_unavailable");
-        return;
+        return VideoResult::acquire_failed;
     }
     auto &context = presentation_.context();
     auto &swapchain = presentation_.swapchain();
@@ -149,18 +283,20 @@ void AudioQaPresentation::present(AytherSession &session, const FrameView &view,
          !rebuild(width, height))) {
         report_.affect(recording_frame);
         degrade("video_resize_failed");
-        return;
+        return VideoResult::acquire_failed;
     }
     auto acquired = swapchain.begin_frame(context);
     if (!acquired) {
         report_.affect(recording_frame);
         degrade("video_acquire_failed");
         (void)rebuild(width, height);
-        return;
+        return VideoResult::acquire_failed;
     }
     auto &frame = *acquired;
     renderer_.render(context.engine_view(), frame.command_buffer(), view, session.pack(), hd_,
                      active_layers_);
+    composed_at_ = std::chrono::steady_clock::now();
+    draw_report_ = renderer_.last_draw_report();
     if (postprocess_ready_) {
         const auto &sp = view.shader_params;
         const auto fx =
@@ -181,14 +317,21 @@ void AudioQaPresentation::present(AytherSession &session, const FrameView &view,
                                      profile_->scaling == OutputScaling::Integer,
                                      profile_->smoothing);
     }
+    const auto overlay_started = std::chrono::steady_clock::now();
+    debug_overlay_.render(frame, debug_visible_, debug_lines_, debug_notice_);
+    last_overlay_ms_ = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                                 overlay_started)
+                           .count();
     VkPresent::finalize(context, frame);
     if (swapchain.end_frame(context, frame)) {
-        ++report_.presented_frames;
-    } else {
-        report_.affect(recording_frame);
-        degrade("video_present_failed");
-        (void)rebuild(width, height);
+        if (linear)
+            ++report_.presented_frames;
+        return VideoResult::presented;
     }
+    report_.affect(recording_frame);
+    degrade("video_present_failed");
+    (void)rebuild(width, height);
+    return VideoResult::present_failed;
 }
 
 } // namespace ayther::runtime

@@ -182,6 +182,38 @@ otherwise every pull request will be blocked by checks that cannot yet be
 selected or satisfied. Debug and analysis presets remain part of MAD-004 and
 are intentionally outside this CI-only change.
 
+## Replay QA
+
+The audio and replay QA tools (`ayther_audio_qa`, the launcher `ayther_replay_qa` and the replay inspection of the Runtime) exist only in a build against the QA Engine package. That package is the published Windows `engine-vpx` artifact of the Engine release, pinned by `dependencies/ayther-engine.qa.lock.json` (separate from the release lock) with its SHA-256, the release `CHECKSUMS.sha256` and its SLSA provenance. The bootstrap downloads and verifies it, and needs an authenticated GitHub CLI.
+
+```powershell
+# Verify the QA lock and extract the pinned QA Engine package
+./tools/bootstrap_ayther_engine_qa.ps1 -ValidateOnly
+$env:AYTHER_ENGINE_PREFIX = & ./tools/bootstrap_ayther_engine_qa.ps1
+$env:VCPKG_ROOT = "C:/dev/vcpkg"
+
+# Configure, build and test without GPU
+cmake --preset windows-qa
+cmake --build --preset windows-qa
+ctest --preset windows-qa -L audio_qa -LE gpu --output-on-failure
+
+# The same plus the tests that need a GPU and a desktop session
+cmake --preset windows-qa-gpu
+cmake --build --preset windows-qa-gpu
+ctest --preset windows-qa-gpu --output-on-failure
+```
+
+- **Presets.**
+  - `windows-qa` inherits `windows-ci`, sets `AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE=ON` and excludes the `gpu` label.
+  - `windows-qa-gpu` adds `AYTHER_ENABLE_GPU_TESTS=ON`: the visible replay, the replay inspection with simulated events, and the launcher window and interface smoke tests.
+- **vcpkg.** The launcher draws its window with the SDL_Renderer backend of Dear ImGui, so `vcpkg.json` enables the `sdl3-renderer-binding` feature of `imgui` next to `sdl3-binding` and `vulkan-binding`.
+- **QA commands.**
+  - `ayther_audio_qa check --runtime <exe> --rom <rom> --take <take.ayr> --output <dir> [--pack <pack.ay>] [--presentation visible]` replays one or more takes and keeps the evidence. `ayther_audio_qa options --format toml` prints the option inventory.
+  - `ayther_replay_qa` is the launcher; see `tools/replay_qa_launcher/README.md`.
+- **Test hooks of the QA build.** They are read only inside `--qa-session` and never in an ordinary Runtime build:
+  - `AYTHER_QA_INPUT_SCRIPT=<file>` gives the replay window a scripted input: keys, focus, faults, closing, damaged checkpoints and overlay scrolling, each triggered by `frame=<k>`, `paused=<k>` or `after=<ms>`. The format is documented in `src/replay_inspection/input_script.h`.
+  - `AYTHER_QA_TIMING_LOG=<file>` writes the time marks of the key router and of the presentation, for the measurements of `tests/audio_qa/inspection_measurement.cpp` (spec 002, `evidence/perf.md`).
+
 ## Tests
 
 ```powershell

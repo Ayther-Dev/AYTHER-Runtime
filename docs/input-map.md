@@ -70,3 +70,22 @@ Without `--input-map`, Runtime uses the defaults shown above and keeps the
 legacy `Backspace` alias for `select`. Supplying any valid input-map file,
 including a partial one, disables that undocumented alias; only the effective
 `select` binding remains active.
+
+## Replay QA window
+
+The visible replay of `ayther_audio_qa check --presentation visible` (spec 002) does not use
+`--input-map`. The game is driven only by the recorded take, and no key, gamepad button or
+gameplay shortcut reaches the game. The window reads just these keys:
+
+| Key | Action |
+| --- | --- |
+| Space | Pause at the end of the frame in progress; in pause, resume from the next frame. |
+| Left / Right | In pause, step one frame back or forward within the take (silent navigation). |
+| `I` | Show or hide the debug record of the frame; never changes the playback or the position. |
+| Page Up, Page Down, Home, End, mouse wheel | Scroll the visible debug record. |
+
+A held key does not repeat. Without focus no key acts, and a key still held when the window
+regains focus stays blocked until it is released. Left and Right together move nothing. Up
+and Down never navigate. The debug record never takes Space, the arrows or `I`, and these keys
+never reach the game. The full
+behavior is described in `audio-qa-evidence.md` («Controles de inspección»).

@@ -5,6 +5,7 @@
 #include <zstd.h>
 
 #include <array>
+#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -119,9 +120,28 @@ void write_recording(const std::filesystem::path &path, const std::vector<std::b
 } // namespace
 
 int main(int argc, char **argv) {
-    if ((argc != 2 && argc != 3) || argv[1] == nullptr)
+    if ((argc != 2 && argc != 3 && argc != 4) || argv[1] == nullptr)
         return 2;
-    if (argc == 3) {
+    // Spec 002 (BR-152, RF-2.8): `--frames N` writes a take of N frames, 1 ≤ N ≤ 54 000 (P-10),
+    // repeating the known inputs.
+    if (argc == 4) {
+        if (std::string_view{argv[2]} != "--frames")
+            return 2;
+        const std::string_view text{argv[3]};
+        std::size_t frames{};
+        const auto parsed = std::from_chars(text.data(), text.data() + text.size(), frames);
+        if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size() || frames == 0U ||
+            frames > 54000U)
+            return 2;
+        const auto cycle = known_inputs;
+        known_inputs.clear();
+        for (std::size_t frame{}; frame < frames; ++frame)
+            known_inputs.push_back(cycle[frame % cycle.size()]);
+    }
+    // Spec 002 (BR-072): `--broken` writes a take whose initial state is not a zstd
+    // frame. Its layout is valid, so only the Runtime finds the problem when it restores.
+    const bool broken = argc == 3 && std::string_view{argv[2]} == "--broken";
+    if (argc == 3 && !broken) {
         if (std::string_view{argv[2]} != "--long")
             return 2;
         const auto cycle = known_inputs;
@@ -148,7 +168,20 @@ int main(int argc, char **argv) {
                     initial.version == synthetic_state_version && initial.frame == 0,
                 "synthetic_initial_state_invalid");
 
-        const auto expected_bytes = make_recording(initial_state);
+        auto expected_bytes = make_recording(initial_state);
+        if (broken) {
+            const auto layout = qa::decode_recording_layout(expected_bytes);
+            require(layout.error == qa::RecordingLayoutError::none,
+                    "public_recording_layout_rejected");
+            for (std::uint64_t index = 0; index < 4U; ++index)
+                expected_bytes[static_cast<std::size_t>(layout.layout.compressed_state.offset +
+                                                        index)] = std::byte{0};
+            write_recording(output, expected_bytes);
+            retro_unload_game();
+            retro_deinit();
+            std::printf("public_recording_fixture: broken take path=%s\n", output.string().c_str());
+            return 0;
+        }
         write_recording(output, expected_bytes);
         const auto bytes = read_bytes(output);
         require(bytes == expected_bytes, "public_recording_bytes_changed");

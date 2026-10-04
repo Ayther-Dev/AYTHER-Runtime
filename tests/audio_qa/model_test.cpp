@@ -22,7 +22,8 @@ void requests() {
                               "session-1",
                               "conditions-sha256",
                               {"take-B", "take-A", "take-B"},
-                              qa::Admission::accepted};
+                              qa::Admission::accepted,
+                              std::nullopt};
     const auto decoded = qa::request_from_toml(encoded(qa::to_toml(request)));
     require(std::holds_alternative<qa::Request>(decoded) &&
                 std::get<qa::Request>(decoded) == request,

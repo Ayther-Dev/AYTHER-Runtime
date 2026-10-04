@@ -244,6 +244,14 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char *const argv
             if (auto error = read_string(argument, options.probe_core)) {
                 return RuntimeOptionsParseResult{std::move(*error)};
             }
+        } else if (argument == "--probe-rom") {
+            if (auto error = read_string(argument, options.probe_rom)) {
+                return RuntimeOptionsParseResult{std::move(*error)};
+            }
+        } else if (argument == "--probe-pack") {
+            if (auto error = read_string(argument, options.probe_pack)) {
+                return RuntimeOptionsParseResult{std::move(*error)};
+            }
         } else if (argument == "--qa-presentation") {
             if (auto error = read_string(argument, options.qa_presentation))
                 return RuntimeOptionsParseResult{std::move(*error)};
@@ -281,6 +289,19 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char *const argv
             } else {
                 options.play_protocol_version = std::get<std::uint32_t>(parsed);
             }
+        } else if (argument == "--qa-take-position") {
+            auto value = next_value(argument);
+            if (const auto *error = std::get_if<RuntimeOptionError>(&value)) {
+                return RuntimeOptionsParseResult{*error};
+            }
+            auto parsed = parse_unsigned<std::uint32_t>(std::get<std::string_view>(value), argument,
+                                                        static_cast<std::size_t>(index));
+            if (const auto *error = std::get_if<RuntimeOptionError>(&parsed)) {
+                return RuntimeOptionsParseResult{*error};
+            }
+            options.qa_take_position = std::get<std::uint32_t>(parsed);
+        } else if (argument == "--qa-last-take") {
+            options.qa_last_take = true;
         } else if (argument == "--frames") {
             auto value = next_value(argument);
             if (const auto *error = std::get_if<RuntimeOptionError>(&value)) {

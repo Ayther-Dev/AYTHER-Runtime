@@ -13,8 +13,13 @@ inline constexpr std::size_t max_check_arguments = 4096;
 inline constexpr std::size_t max_check_option_value_bytes = 32768;
 inline constexpr std::size_t max_check_takes = 1024;
 
+// Spec 002 (contracts.md C5): ROM and core are explicit selections; the replay
+// conditions that used to arrive only through the Play manifest or the reference
+// are explicit options too. Empty strings mean "not given".
 struct CheckOptions {
     std::string runtime;
+    std::string rom;
+    std::string core;
     std::string reference;
     std::string play_manifest;
     std::string pack;
@@ -25,6 +30,13 @@ struct CheckOptions {
     std::string request_id;
     std::string language = "es";
     std::string presentation = "none";
+    std::string profile;
+    std::string subsystems;
+    std::string mute_buses;
+    std::string video_output;
+    std::string patch;
+    std::string shaders;
+    std::vector<std::string> core_options;
 };
 
 enum class CheckOptionErrorCode {
@@ -40,6 +52,10 @@ enum class CheckOptionErrorCode {
     invalid_number,
     unsupported_presentation,
     unsupported_pack_mode,
+    unsupported_shaders,
+    invalid_unsigned_value,
+    malformed_core_option,
+    too_many_values,
 };
 
 struct CheckOptionError {

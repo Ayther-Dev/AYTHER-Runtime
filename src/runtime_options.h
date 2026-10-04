@@ -57,6 +57,10 @@ struct RuntimeOptions {
     std::vector<std::uint64_t> capture_at;
     bool crash_test{};
     std::string probe_core;
+    // Spec 002 (contracts.md C5): with --probe-core, also load this ROM without running it.
+    std::string probe_rom;
+    // Spec 002 (contracts.md C5): QA build only, probe a pack without starting a game.
+    std::string probe_pack;
     std::string manifest_path;
     bool hd_compose{};
     std::optional<std::uint32_t> play_protocol_version;
@@ -66,6 +70,10 @@ struct RuntimeOptions {
     std::string qa_data_channel;
     std::string qa_run_id;
     std::string qa_presentation = "none";
+    // Spec 002 (contracts.md C1-3, C1-6): the position of the take in the request and whether
+    // it is the last one, for the live state and the natural end (RF-2.8).
+    std::uint32_t qa_take_position{};
+    bool qa_last_take{};
 
     [[nodiscard]] static RuntimeOptionsParseResult parse(int argc, char *const argv[]);
 };

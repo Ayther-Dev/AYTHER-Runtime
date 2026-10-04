@@ -9,6 +9,12 @@ These files contain only generated AYTHER test data:
   recording inputs to that PCM asset.
 - `public-synthetic-trust.toml` trusts only the reproducible test key and only
   for `ayther-public-synthetic-v1`.
+- `public-synthetic-poses.ay` is the same signed pack with one pose and a valid
+  1x1 PNG, and `public-synthetic-corrupt-asset.ay` the same pose with a PNG whose
+  image data is not a zlib stream; both are listed and signed in the index, so
+  only decoding finds the problem (spec 002, pack probe).
+- `public-synthetic-visual.ay` is the same signed pose pack without audio catalog,
+  the valid visual-only pack that spec 002 replays with zero audio assignments.
 
 `generate_public_fixtures.py` rebuilds all four artifacts. Its signing key is
 derived from a public label and is explicitly unsuitable for production. CTest

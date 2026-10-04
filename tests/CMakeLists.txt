@@ -54,6 +54,15 @@ if(AYTHER_PWSH_EXECUTABLE)
                 -File ${CMAKE_CURRENT_SOURCE_DIR}/runtime_oot_smoke_contract_test.ps1
                 -SmokeScript ${CMAKE_CURRENT_SOURCE_DIR}/../tools/runtime_oot_smoke.ps1
     )
+    # Spec 002, BR-175 prepared locally: the windows-qa job of pull request CI.
+    add_test(
+        NAME qa_ci_workflow_contract
+        COMMAND ${AYTHER_PWSH_EXECUTABLE}
+                -NoProfile
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/qa_ci_workflow_contract_test.ps1
+                -Workflow ${CMAKE_CURRENT_SOURCE_DIR}/../.github/workflows/qa.yml
+                -Presets ${CMAKE_CURRENT_SOURCE_DIR}/../CMakePresets.json
+    )
     add_test(
         NAME ci_workflow_contract
         COMMAND ${AYTHER_PWSH_EXECUTABLE}
@@ -146,6 +155,69 @@ add_test(
     COMMAND status_emitter_tests
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
+# ------------------------------------------------------------------
+# pack_probe_tests — spec 002 (contracts.md C5, BR-056): the pure part of the
+# pack probe. The Engine adapter is exercised by audio_qa_runtime_pack_probe.
+# ------------------------------------------------------------------
+add_executable(pack_probe_tests
+    pack_probe_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/pack_probe.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/status_emitter.cpp
+)
+target_include_directories(pack_probe_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+target_link_libraries(pack_probe_tests PRIVATE ayther_runtime_stb tomlplusplus::tomlplusplus)
+set_target_properties(pack_probe_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    pack_probe
+    COMMAND pack_probe_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+# Spec 002 (BR-157): the QA tools install in their own CPack component.
+add_test(
+    NAME    qa_component_contract
+    COMMAND ${CMAKE_COMMAND}
+            -DBUILD_DIR=${CMAKE_BINARY_DIR}
+            -DCONFIG=$<CONFIG>
+            -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/qa-component/$<CONFIG>
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/qa_component_contract_test.cmake
+)
+set_tests_properties(qa_component_contract PROPERTIES LABELS "qa;install" TIMEOUT 120)
+# Spec 002 (BR-118): the QA presets are declared with the QA lock and the GPU tests.
+add_test(
+    NAME    qa_presets_contract
+    COMMAND ${CMAKE_COMMAND}
+            -DPRESETS=${CMAKE_CURRENT_SOURCE_DIR}/../CMakePresets.json
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/qa_presets_contract_test.cmake
+)
+add_test(
+    NAME    qa_docs_contract
+    COMMAND ${CMAKE_COMMAND}
+            -DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}/..
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/qa_docs_contract_test.cmake
+)
+# Spec 002, BR-174 (RNF-8): the QA bootstrap verifies a published Engine release; the test
+# builds its own package and serves it by file URL.
+if(WIN32 AND AYTHER_PWSH_EXECUTABLE)
+    add_test(
+        NAME    qa_engine_release_bootstrap
+        COMMAND ${AYTHER_PWSH_EXECUTABLE} -NoProfile
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/qa_engine_release_bootstrap_test.ps1
+                -Bootstrap ${CMAKE_CURRENT_SOURCE_DIR}/../tools/bootstrap_ayther_engine_qa.ps1
+                -WorkDirectory ${CMAKE_CURRENT_BINARY_DIR}/qa-release-bootstrap
+    )
+    set_tests_properties(qa_engine_release_bootstrap PROPERTIES LABELS "qa;release" TIMEOUT 180)
+endif()
+add_test(
+    NAME    qa_engine_lock_contract
+    COMMAND ${CMAKE_COMMAND}
+            -DLOCK=${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/ayther-engine.qa.lock.json
+            -DBOOTSTRAP=${CMAKE_CURRENT_SOURCE_DIR}/../tools/bootstrap_ayther_engine_qa.ps1
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/qa_engine_lock_contract_test.cmake
+)
 add_test(
     NAME    status_emitter_json
     COMMAND ${CMAKE_COMMAND}
@@ -205,6 +277,25 @@ add_test(
 # This target is intentionally independent of SDL and Engine. It fixes the
 # accepted integer domains and every malformed-input category before startup.
 # ------------------------------------------------------------------
+# Spec 002, BR-136 (RF-4.5, RF-4.9): SDL window events for the KeyRouter, without GPU.
+add_executable(qa_window_events_tests
+    qa_window_events_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/qa_window_events.cpp
+)
+target_include_directories(qa_window_events_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+target_link_libraries(qa_window_events_tests PRIVATE ayther_replay_inspection SDL3::SDL3)
+set_target_properties(qa_window_events_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+if(WIN32)
+    add_custom_command(TARGET qa_window_events_tests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_RUNTIME_DLLS:qa_window_events_tests>"
+            "$<TARGET_FILE_DIR:qa_window_events_tests>"
+        COMMAND_EXPAND_LISTS VERBATIM)
+endif()
+add_test(NAME qa_window_events COMMAND qa_window_events_tests)
+set_tests_properties(qa_window_events PROPERTIES LABELS "qa;replay_inspection;unit" TIMEOUT 10)
+
 add_executable(runtime_options_tests
     runtime_options_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/runtime_options.cpp
@@ -964,7 +1055,9 @@ add_test(
             "-DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>"
             "-DCORE_DLL=$<TARGET_FILE:synthetic_libretro_core>"
             "-DNON_CORE_DLL=$<TARGET_FILE:non_libretro_library>"
+            "-DROM_FILE=${CMAKE_CURRENT_SOURCE_DIR}/audio_qa/fixtures/public-synthetic.aytest"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/probe_core_test.cmake
 )
 
 add_subdirectory(audio_qa)
+add_subdirectory(replay_inspection)

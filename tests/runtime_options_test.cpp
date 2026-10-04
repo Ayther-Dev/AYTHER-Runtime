@@ -240,6 +240,28 @@ int main() {
                  "invalid QA presentation is rejected");
     check(qa_capabilities.options() && qa_capabilities.options()->qa_capabilities,
           "QA capability query is an explicit mode");
+    // Spec 002, BR-135 (contracts.md C1-3, C1-6): the supervisor tells the Runtime the
+    // position of its take in the request and whether it is the last one.
+    const auto take =
+        parse({"ayther_runtime", "--qa-session", "--qa-take-position", "3", "--qa-last-take"});
+    check(take.options() && take.options()->qa_take_position == 3U && take.options()->qa_last_take,
+          "RF-2.3: the take position and the last take are parsed");
+    const auto single = parse({"ayther_runtime", "--qa-session"});
+    check(single.options() && single.options()->qa_take_position == 0U &&
+              !single.options()->qa_last_take,
+          "without them the take is the first and not the last");
+    expect_error({"ayther_runtime", "--qa-take-position", "-1"},
+                 RuntimeOptionErrorCode::invalid_sign, "--qa-take-position",
+                 "a negative take position is rejected");
+    // Spec 002 (contracts.md C5): the core probe can also load a ROM.
+    const auto rom_probe = parse({"ayther_runtime", "--probe-core", "core.dll", "--probe-rom",
+                                  "game.md", "--core-option", "region=pal"});
+    check(rom_probe.options() && rom_probe.options()->probe_core == "core.dll" &&
+              rom_probe.options()->probe_rom == "game.md" &&
+              rom_probe.options()->core_options.size() == 1U,
+          "the ROM probe keeps the ROM and the core options of the launch");
+    expect_error({"ayther_runtime", "--probe-core", "core.dll", "--probe-rom"},
+                 RuntimeOptionErrorCode::missing_value, "--probe-rom", "the ROM probe needs a ROM");
     expect_error({"ayther_runtime", "--qa-control-channel"}, RuntimeOptionErrorCode::missing_value,
                  "--qa-control-channel", "QA control channel needs a token");
 

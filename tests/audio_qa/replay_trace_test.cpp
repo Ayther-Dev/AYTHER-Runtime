@@ -1,4 +1,5 @@
 #include "fact_trace_summary.h"
+#include "inspection_fact_builder.h"
 #include "replay_trace.h"
 
 #include <algorithm>
@@ -70,6 +71,32 @@ int main() {
         std::rotate(reordered.begin(), reordered.begin() + 1, reordered.end());
         const auto reordered_summary = qa::summarize_replay_facts(reordered, true);
         require(reordered_summary == summary, "cross_producer_arrival_order_changed_trace");
+
+        // Spec 002, BR-149 (contracts.md C2): the Runtime's own inspection facts travel with
+        // the trace without taking part in it; any other producer is still rejected.
+        auto inspected = collector.facts();
+        inspected.push_back(qa::make_inspection_event_fact(
+            "run-171", 1, qa::InspectionEvent{1, "pause", 5, 5, 1, 100}));
+        inspected.push_back(qa::make_inspection_event_fact(
+            "run-171", 2, qa::InspectionEvent{2, "resume", 5, 5, 1, 100}));
+        auto with_inspection = summary;
+        with_inspection.observed_fact_count += 2U;
+        require(qa::summarize_replay_facts(inspected, true) == with_inspection,
+                "inspection_facts_changed_the_audio_trace");
+        auto intruder = qa::make_inspection_event_fact("run-171", 1,
+                                                       qa::InspectionEvent{1, "pause", 5, 5, 1, 0});
+        intruder.id.producer_id = "runtime-overlay";
+        auto foreign = collector.facts();
+        foreign.push_back(intruder);
+        require(!qa::summarize_replay_facts(foreign, true).loss_free,
+                "a fact of an unknown producer was accepted");
+        auto disguised = qa::make_inspection_event_fact(
+            "run-171", 3, qa::InspectionEvent{3, "pause", 5, 5, 1, 0});
+        disguised.kind = "playback_effect";
+        auto disguised_trace = collector.facts();
+        disguised_trace.push_back(disguised);
+        require(!qa::summarize_replay_facts(disguised_trace, true).loss_free,
+                "the inspection producer can only carry inspection classes");
 
         auto unresolved_output = collector.facts();
         const std::array<observation::Cause, 2> invalid_output_causes{observation::FactId{6, 1},

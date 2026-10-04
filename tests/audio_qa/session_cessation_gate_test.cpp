@@ -13,7 +13,8 @@ void require(const bool condition, const char *const message) {
 }
 
 qa::Request request(const char *const id) {
-    return {id, "session-126", "conditions-126", {"take-main"}, qa::Admission::pending};
+    return {id,          "session-126", "conditions-126", {"take-main"}, qa::Admission::pending,
+            std::nullopt};
 }
 
 qa::Run run(const qa::Request &request, const char *const id) {

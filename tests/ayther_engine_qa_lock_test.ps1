@@ -36,16 +36,17 @@ Assert-Condition ($releaseEngine.Count -eq 1) `
     'The release lock must contain one Windows engine artifact.'
 Assert-Condition ($releaseEngineVpx.Count -eq 1) `
     'The release lock must contain one Windows engine-vpx artifact.'
-Assert-Condition ($qa.selection -ceq 'qa-development') `
-    'The QA lock must select the development channel.'
-Assert-Condition (-not [bool]$qa.package.officialRelease) `
-    'The QA package must not claim official release provenance.'
+# Spec 002, BR-174: the QA package is the published engine-vpx artifact of the locked release.
+Assert-Condition ($qa.selection -ceq 'qa-release') `
+    'The QA lock must select the published release channel.'
+Assert-Condition ([bool]$qa.package.officialRelease) `
+    'The QA package must be an official Engine release.'
 Assert-Condition ($qa.artifact.variant -ceq 'engine-vpx') `
     'The final QA package must select the Windows VPX variant.'
-Assert-Condition ($qa.artifact.sha256 -cne $releaseEngine[0].sha256) `
-    'The QA package must not reuse the Windows release artifact checksum.'
-Assert-Condition ($qa.artifact.sha256 -cne $releaseEngineVpx[0].sha256) `
-    'The QA package must not reuse the Windows VPX release artifact checksum.'
+Assert-Condition ($qa.release.tag -ceq $release.release.tag) `
+    'The QA lock and the release lock must pin the same Engine release.'
+Assert-Condition ($qa.artifact.sha256 -ceq $releaseEngineVpx[0].sha256) `
+    'The QA package must be the Windows VPX artifact of the release lock.'
 
 $first = @(& $Bootstrap -LockFile $QaLock -DestinationDirectory $CacheDirectory)
 $second = @(& $Bootstrap -LockFile $QaLock -DestinationDirectory $CacheDirectory)

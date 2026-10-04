@@ -33,6 +33,7 @@
 #include "input_map.h"      // Play --input-map → startup-resolved SDL bindings
 #include "output_profile.h" // #296: perfiles de salida (CRT/LCD/pixel)
 #include "pack_layers.h"    // #561: el stack de Acetatos del pack
+#include "pack_probe.h"
 #include "player_config.h"  // #299: lo que el panel ajusta y se recuerda
 #include "player_overlay.h" // in-game pause menu + HD↔Original toggle (M4)
 #include "presentation_controller.h"
@@ -87,6 +88,36 @@ class SdlWindowOwner final {
   private:
     SDL_Window *window_{};
 };
+
+// Spec 002 (contracts.md C5, «Sondeo del core con la ROM»): opens core and ROM in a
+// session without stepping any frame, reads the timing the replay will use and unloads
+// the game when the session is destroyed. The ROM gets the same patch and core options
+// as a launch, so the timing is the one of the replay.
+ayther::runtime::ProbeGameStatus probe_game(const ayther::runtime::RuntimeOptions &options) {
+    ayther::runtime::ProbeGameStatus game;
+    ayther::AytherSession::Config config;
+    config.core_path = options.probe_core;
+    config.rom_path = options.probe_rom;
+    config.enable_audio = false;
+    config.derive_core_pack = false;
+    config.core_options = options.core_options;
+    config.patch_path = options.patch_path;
+    auto created = ayther::AytherSession::create(config);
+    if (!created) {
+        game.message = created.error.message;
+        return game;
+    }
+    const auto &session = *created;
+    game.loaded = true;
+    game.timing_fps = session->timing_fps();
+    const auto system = session->system_info();
+    if (system.ok && system.viewport_w != 0U && system.viewport_h != 0U) {
+        game.geometry_known = true;
+        game.geometry_width = system.viewport_w;
+        game.geometry_height = system.viewport_h;
+    }
+    return game;
+}
 
 } // namespace
 
@@ -168,6 +199,24 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
 #endif
     }
 
+    // Spec 002 (contracts.md C5, «Sondeo de pack del Runtime»): QA build only. One
+    // AYTHER_PACK_PROBE line; 0 when the pack can be used, 66 with the reason otherwise.
+    if (!options.probe_pack.empty()) {
+#ifdef AYTHER_RUNTIME_AUDIO_QA
+        const auto report =
+            ayther::runtime::probe_pack(options.probe_pack, options.trust_registry_path);
+        std::fputs(ayther::runtime::format_pack_probe_line(report).c_str(), stdout);
+        return ayther::runtime::pack_probe_reason(report).empty()
+                   ? 0
+                   : ayther::runtime::pack_probe_unusable_exit_code;
+#else
+        std::fprintf(stdout, "AYTHER_PACK_PROBE {\"schema\":\"1.0\","
+                             "\"status\":\"unavailable\","
+                             "\"reason\":\"qa.engine_contract_unavailable\"}\n");
+        return 65;
+#endif
+    }
+
     if (options.play_protocol_version &&
         ayther::runtime::status_protocol_compatibility(*options.play_protocol_version) !=
             ayther::runtime::StatusProtocolCompatibility::compatible) {
@@ -237,14 +286,15 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
         // Runtime copia el modelo publico del Engine a su evento tipado; no
         // interpreta ni conserva punteros Libretro prestados.
         const ayther::engine::CoreInfo &info = probed->info();
-        emit_status(ayther::runtime::ProbeSucceededStatus{
-            info.api_version,
-            info.library_name,
-            info.library_version,
-            info.valid_extensions,
-            info.need_fullpath,
-            info.block_extract,
-        });
+        ayther::runtime::ProbeSucceededStatus probe_status{
+            info.api_version,      info.library_name,  info.library_version,
+            info.valid_extensions, info.need_fullpath, info.block_extract,
+        };
+        // Spec 002: con --probe-rom el core tambien carga la ROM, sin ejecutar ningun
+        // frame, y el evento dice si la cargo y con que timing.
+        if (!options.probe_rom.empty())
+            probe_status.game = probe_game(options);
+        emit_status(probe_status);
         return 0;
     }
 
@@ -265,8 +315,9 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
                      "         [--play-protocol-version <N>]\n"
                      "         [--frames N] [--capture-at N[,M...]] [--crash-test]\n"
                      "         [--hd-compose]  (retirado en #345: se acepta y avisa)\n"
-                     "       ayther_runtime --probe-core <libretro.dll>\n"
-                     "         Sondea el core y emite un evento probe. Sin ROM.\n");
+                     "       ayther_runtime --probe-core <libretro.dll> [--probe-rom <rom>]\n"
+                     "         Sondea el core y emite un evento probe. Con --probe-rom\n"
+                     "         carga ademas la ROM, sin ejecutar ningun frame.\n");
         return ayther::runtime::runtime_cli_error_exit_code;
     }
 

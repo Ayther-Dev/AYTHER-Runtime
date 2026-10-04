@@ -1,29 +1,32 @@
 {
   "schemaVersion": 2,
   "dependency": "AYTHER Engine",
-  "selection": "qa-development",
+  "selection": "qa-release",
   "package": {
-    "id": "ayther-engine-vpx-audio-qa-final-qa208r23-20260929",
-    "kind": "development",
-    "officialRelease": false,
+    "id": "ayther-engine-vpx-v0.1.0-rc.14-windows-x86_64",
+    "kind": "release",
+    "officialRelease": true,
     "productVersion": "0.1.0",
-    "audioObservationContract": "1.0",
-    "baseReferenceTag": "v0.1.0-rc.9",
-    "baseCommit": "af2623d536c9b3f9a08f9c61757f0b3c1e6bbfa7"
+    "audioObservationContract": "1.0"
+  },
+  "release": {
+    "tag": "v0.1.0-rc.14",
+    "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/tag/v0.1.0-rc.14",
+    "checksumsUrl": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/v0.1.0-rc.14/CHECKSUMS.sha256",
+    "checksumsSha256": "27d3762087902d12b9072ae73f947bd26d22fd0b6bad080cc185b70d315c7278"
   },
   "artifact": {
     "platform": "windows",
     "architecture": "x86_64",
     "variant": "engine-vpx",
-    "relativePath": "../../AYTHER-Engine/dist/audio-qa-final/ayther-engine-vpx-audio-qa-final-qa208r23-20260929-windows-x86_64.zip",
-    "archiveRoot": "ayther-engine-vpx-audio-qa-final-qa208r23-20260929",
-    "sha256": "706c9b40b0e976724289da236ba1d564921ba56d9100655de920bafca104b1a7",
-    "contentManifestRelativePath": "../../AYTHER-Engine/dist/audio-qa-final/ayther-engine-vpx-audio-qa-final-qa208r23-20260929-windows-x86_64.contents.sha256",
-    "contentManifestSha256": "059446b98e7562b3bdc169697b1a560c1228e8a611d7f521b344282cc5f77630"
+    "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/v0.1.0-rc.14/ayther-engine-vpx-v0.1.0-rc.14-windows-x86_64.zip",
+    "archiveRoot": "ayther-engine-vpx-v0.1.0-rc.14-windows-x86_64",
+    "sha256": "f53b59d2cf186d70ea28cc2839545eb8de10c8513a8536b689c2bc4400d6ff96"
   },
-  "referenceRelease": {
-    "tag": "v0.1.0-rc.9",
-    "windowsEngineSha256": "488efcfeb831233de38435630c49d08bdc513d4bad81a7c325eaa970e8de6ade",
-    "windowsEngineVpxSha256": "2d70dc74f4de5db4a21e71185eab12ca2aebea533f53fb21d5d9a710e13d1f2d"
+  "attestation": {
+    "repository": "Ayther-Dev/AYTHER-Engine",
+    "signerWorkflow": "Ayther-Dev/AYTHER-Engine/.github/workflows/release.yml",
+    "sourceRef": "refs/tags/v0.1.0-rc.14",
+    "predicateType": "https://slsa.dev/provenance/v1"
   }
 }

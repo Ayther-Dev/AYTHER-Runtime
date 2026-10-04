@@ -29,7 +29,8 @@ qa::Request request(const char *const request_id = "request-143") {
             "session-143",
             "conditions-a",
             {"take-main", "take-extra"},
-            qa::Admission::pending};
+            qa::Admission::pending,
+            std::nullopt};
 }
 
 qa::Run run(const char *const request_id = "request-143", const char *const run_id = "run-143") {

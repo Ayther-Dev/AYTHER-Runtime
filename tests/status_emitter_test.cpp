@@ -94,6 +94,26 @@ int main(const int argc, char *argv[]) {
               "\"ok\":false,\"reason\":\"core.load_failed\","
               "\"message\":\"no se pudo cargar\"}\n",
           "failed probe separates stable reason from human message");
+    // Spec 002 (contracts.md C5): the ROM probe adds its fields to the probe event.
+    ProbeSucceededStatus with_rom{1, "core", "v1", "md", false, false};
+    with_rom.game = ProbeGameStatus{true, 59.922743, true, 320U, 224U, {}};
+    check(StatusEmitter::format_line(with_rom) ==
+              "AYTHER_STATUS {\"protocol_version\":1,\"event\":\"probe\","
+              "\"ok\":true,\"api\":1,"
+              "\"library_name\":\"core\",\"library_version\":\"v1\","
+              "\"valid_extensions\":\"md\",\"need_fullpath\":false,"
+              "\"block_extract\":false,\"game_loaded\":true,\"timing_fps\":59.922743,"
+              "\"geometry_known\":true,\"geometry_width\":320,\"geometry_height\":224}\n",
+          "a loaded ROM adds its timing and geometry to the probe");
+    with_rom.game = ProbeGameStatus{false, 0.0, false, 0U, 0U, "rom \"x\" rejected"};
+    check(StatusEmitter::format_line(with_rom).ends_with(
+              "\"block_extract\":false,\"game_loaded\":false,"
+              "\"game_message\":\"rom \\\"x\\\" rejected\"}\n"),
+          "a rejected ROM keeps the Engine message");
+    with_rom.game = ProbeGameStatus{true, 60.0, false, 0U, 0U, {}};
+    check(StatusEmitter::format_line(with_rom).ends_with(
+              "\"game_loaded\":true,\"timing_fps\":60,\"geometry_known\":false}\n"),
+          "an unknown geometry is said, not invented");
     check(StatusEmitter::format_line(NowPlayingStatus{"id", "title"}) ==
               "AYTHER_STATUS {\"protocol_version\":1,\"event\":\"now-playing\","
               "\"game_id\":\"id\","

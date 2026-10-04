@@ -7,7 +7,7 @@
 # external lock participates in this test.
 # ---------------------------------------------------------------------------
 
-foreach(required IN ITEMS RUNTIME_EXE CORE_DLL NON_CORE_DLL)
+foreach(required IN ITEMS RUNTIME_EXE CORE_DLL NON_CORE_DLL ROM_FILE)
     if(NOT DEFINED ${required} OR "${${required}}" STREQUAL "")
         message(FATAL_ERROR "falta el argumento requerido ${required}")
     endif()
@@ -20,7 +20,7 @@ set(CASOS_CORRIDOS 0)
 
 function(sondear etiqueta objetivo esperado_codigo salida_json)
     execute_process(
-        COMMAND "${RUNTIME_EXE}" --probe-core "${objetivo}"
+        COMMAND "${RUNTIME_EXE}" --probe-core "${objetivo}" ${ARGN}
         OUTPUT_VARIABLE salida
         ERROR_VARIABLE err
         RESULT_VARIABLE codigo
@@ -114,7 +114,31 @@ exigir_campo("core sintético" "${json_core}" "valid_extensions" "STRING" "aytes
 exigir_campo("core sintético" "${json_core}" "need_fullpath" "BOOLEAN" "OFF")
 exigir_campo("core sintético" "${json_core}" "block_extract" "BOOLEAN" "OFF")
 
-if(NOT CASOS_CORRIDOS EQUAL 3)
-    message(FATAL_ERROR "el oráculo corrió ${CASOS_CORRIDOS} casos; se esperaban 3")
+# 4. Spec 002 (contracts.md C5): the core also loads its ROM, without running a frame,
+#    and reports the timing the replay will use.
+sondear("core sintético con ROM" "${CORE_DLL}" 0 json_rom --probe-rom "${ROM_FILE}")
+exigir_campo("core sintético con ROM" "${json_rom}" "ok" "BOOLEAN" "ON")
+exigir_campo("core sintético con ROM" "${json_rom}" "game_loaded" "BOOLEAN" "ON")
+exigir_campo("core sintético con ROM" "${json_rom}" "timing_fps" "NUMBER" "60")
+string(JSON tipo_geometria ERROR_VARIABLE geometria_error TYPE "${json_rom}" geometry_known)
+if(NOT geometria_error STREQUAL "NOTFOUND" OR NOT tipo_geometria STREQUAL "BOOLEAN")
+    message(FATAL_ERROR "[core sintético con ROM] falta geometry_known\n${json_rom}")
+endif()
+
+# 5. A ROM the core does not load: the probe answers with the Engine message.
+get_filename_component(directorio_rom_vacia "${CORE_DLL}" DIRECTORY)
+set(rom_vacia "${directorio_rom_vacia}/probe-empty.aytest")
+file(WRITE "${rom_vacia}" "")
+sondear("ROM rechazada" "${CORE_DLL}" 0 json_rechazo --probe-rom "${rom_vacia}")
+file(REMOVE "${rom_vacia}")
+exigir_campo("ROM rechazada" "${json_rechazo}" "ok" "BOOLEAN" "ON")
+exigir_campo("ROM rechazada" "${json_rechazo}" "game_loaded" "BOOLEAN" "OFF")
+string(JSON fps_rechazo ERROR_VARIABLE fps_rechazo_error GET "${json_rechazo}" timing_fps)
+if(fps_rechazo_error STREQUAL "NOTFOUND")
+    message(FATAL_ERROR "[ROM rechazada] un juego no cargado no tiene timing\n${json_rechazo}")
+endif()
+
+if(NOT CASOS_CORRIDOS EQUAL 5)
+    message(FATAL_ERROR "el oráculo corrió ${CASOS_CORRIDOS} casos; se esperaban 5")
 endif()
 message(STATUS "[probe_core] ${CASOS_CORRIDOS} casos verificados")

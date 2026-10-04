@@ -22,15 +22,16 @@ La instalación crea `bin/ayther_runtime.exe`, `bin/ayther_audio_qa.exe`, sus
 DLL, shaders, fuentes, licencia y metadatos. Se debe elegir un prefijo nuevo;
 el comando no necesita ni debe reemplazar una instalación usada como referencia.
 
-Una solicitud real usa únicamente las opciones implementadas:
+Una solicitud real usa únicamente las opciones implementadas. La mínima indica
+Runtime, ROM, al menos una toma y destino:
 
 ```powershell
 $qa = 'C:\ruta\audio-qa\bin\ayther_audio_qa.exe'
 $runtime = 'C:\ruta\audio-qa\bin\ayther_runtime.exe'
 & $qa check `
   --runtime $runtime `
-  --reference 'C:\ruta\reference.toml' `
-  --play-manifest 'C:\ruta\play-manifest.toml' `
+  --rom 'C:\ruta\juego.md' `
+  --core 'C:\ruta\core.dll' `
   --pack 'C:\ruta\juego.ay' `
   --trust-registry 'C:\ruta\trust.toml' `
   --take 'C:\ruta\toma.ayr' `
@@ -39,12 +40,32 @@ $runtime = 'C:\ruta\audio-qa\bin\ayther_runtime.exe'
   --language es
 ```
 
-`--take` es repetible y conserva el orden. Si se omite, el perfil Golden Axe
-selecciona su toma principal configurada. `--request-id` es opcional; una
-repetición intencional debe usar otra identidad. `--trust-registry` solo puede
-omitirse cuando la política efectiva permite abrir ese pack sin registro. La
-raíz `--output` mantiene el ledger y crea una ejecución exclusiva sin reemplazar
-las anteriores.
+- `--rom` y `--take` son obligatorias. No hay toma por defecto: sin `--take` la
+  solicitud se rechaza con `missing_required_option: --take` (RF-1.2).
+- `--take` es repetible, conserva el orden y admite repeticiones explícitas: cada
+  posición es una ejecución propia (`<run>`, `<run>-take-2`, ...) (RF-1.4).
+- `--core` es opcional. Si falta, se toma del manifiesto de Play, de la referencia o,
+  en último lugar, de la configuración de Play CE (`cores[plataforma]` y después
+  `default_core` en `%APPDATA%\Ayther\play_config.toml`), que sólo se lee (RF-1.6).
+- `--pack` es opcional; sin ella la solicitud se ejecuta «Sin pack» y el Runtime no
+  recibe `--pack` (RF-1.3). `--pack-mode original` equivale a no cargar el pack.
+- `--reference` y `--play-manifest` son opcionales y sólo aportan core y condiciones
+  que no se hayan indicado. Si describen otra ROM, la solicitud se rechaza.
+- Las condiciones se pueden indicar de forma explícita: `--profile`, `--subsystems`,
+  `--mute-buses`, `--video-output`, `--patch`, `--shaders on|off` y `--core-option
+  clave=valor` (repetible). La opción explícita precede al manifiesto y éste a la
+  referencia (RF-1.5, RF-1.6).
+- `--request-id` es opcional; una repetición intencional debe usar otra identidad.
+  `--trust-registry` sólo puede omitirse cuando la política efectiva permite abrir
+  ese pack sin registro. La raíz `--output` mantiene el ledger y crea una ejecución
+  exclusiva sin reemplazar las anteriores.
+
+Antes de admitir la solicitud, cada valor efectivo se escribe con su origen:
+`audio_qa_effective: <clave>=<valor> source=explicit|play_manifest|reference|environment|default|generated`.
+
+`ayther_audio_qa options --format toml` publica el inventario de opciones de la
+versión compilada, con el esquema de
+`specs/002-AYTHER-bug-render/evidence/rf1-option-inventory-beta8.toml` (RF-1.8).
 
 Los prefijos de diagnóstico tienen funciones distintas:
 
@@ -587,6 +608,11 @@ completo e aislamiento confirmado. Los intentos que usaron una ruta histórica
 sin registro de confianza se conservaron como incompletos con
 `audio_assignment_catalog_empty`; el comprobador conserva ahora ese diagnóstico
 de Runtime en vez de sustituirlo por un desajuste de entradas.
+
+Desde la spec 002 ese caso ya no llega al Runtime: un registro de confianza que falta
+se rechaza antes de admitir (`material_not_found: --trust-registry`) y un pack que no
+se puede usar, con el motivo de `--probe-pack`. Un pack válido sin catálogo de audio
+ya no es un error: la toma se reproduce y registra `assignments=0` (RF-2.1, RF-2.2).
 
 ## Cierre local de presupuestos B06, B10 y B13
 

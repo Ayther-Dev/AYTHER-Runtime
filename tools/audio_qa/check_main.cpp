@@ -1,14 +1,15 @@
 #include "campaign_audit.h"
-#include "check_admission.h"
-#include "check_execution.h"
 #include "check_messages.h"
+#include "check_option_descriptors.h"
 #include "check_options.h"
-#include "check_profile.h"
-#include "check_summary.h"
+#include "check_runner.h"
 #include "console_interrupt.h"
 #include "evidence_query_index.h"
-#include "integrated_evidence.h"
 #include "query_options.h"
+
+#if defined(AYTHER_AUDIO_QA_HAS_RUNTIME_VERSION)
+#include "ayther_runtime_version.h"
+#endif
 
 #include <charconv>
 #include <filesystem>
@@ -33,6 +34,15 @@ void emit_user_message(ayther::audio_qa::CheckLanguage language,
                        ayther::audio_qa::CheckMessage message) {
     std::cerr << "audio_qa_message[" << ayther::audio_qa::check_language_code(language)
               << "]: " << ayther::audio_qa::check_message(language, message) << '\n';
+}
+
+// Spec 002 (RF-1.2, RNF-7): parse errors happen before the language is validated;
+// honour `--language en` when it is present so the message is still localized.
+ayther::audio_qa::CheckLanguage language_hint(std::span<const std::string_view> arguments) {
+    for (std::size_t index = 0; index + 1U < arguments.size(); ++index)
+        if (arguments[index] == "--language" && arguments[index + 1U] == "en")
+            return ayther::audio_qa::CheckLanguage::english;
+    return ayther::audio_qa::CheckLanguage::spanish;
 }
 
 int run_query(std::span<const std::string_view> arguments) {
@@ -133,13 +143,40 @@ int run_audit(const std::span<const std::string_view> arguments) {
     return summary->complete ? 0 : incomplete_exit_code;
 }
 
-std::string digest(const ayther::audio_qa::ContentIdentity &identity) {
-    std::ostringstream output;
-    output << std::hex << std::setfill('0');
-    for (const auto byte : identity.sha256)
-        output << std::setw(2) << static_cast<unsigned>(byte);
-    return output.str();
+// Spec 002 (RF-1.8, contracts.md C5): `options --format toml` publishes the
+// inventory of the compiled version with the schema of the reference inventory.
+int run_options(const std::span<const std::string_view> arguments) {
+    if (arguments.size() != 2U || arguments[0] != "--format" || arguments[1] != "toml") {
+        std::cerr << "audio_qa_error: invalid_options_invocation\n";
+        std::cerr << ayther::audio_qa::format_check_usage() << '\n';
+        return invalid_invocation_exit_code;
+    }
+#if defined(AYTHER_AUDIO_QA_HAS_RUNTIME_VERSION)
+    constexpr std::string_view compiled_ref = ayther::runtime::runtime_version;
+#else
+    constexpr std::string_view compiled_ref = "unknown";
+#endif
+    std::cout << ayther::audio_qa::format_check_option_inventory(compiled_ref, "");
+    return 0;
 }
+
+// The console client of run_check: every report line goes to stderr, as before, and the
+// messages follow --language (RNF-7).
+class ConsoleObserver final : public ayther::audio_qa::CheckObserver {
+  public:
+    explicit ConsoleObserver(ayther::audio_qa::CheckLanguage language) : language_(language) {}
+
+    void on_phase(ayther::audio_qa::RequestPhase) override {}
+    void on_replay_state(const ayther::audio_qa::ReplayStateView &) override {}
+    void on_take_outcome(const ayther::audio_qa::TakeOutcome &) override {}
+    void on_report(std::string_view line) override { std::cerr << line << '\n'; }
+    void on_message(ayther::audio_qa::CheckMessage message) override {
+        emit_user_message(language_, message);
+    }
+
+  private:
+    ayther::audio_qa::CheckLanguage language_;
+};
 
 } // namespace
 
@@ -158,8 +195,16 @@ int main(int argc, char **argv) {
             query_arguments.emplace_back(argv[index] != nullptr ? argv[index] : "");
         return run_query(query_arguments);
     }
+    if (argc >= 2 && std::string_view{argv[1]} == "options") {
+        std::vector<std::string_view> option_arguments;
+        option_arguments.reserve(static_cast<std::size_t>(argc - 2));
+        for (int index = 2; index < argc; ++index)
+            option_arguments.emplace_back(argv[index] != nullptr ? argv[index] : "");
+        return run_options(option_arguments);
+    }
     if (argc < 2 || std::string_view{argv[1]} != "check") {
         std::cerr << "audio_qa_error: invalid_invocation: expected command 'check'\n";
+        std::cerr << ayther::audio_qa::format_check_usage() << '\n';
         emit_user_message(ayther::audio_qa::CheckLanguage::spanish,
                           ayther::audio_qa::CheckMessage::invalid_invocation);
         return invalid_invocation_exit_code;
@@ -172,12 +217,18 @@ int main(int argc, char **argv) {
 
     const auto parsed = ayther::audio_qa::parse_check_options(arguments);
     if (const auto *error = parsed.error()) {
-        std::cerr << "audio_qa_error: " << ayther::audio_qa::check_option_error_code(error->code);
+        const auto code = ayther::audio_qa::check_option_error_code(error->code);
+        std::cerr << "audio_qa_error: " << code;
         if (!error->option.empty())
             std::cerr << ": " << error->option;
         std::cerr << '\n';
-        emit_user_message(ayther::audio_qa::CheckLanguage::spanish,
-                          ayther::audio_qa::CheckMessage::invalid_options);
+        // RNF-7: the field and its problem, localized.
+        const auto hinted = language_hint(arguments);
+        if (const auto text = ayther::audio_qa::check_issue_message(hinted, code))
+            std::cerr << "audio_qa_message[" << ayther::audio_qa::check_language_code(hinted)
+                      << "]: " << (error->option.empty() ? "" : error->option + ": ") << *text
+                      << '\n';
+        emit_user_message(hinted, ayther::audio_qa::CheckMessage::invalid_options);
         return invalid_invocation_exit_code;
     }
 
@@ -185,208 +236,16 @@ int main(int argc, char **argv) {
                               ? ayther::audio_qa::CheckLanguage::english
                               : ayther::audio_qa::CheckLanguage::spanish;
 
-    const auto selection_result = ayther::audio_qa::select_check_takes(
-        *parsed.options(), ayther::audio_qa::golden_axe_check_profile());
-    const auto *selection = std::get_if<ayther::audio_qa::TakeSelection>(&selection_result);
-    if (selection == nullptr) {
-        std::cerr << "audio_qa_error: missing_profile_primary_take\n";
-        emit_user_message(language, ayther::audio_qa::CheckMessage::missing_profile_primary_take);
-        return invalid_invocation_exit_code;
-    }
-
-    const auto &options = *parsed.options();
-    std::error_code directory_error;
-    std::filesystem::create_directories(options.output, directory_error);
-    if (directory_error || !std::filesystem::is_directory(options.output)) {
-        std::cerr << "audio_qa_error: output_root_unavailable\n";
-        emit_user_message(language, ayther::audio_qa::CheckMessage::output_root_unavailable);
-        return evidence_failure_exit_code;
-    }
-    auto ledger_result = ayther::audio_qa::open_request_ledger(options.output);
-    auto *ledger = std::get_if<ayther::audio_qa::RequestLedger>(&ledger_result);
-    if (ledger == nullptr) {
-        std::cerr << "audio_qa_error: request_ledger_unavailable\n";
-        emit_user_message(language, ayther::audio_qa::CheckMessage::request_ledger_unavailable);
-        return evidence_failure_exit_code;
-    }
-    ayther::audio_qa::SessionOccupancy occupancy;
-    if (!ayther::audio_qa::restore_check_occupancy(*ledger, occupancy)) {
-        std::cerr << "audio_qa_error: request_ledger_has_multiple_active_runs\n";
-        emit_user_message(language, ayther::audio_qa::CheckMessage::request_ledger_inconsistent);
-        return evidence_failure_exit_code;
-    }
-
-    const auto request_id = options.request_id.empty()
-                                ? ayther::audio_qa::generate_check_id("request-")
-                                : options.request_id;
-    auto draft = ayther::audio_qa::make_check_request(options, *selection, request_id,
-                                                      ayther::audio_qa::generate_check_id("run-"));
-    const auto admitted_request = draft.request;
-    const auto admission =
-        ayther::audio_qa::admit_check_request(*ledger, occupancy, std::move(draft));
-    if (std::holds_alternative<ayther::audio_qa::RequestLedgerError>(admission)) {
-        std::cerr << "audio_qa_error: request_ledger_publish_failed\n";
-        emit_user_message(language, ayther::audio_qa::CheckMessage::request_ledger_publish_failed);
-        return evidence_failure_exit_code;
-    }
-    const auto &admitted = std::get<ayther::audio_qa::CheckAdmissionResult>(admission);
-    switch (admitted.decision) {
-    case ayther::audio_qa::CheckAdmissionDecision::accepted:
-        std::cerr << "audio_qa_status: request_accepted: " << request_id << '\n';
-        emit_user_message(language, ayther::audio_qa::CheckMessage::request_accepted);
-        break;
-    case ayther::audio_qa::CheckAdmissionDecision::known:
-        std::cerr << "audio_qa_status: request_known: " << request_id << '\n';
-        emit_user_message(language, ayther::audio_qa::CheckMessage::request_known);
-        return incomplete_exit_code;
-    case ayther::audio_qa::CheckAdmissionDecision::identity_conflict:
-        std::cerr << "audio_qa_error: request_identity_conflict: " << request_id << '\n';
-        emit_user_message(language, ayther::audio_qa::CheckMessage::request_identity_conflict);
-        return invalid_invocation_exit_code;
-    case ayther::audio_qa::CheckAdmissionDecision::busy:
-        std::cerr << "audio_qa_error: session_busy: " << admitted.active_request_id << ':'
-                  << admitted.active_run_id << '\n';
-        emit_user_message(language, ayther::audio_qa::CheckMessage::session_busy);
-        return invalid_invocation_exit_code;
-    case ayther::audio_qa::CheckAdmissionDecision::invalid:
-        std::cerr << "audio_qa_error: invalid_request\n";
-        emit_user_message(language, ayther::audio_qa::CheckMessage::invalid_request);
-        return invalid_invocation_exit_code;
-    case ayther::audio_qa::CheckAdmissionDecision::capacity_exceeded:
-        std::cerr << "audio_qa_error: request_capacity_exceeded\n";
-        emit_user_message(language, ayther::audio_qa::CheckMessage::request_capacity_exceeded);
-        return invalid_invocation_exit_code;
-    }
-
-    ayther::audio_qa::ControlledInterrupt interrupt;
-    const ayther::audio_qa::ConsoleInterruptHandler interrupt_handler{interrupt};
+    // Spec 002 (contracts.md C5, BR-070): the command is a thin client of run_check; Ctrl+C
+    // requests the same cancellation as the library token (RF-2.5).
+    ayther::audio_qa::CancelToken cancel;
+    const ayther::audio_qa::ConsoleInterruptHandler interrupt_handler{cancel};
     if (!interrupt_handler.installed()) {
         std::cerr << "audio_qa_error: interrupt_handler_unavailable\n";
         emit_user_message(language, ayther::audio_qa::CheckMessage::interrupt_handler_unavailable);
         return evidence_failure_exit_code;
     }
-
-    std::vector<ayther::audio_qa::TakeTechnicalResult> results;
-    results.reserve(selection->takes.size());
-    bool all_replays_completed = true;
-    bool all_inputs_completed = true;
-    bool any_cancelled = false;
-    std::optional<std::uint64_t> last_frame;
-    for (std::size_t index{}; index < selection->takes.size(); ++index) {
-        auto request = admitted_request;
-        request.take_ids = {selection->takes[index]};
-        const std::string run_id =
-            index == 0U ? admitted.run.run_id
-                        : admitted.run.run_id + "-take-" + std::to_string(index + 1U);
-        const auto executed = ayther::audio_qa::execute_check_replay(options, request, run_id);
-        if (const auto *evidence =
-                std::get_if<ayther::audio_qa::CheckExecutionEvidence>(&executed)) {
-            const auto *preserved = evidence->preserved ? &*evidence->preserved : nullptr;
-            const auto &replay = evidence->replay;
-            any_cancelled = any_cancelled || replay.presentation.cancelled;
-            all_inputs_completed = all_inputs_completed && replay.recording_frames > 0U &&
-                                   replay.inputs_consumed == replay.recording_frames &&
-                                   replay.final_game_state.byte_size > 0U;
-            if (replay.inputs_consumed > 0U)
-                last_frame = replay.inputs_consumed - 1U;
-            const bool complete =
-                replay.succeeded && preserved != nullptr &&
-                (replay.assignment_count == 0U || preserved->relationships_reopened);
-            all_replays_completed = all_replays_completed && complete;
-            std::cerr << "audio_qa_replay: run_id=" << replay.run_id << " take=" << replay.take_id
-                      << " recording_frames=" << replay.recording_frames
-                      << " inputs_consumed=" << replay.inputs_consumed
-                      << " assignments=" << replay.assignment_count
-                      << " initial_state_sha256=" << digest(replay.initial_game_state)
-                      << " final_state_sha256=" << digest(replay.final_game_state)
-                      << " trace_facts=" << replay.trace.observed_fact_count
-                      << " occurrence=" << replay.trace.occurrence
-                      << " ingress=" << replay.trace.ingress.producer << ':'
-                      << replay.trace.ingress.sequence
-                      << " candidate=" << replay.trace.candidate.producer << ':'
-                      << replay.trace.candidate.sequence
-                      << " selection=" << replay.trace.selection.producer << ':'
-                      << replay.trace.selection.sequence
-                      << " request=" << replay.trace.playback_request.producer << ':'
-                      << replay.trace.playback_request.sequence
-                      << " decision=" << replay.trace.playback_decision.producer << ':'
-                      << replay.trace.playback_decision.sequence
-                      << " effect=" << replay.trace.playback_effect.producer << ':'
-                      << replay.trace.playback_effect.sequence
-                      << " mix_span=" << replay.trace.mix_span.producer << ':'
-                      << replay.trace.mix_span.sequence;
-            if (preserved != nullptr)
-                std::cerr << " durable_facts=" << preserved->facts
-                          << " durable_pcm_blocks=" << preserved->pcm_blocks
-                          << " durable_pcm_bytes=" << preserved->pcm_bytes
-                          << " fact_integrity_complete="
-                          << (preserved->fact_integrity_complete ? "true" : "false")
-                          << " relationships_reopened="
-                          << (preserved->relationships_reopened ? "true" : "false")
-                          << " runtime_data_isolated="
-                          << (evidence->runtime_data_isolated ? "true" : "false");
-            else if (evidence->preservation_error)
-                std::cerr << " evidence_error="
-                          << ayther::audio_qa::integrated_evidence_error_code(
-                                 *evidence->preservation_error);
-            std::cerr << " presentation=" << replay.presentation.mode
-                      << " presentation_status=" << replay.presentation.code
-                      << " presented_frames=" << replay.presentation.presented_frames
-                      << " affected_frames=" << replay.presentation.affected_frames
-                      << " audio_backend=" << replay.presentation.audio_backend
-                      << " status=" << (complete ? "replay_evidence_reopened" : replay.code)
-                      << '\n';
-            results.push_back({replay.take_id,
-                               complete ? ayther::audio_qa::CheckTechnicalOutcome::complete
-                                        : ayther::audio_qa::CheckTechnicalOutcome::incomplete,
-                               complete
-                                   ? "replay_evidence_complete"
-                                   : (replay.succeeded ? "evidence_reopen_failed" : replay.code),
-                               std::nullopt, std::nullopt});
-        } else {
-            all_replays_completed = false;
-            all_inputs_completed = false;
-            const auto error = std::get<ayther::audio_qa::CheckExecutionError>(executed);
-            const auto code = ayther::audio_qa::check_execution_error_code(error);
-            std::cerr << "audio_qa_error: " << code << ": " << selection->takes[index] << '\n';
-            results.push_back({selection->takes[index],
-                               ayther::audio_qa::CheckTechnicalOutcome::incomplete,
-                               std::string{code}, std::nullopt, std::nullopt});
-        }
-        if (any_cancelled) {
-            for (std::size_t pending = index + 1U; pending < selection->takes.size(); ++pending)
-                results.push_back({selection->takes[pending],
-                                   ayther::audio_qa::CheckTechnicalOutcome::incomplete,
-                                   "not_started_after_cancellation", std::nullopt, std::nullopt});
-            break;
-        }
-    }
-
-    auto final_run = admitted.run;
-    final_run.phase = ayther::audio_qa::Phase::closed;
-    final_run.playback_result = any_cancelled ? ayther::audio_qa::PlaybackResult::cancelled
-                                : all_inputs_completed
-                                    ? ayther::audio_qa::PlaybackResult::natural_end
-                                    : ayther::audio_qa::PlaybackResult::error;
-    final_run.evidence_result = all_replays_completed
-                                    ? ayther::audio_qa::EvidenceResult::complete
-                                    : ayther::audio_qa::EvidenceResult::incomplete;
-    if (all_inputs_completed || any_cancelled)
-        final_run.last_executed_frame = last_frame;
-    final_run.cessation_confirmed = true;
-    const auto ledger_update = ledger->update_run(final_run);
-    const auto *updated = std::get_if<bool>(&ledger_update);
-    if (updated == nullptr || !*updated) {
-        std::cerr << "audio_qa_error: request_ledger_publish_failed\n";
-        emit_user_message(language, ayther::audio_qa::CheckMessage::request_ledger_publish_failed);
-        return evidence_failure_exit_code;
-    }
-    const auto summary = ayther::audio_qa::summarize_check_results(results);
-    if (!summary) {
-        std::cerr << "audio_qa_error: technical_summary_invalid\n";
-        emit_user_message(language, ayther::audio_qa::CheckMessage::technical_summary_invalid);
-        return evidence_failure_exit_code;
-    }
-    std::cerr << ayther::audio_qa::format_check_summary(*summary) << '\n';
-    return summary->exit_code;
+    ConsoleObserver observer{language};
+    const auto outcome = ayther::audio_qa::run_check(*parsed.options(), observer, cancel);
+    return outcome.exit_code;
 }

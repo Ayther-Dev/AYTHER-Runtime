@@ -7,11 +7,15 @@
 #include <cstdio>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <variant>
 
 namespace ayther::runtime {
 
 inline constexpr std::uint32_t status_protocol_version = 1;
+
+// Appends `value` as a JSON string: quotes, reverse slashes and control bytes escaped.
+void append_json_string(std::string &output, std::string_view value);
 
 enum class StatusProtocolCompatibility {
     compatible,
@@ -28,6 +32,18 @@ status_protocol_compatibility(const std::uint32_t peer_version) noexcept {
                                                   : StatusProtocolCompatibility::unsupported_newer;
 }
 
+// Spec 002 (contracts.md C5, «Sondeo del core con la ROM»): with --probe-rom the probe
+// also says whether the core loaded the ROM and with which timing and geometry. The
+// geometry is the one the Engine reports before the first frame, when it reports one.
+struct ProbeGameStatus {
+    bool loaded{};
+    double timing_fps{};
+    bool geometry_known{};
+    std::uint32_t geometry_width{};
+    std::uint32_t geometry_height{};
+    std::string message;
+};
+
 struct ProbeSucceededStatus {
     std::uint32_t api{};
     std::string library_name;
@@ -35,6 +51,7 @@ struct ProbeSucceededStatus {
     std::string valid_extensions;
     bool need_fullpath{};
     bool block_extract{};
+    std::optional<ProbeGameStatus> game{};
 };
 
 struct ProbeFailedStatus {

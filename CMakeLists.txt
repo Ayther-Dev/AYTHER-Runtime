@@ -15,11 +15,8 @@ set(AYTHER_RUNTIME_VERSION "0.1.0-beta.8")
 set(AYTHER_RUNTIME_PROJECT_VERSION "0.1.0")
 set(AYTHER_ENGINE_MIN_VERSION "0.1.0")
 set(AYTHER_ENGINE_MAX_VERSION_EXCLUSIVE "0.2.0")
-set(AYTHER_ENGINE_LOCKED_RELEASE "v0.1.0-rc.13")
-if(AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE)
-    set(AYTHER_ENGINE_LOCKED_RELEASE
-        "ayther-engine-vpx-audio-qa-final-qa208r23-20260929")
-endif()
+# Spec 002, BR-174: the QA build uses the engine-vpx artifact of the same release.
+set(AYTHER_ENGINE_LOCKED_RELEASE "v0.1.0-rc.14")
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     cmake_minimum_required(VERSION 3.21)
@@ -370,13 +367,15 @@ set(CPACK_PACKAGE_FILE_NAME
     "ayther-runtime-${AYTHER_RUNTIME_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
 set(CPACK_GENERATOR "ZIP;TGZ")
 set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)
-set(CPACK_COMPONENTS_ALL Runtime)
+set(CPACK_COMPONENTS_ALL Runtime qa)
 include(CPack)
 
 # Runtime verification targets (ADR-004 section 3, E8) compile Runtime sources
 # and therefore belong to this repository's test tree.
 option(AYTHER_ENABLE_GPU_TESTS
     "Run SDL/Vulkan presentation tests on a real GPU" OFF)
+# Spec 002: pure modules of the replay inspection (plan §5.4-§5.10).
+add_subdirectory(src/replay_inspection)
 add_subdirectory(tests)
 
 # The external QA coordinator is delivered beside Runtime so an installed
@@ -390,14 +389,21 @@ install(TARGETS ayther_audio_qa
             ".*[\\/][Ss][Yy][Ss][Tt][Ee][Mm]32[\\/].*"
             "^/lib/.*"
             "^/usr/lib/.*"
-    RUNTIME DESTINATION bin COMPONENT Runtime
+    RUNTIME DESTINATION bin COMPONENT qa
 )
 
+# Spec 002 (BR-157): the replay QA launcher, a client of run_check, in the `qa` component
+# with the supervisor and never in the Runtime component.
+add_subdirectory(tools/replay_qa_launcher)
+
 if(AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE)
-    target_sources(ayther_runtime PRIVATE src/audio_qa_runtime_session.cpp src/audio_qa_presentation.cpp)
+    target_sources(ayther_runtime PRIVATE src/audio_qa_runtime_session.cpp src/audio_qa_presentation.cpp
+        src/audio_qa_inspection.cpp src/qa_window_events.cpp src/replay_debug_overlay.cpp
+        src/pack_probe.cpp src/pack_probe_engine.cpp)
     target_link_libraries(ayther_runtime PRIVATE
         ayther_audio_qa_engine_replay
         ayther_audio_qa_model_toml
-        ayther_audio_qa_transport)
+        ayther_audio_qa_transport
+        ayther_replay_inspection)
     target_compile_definitions(ayther_runtime PRIVATE AYTHER_RUNTIME_AUDIO_QA=1)
 endif()

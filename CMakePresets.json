@@ -35,6 +35,26 @@
       }
     },
     {
+      "name": "windows-qa",
+      "displayName": "Windows QA (RelWithDebInfo, audio QA Engine)",
+      "description": "windows-ci against the QA Engine lock (dependencies/ayther-engine.qa.lock.json); set AYTHER_ENGINE_PREFIX from tools/bootstrap_ayther_engine_qa.ps1. Spec 002, BR-118.",
+      "inherits": "windows-ci",
+      "cacheVariables": {
+        "AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE": "ON",
+        "AYTHER_ENABLE_GPU_TESTS": "OFF"
+      }
+    },
+    {
+      "name": "windows-qa-gpu",
+      "displayName": "Windows QA with GPU tests",
+      "description": "windows-qa plus the tests that need a GPU and a desktop session.",
+      "inherits": "windows-qa",
+      "cacheVariables": {
+        "AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE": "ON",
+        "AYTHER_ENABLE_GPU_TESTS": "ON"
+      }
+    },
+    {
       "name": "linux-ci",
       "displayName": "Linux CI (RelWithDebInfo)",
       "description": "Ninja build against the locked Linux Engine package.",
@@ -81,6 +101,16 @@
       "configuration": "RelWithDebInfo"
     },
     {
+      "name": "windows-qa",
+      "configurePreset": "windows-qa",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "windows-qa-gpu",
+      "configurePreset": "windows-qa-gpu",
+      "configuration": "RelWithDebInfo"
+    },
+    {
       "name": "linux-ci",
       "configurePreset": "linux-ci"
     },
@@ -97,6 +127,33 @@
     {
       "name": "windows-ci",
       "configurePreset": "windows-ci",
+      "configuration": "RelWithDebInfo",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "windows-qa",
+      "configurePreset": "windows-qa",
+      "configuration": "RelWithDebInfo",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "exclude": {
+          "label": "gpu"
+        }
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "windows-qa-gpu",
+      "configurePreset": "windows-qa-gpu",
       "configuration": "RelWithDebInfo",
       "output": {
         "outputOnFailure": true
