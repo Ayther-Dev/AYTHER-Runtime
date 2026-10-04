@@ -983,7 +983,6 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
         std::uint64_t user_pause_ms{};
         std::optional<std::chrono::steady_clock::time_point> pause_started;
         bool cancelled{};
-        bool advance{};
         bool traversal_failed{};
         bool interrupted_at_close{};
         auto next_frame = std::chrono::steady_clock::now();
@@ -1421,7 +1420,6 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                         done = true;
                     break;
                 case ri::CommandKind::advance_take:
-                    advance = true;
                     done = true;
                     break;
                 case ri::CommandKind::finish_traversal:

@@ -74,8 +74,9 @@ std::string check_conditions_id(const EffectiveRequest &effective,
 CheckRequestDraft make_check_request(const EffectiveRequest &effective,
                                      std::span<const MaterialPin> pins, std::string request_id,
                                      std::string run_id) {
-    Request request{std::move(request_id), "audio-qa-check-v1",
-                    check_conditions_id(effective, pins), effective.takes, Admission::pending};
+    Request request{
+        std::move(request_id), "audio-qa-check-v1", check_conditions_id(effective, pins),
+        effective.takes,       Admission::pending,  std::nullopt};
     Run run;
     run.run_id = std::move(run_id);
     run.request_id = request.request_id;

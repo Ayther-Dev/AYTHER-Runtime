@@ -227,8 +227,8 @@ void interrupted_run_is_recovered(const Paths &paths) {
         expect(ledger != nullptr, "the ledger opens");
         if (ledger == nullptr)
             return;
-        qa::Request left{
-            "left-open", "audio-qa-check-v1", "conditions-left", {"t.ayr"}, qa::Admission::pending};
+        qa::Request left{"left-open", "audio-qa-check-v1",    "conditions-left",
+                         {"t.ayr"},   qa::Admission::pending, std::nullopt};
         qa::Run run;
         run.run_id = "run-left";
         run.request_id = "left-open";

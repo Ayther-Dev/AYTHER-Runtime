@@ -12,7 +12,7 @@ namespace {
 
 qa::TakeTechnicalResult result(std::string id, qa::CheckTechnicalOutcome outcome,
                                bool restart = false, bool overlap = false) {
-    return {std::move(id), outcome, "diagnostic", restart, overlap, 0};
+    return {std::move(id), outcome, "diagnostic", restart, overlap, 0, {}, {}, {}};
 }
 
 // Results arrive in request order; spec 002 (RF-1.4) identifies them by position.
@@ -163,8 +163,15 @@ bool validation_and_formatting() {
 } // namespace
 
 int main() {
-    const std::array unevaluated{qa::TakeTechnicalResult{
-        "main", qa::CheckTechnicalOutcome::complete, "complete", std::nullopt, std::nullopt, 0}};
+    const std::array unevaluated{qa::TakeTechnicalResult{"main",
+                                                         qa::CheckTechnicalOutcome::complete,
+                                                         "complete",
+                                                         std::nullopt,
+                                                         std::nullopt,
+                                                         0,
+                                                         {},
+                                                         {},
+                                                         {}}};
     const auto summary = qa::summarize_check_results(unevaluated);
     if (!summary || qa::format_check_summary(*summary).find(
                         "audible_restart_observed=not_evaluated") == std::string::npos)
