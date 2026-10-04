@@ -153,8 +153,8 @@ int main(int argc, char **argv) {
     expect(records, "RF-7.5, RF-7.4: each frame has one record with its processing time and no "
                     "FPS without presentation");
 
-    // BR-137: pause after frame 20 (it lands on 21), 400 ms of user pause, then resume.
-    const auto paused = run("pause", "frame=20 key space down\nafter=0 key space up\n"
+    // BR-137: pause after frame 21 (it stays on 21, RF-4.1), 400 ms of user pause, then resume.
+    const auto paused = run("pause", "frame=21 key space down\nafter=0 key space up\n"
                                      "paused=21 key other up\nafter=400 key space down\n"
                                      "after=0 key space up\n");
     const auto *paused_terminal = terminal(paused);
@@ -184,7 +184,7 @@ int main(int argc, char **argv) {
            "a pause does not change the replay");
 
     // BR-140, BR-138, BR-141: pause at 31, three steps back to 28, resume.
-    const auto back = run("back", "frame=30 key space down\nafter=0 key space up\n"
+    const auto back = run("back", "frame=31 key space down\nafter=0 key space up\n"
                                   "paused=31 key left down\nafter=0 key left up\n"
                                   "paused=30 key left down\nafter=0 key left up\n"
                                   "paused=29 key left down\nafter=0 key left up\n"
@@ -228,7 +228,7 @@ int main(int argc, char **argv) {
            "RF-7.5: every visit to a frame is a new record");
 
     // BR-140: going back across the checkpoint of frame 59 restores it mid-take.
-    const auto across = run("across", "frame=90 key space down\nafter=0 key space up\n"
+    const auto across = run("across", "frame=91 key space down\nafter=0 key space up\n"
                                       "paused=91 key left down\nafter=0 key left up\n"
                                       "paused=90 key left down\nafter=0 key left up\n"
                                       "paused=89 key space down\nafter=0 key space up\n");
@@ -240,7 +240,7 @@ int main(int argc, char **argv) {
            "RF-5.2: a checkpoint taken during the take restores and re-simulates to the target");
 
     // BR-142: → ten times in pause produces 12..21 silently; Space from 21 plays 22 with audio.
-    std::string steps = "frame=10 key space down\nafter=0 key space up\n";
+    std::string steps = "frame=11 key space down\nafter=0 key space up\n";
     for (std::uint32_t frame = 11U; frame <= 20U; ++frame)
         steps += "paused=" + std::to_string(frame) + " key right down\nafter=0 key right up\n";
     steps += "paused=21 key space down\nafter=0 key space up\n";
@@ -258,7 +258,7 @@ int main(int argc, char **argv) {
            "RF-5.4, RF-5.7: frames 12 to 21 are silent and 22 follows without repeating 21");
 
     // BR-143: damaged checkpoints; the window stays at 71, resumes and ends naturally.
-    const auto damaged = run("damaged", "frame=70 key space down\nafter=0 key space up\n"
+    const auto damaged = run("damaged", "frame=71 key space down\nafter=0 key space up\n"
                                         "paused=71 corrupt_checkpoints\n"
                                         "after=0 key left down\nafter=0 key left up\n"
                                         "after=300 key space down\nafter=0 key space up\n");
@@ -267,7 +267,7 @@ int main(int argc, char **argv) {
                damaged_terminal->playback == "natural_end" &&
                digest(damaged_terminal->final_game_state) == linear_final,
            "RF-5.6: a failed recovery stays at the confirmed position and can resume");
-    const auto lost = run("lost", "frame=70 key space down\nafter=0 key space up\n"
+    const auto lost = run("lost", "frame=71 key space down\nafter=0 key space up\n"
                                   "paused=71 corrupt_visual_state\n"
                                   "after=0 key left down\nafter=0 key left up\n");
     const auto *lost_terminal = terminal(lost);

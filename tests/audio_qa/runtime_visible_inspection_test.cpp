@@ -131,7 +131,7 @@ int main(int argc, char **argv) {
     // BR-144, BR-145, BR-153: pause, I, scroll, Space and the arrows with the overlay visible.
     const auto controls =
         run("controls",
-            "frame=10 key space down\nafter=0 key space up\n" // pause → lands on 11
+            "frame=11 key space down\nafter=0 key space up\n" // pause after 11 → stays on 11
             "paused=11 key space repeat\n"                    // a held key repeats nothing
             "after=0 key space up\n"
             "after=0 key i down\nafter=0 key i up\n" // overlay visible

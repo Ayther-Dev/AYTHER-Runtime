@@ -124,8 +124,10 @@ foreach(expected IN ITEMS
         "decision=5:"
         "effect=5:"
         "mix_span=6:"
-        # Spec 002 (BR-146, contracts.md C2): 123 engine facts and one render_frame per frame.
-        "durable_facts=129"
+        # Spec 002 (BR-146, contracts.md C2; DI-12): 123 engine facts, one
+        # audio_frame_output_boundary per frame that reaches the device (Engine rc.15) and one
+        # render_frame per frame: 123 + 6 + 6.
+        "durable_facts=135"
         "durable_pcm_blocks="
         "fact_integrity_complete=true"
         "relationships_reopened=true"

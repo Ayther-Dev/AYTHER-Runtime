@@ -154,8 +154,13 @@ foreach(expected IN ITEMS "ended_paused = true" "playback = 'natural_end'" "trav
     endif()
 endforeach()
 
+# RF-2.8, RF-4.1 (DI-13): each take pauses at 4 and resumes; then Space in the wait after N−1
+# of the intermediate take keeps it on N−1 (the next take does not start), and Space starts the
+# next one. The last take ends naturally paused at N−1.
 file(WRITE "${TEST_ROOT}/pending-pause.script"
-    "frame=4 key space down\nafter=0 key space up\npaused=5 key other up\n"
+    "frame=4 key space down\nafter=0 key space up\npaused=4 key other up\n"
+    "after=300 key space down\nafter=0 key space up\n"
+    "frame=5 key space down\nafter=0 key space up\npaused=5 key other up\n"
     "after=300 key space down\nafter=0 key space up\nafter=500 close\n")
 set(ENV{AYTHER_QA_INPUT_SCRIPT} "${TEST_ROOT}/pending-pause.script")
 execute_process(COMMAND "${CHECK_EXE}" check

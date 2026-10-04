@@ -20,7 +20,7 @@ y conserva lo disponible.
 
 | Tecla | Efecto |
 |---|---|
-| Espacio | Pausa al terminar el frame en curso, que queda presentado. En pausa, reanuda desde el frame siguiente al mostrado, sin acelerar para recuperar el tiempo de pausa. |
+| Espacio | Pausa al terminar el frame en curso, que queda presentado; si no hay ninguno en curso, se queda en el último mostrado. En pausa, reanuda desde el frame siguiente al mostrado, sin acelerar para recuperar el tiempo de pausa. |
 | ← / → | En pausa, retroceden o avanzan un frame dentro de la toma. La navegación es silenciosa y se recupera desde los checkpoints con las entradas grabadas. |
 | I | Muestra u oculta el registro de depuración del frame. No cambia la reproducción ni la posición, y cada toma empieza con el registro oculto. |
 | Re Pág, Av Pág, Inicio, Fin, rueda | Desplazan el registro de depuración visible. |

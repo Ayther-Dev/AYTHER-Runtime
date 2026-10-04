@@ -43,7 +43,7 @@ Commands InspectionController::pause_at(std::uint32_t frame) {
     return commands;
 }
 
-Commands InspectionController::key(KeyAction action) {
+Commands InspectionController::key(KeyAction action, FrameActivity activity) {
     if (phase_ == InspectionPhase::closing || phase_ == InspectionPhase::failed)
         return {};
     // RF-6.2, RF-6.3: I never changes the state or the position.
@@ -61,6 +61,10 @@ Commands InspectionController::key(KeyAction action) {
         // RF-5.9: arrows do nothing while playing.
         if (action != KeyAction::toggle)
             return {};
+        // RF-4.1: without a frame in progress the last completed one stays, presented in pause;
+        // the next frame is not started. A frame in progress (or frame 0) finishes first.
+        if (activity == FrameActivity::between_frames && position_)
+            return pause_at(*position_);
         phase_ = InspectionPhase::pausing;
         return {};
     case InspectionPhase::pausing:
@@ -121,8 +125,9 @@ Commands InspectionController::frame_completed(std::uint32_t frame) {
     if (pause_pending)
         return pause_at(frame);
     if (!last_take_) {
-        phase_ = InspectionPhase::closing;
-        return {{CommandKind::advance_take, frame, Notice::none, {}}};
+        // The next take starts on the next cadence slot (take_slot_reached).
+        take_end_pending_ = true;
+        return {};
     }
     // The last take confirms its linear result first, then stays paused at N−1.
     phase_ = InspectionPhase::paused;
@@ -168,6 +173,14 @@ Commands InspectionController::presentation_recovered() {
     auto commands = event("recovered", position_.value_or(0U));
     commands.push_back({CommandKind::present_frame, position_.value_or(0U), Notice::none, {}});
     return commands;
+}
+
+Commands InspectionController::take_slot_reached() {
+    if (!take_end_pending())
+        return {};
+    take_end_pending_ = false;
+    phase_ = InspectionPhase::closing;
+    return {{CommandKind::advance_take, position_.value_or(0U), Notice::none, {}}};
 }
 
 Commands InspectionController::cancel() {
