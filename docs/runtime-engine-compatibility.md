@@ -2,7 +2,7 @@
 
 AYTHER Runtime `0.1.0-beta.8` supports the installed AYTHER Engine package
 range `>=0.1.0,<0.2.0`. Reproducible builds use the narrower locked artifact
-`v0.1.0-rc.13`, including its published checksum and SLSA provenance.
+`v0.1.0-rc.14`, including its published checksum and SLSA provenance.
 
 | Platform | Architecture | Compiler/ABI | C++ runtime |
 | --- | --- | --- | --- |

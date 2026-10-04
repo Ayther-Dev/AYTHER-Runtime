@@ -12,6 +12,7 @@
 #else
 #include <cerrno>
 #include <fcntl.h>
+#include <poll.h>
 #include <unistd.h>
 #endif
 
@@ -217,6 +218,29 @@ ChannelReadResult read_channel(OwnedChannelHandle &channel, const std::span<std:
         bytes_read = static_cast<std::size_t>(received);
         return received == 0 ? ChannelReadResult::end_of_stream : ChannelReadResult::data;
     }
+#endif
+}
+
+ChannelPollResult poll_channel(OwnedChannelHandle &channel) noexcept {
+    if (!channel)
+        return ChannelPollResult::failed;
+#ifdef _WIN32
+    DWORD available{};
+    if (!PeekNamedPipe(channel.get(), nullptr, 0, nullptr, &available, nullptr))
+        return GetLastError() == ERROR_BROKEN_PIPE ? ChannelPollResult::closed
+                                                   : ChannelPollResult::failed;
+    return available > 0U ? ChannelPollResult::pending : ChannelPollResult::idle;
+#else
+    pollfd descriptor{channel.get(), POLLIN, 0};
+    const auto ready = poll(&descriptor, 1, 0);
+    if (ready < 0)
+        return errno == EINTR ? ChannelPollResult::idle : ChannelPollResult::failed;
+    if (ready == 0)
+        return ChannelPollResult::idle;
+    if ((descriptor.revents & POLLIN) != 0)
+        return ChannelPollResult::pending;
+    return (descriptor.revents & POLLHUP) != 0 ? ChannelPollResult::closed
+                                               : ChannelPollResult::failed;
 #endif
 }
 

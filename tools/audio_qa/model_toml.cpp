@@ -113,14 +113,20 @@ EncodeResult to_toml(const Request &request) {
             identity(id);
             takes.push_back(id);
         }
-        return format(toml::table{{"schema_version", 1},
-                                  {"schema_minor", 0},
-                                  {"kind", "request"},
-                                  {"request_id", request.request_id},
-                                  {"session_id", request.session_id},
-                                  {"conditions_id", request.conditions_id},
-                                  {"take_ids", std::move(takes)},
-                                  {"admission", enum_name(request.admission, admission_names)}});
+        toml::table table{{"schema_version", 1},
+                          {"schema_minor", 0},
+                          {"kind", "request"},
+                          {"request_id", request.request_id},
+                          {"session_id", request.session_id},
+                          {"conditions_id", request.conditions_id},
+                          {"take_ids", std::move(takes)},
+                          {"admission", enum_name(request.admission, admission_names)}};
+        // Spec 002 (contracts.md C1-2): only a 1.1 request carries its language.
+        if (request.language) {
+            require(*request.language == "es" || *request.language == "en");
+            table.insert("language", *request.language);
+        }
+        return format(table);
     } catch (CodecError error) {
         return error;
     }
@@ -159,8 +165,13 @@ DecodeResult<Request> request_from_toml(std::string_view text) {
     return parse<Request>(text, [](const toml::table &table) {
         document(table, "request",
                  {"schema_version", "schema_minor", "kind", "request_id", "session_id",
-                  "conditions_id", "take_ids", "admission"});
+                  "conditions_id", "take_ids", "admission", "language"});
         Request request;
+        if (const auto *language = table.get("language")) {
+            const auto value = language->value<std::string>();
+            require(value && (*value == "es" || *value == "en"));
+            request.language = *value;
+        }
         request.request_id = identity_field(table, "request_id");
         request.session_id = identity_field(table, "session_id");
         request.conditions_id = identity_field(table, "conditions_id");

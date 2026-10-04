@@ -3,6 +3,7 @@ find_package(zstd CONFIG REQUIRED)
 
 add_library(ayther_audio_qa_domain STATIC reference_model.cpp runtime_reference_comparison.cpp
     content_hash.cpp fact_model.cpp fact_trace_summary.cpp mix_model.cpp audio_chunk.cpp
+    inspection_fact_builder.cpp
     material_consumption_guard.cpp
     initial_state.cpp coverage_model.cpp capabilities.cpp protocol_header.cpp recording_header.cpp
     replay_duration_limit.cpp
@@ -108,7 +109,7 @@ endif()
 add_library(ayther_audio_qa_model_toml STATIC model_toml.cpp control_message.cpp
     replay_execution_result.cpp
     fact_batch.cpp pcm_message.cpp cancellation_message.cpp
-    play_launch_manifest.cpp)
+    play_launch_manifest.cpp session_status_message.cpp)
 target_link_libraries(ayther_audio_qa_model_toml PUBLIC ayther_audio_qa_domain
     PRIVATE tomlplusplus::tomlplusplus)
 target_link_libraries(ayther_audio_qa_evidence PRIVATE
@@ -180,7 +181,12 @@ else()
     target_compile_options(ayther_audio_qa_model_toml PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 
-add_library(ayther_audio_qa_cli STATIC check_options.cpp check_profile.cpp
+add_library(ayther_audio_qa_cli STATIC check_options.cpp check_option_descriptors.cpp
+    effective_values.cpp json_fields.cpp material_preflight.cpp request_outcome.cpp
+    request_preflight.cpp request_summary_store.cpp request_terminal_arbiter.cpp
+    runtime_protocol_v11.cpp inspection_evidence.cpp inspection_facts.cpp
+    evidence_completeness.cpp
+    runtime_probe.cpp take_plan.cpp check_runner.cpp
     check_admission.cpp check_cancellation.cpp check_execution.cpp
     check_messages.cpp check_summary.cpp integrated_evidence.cpp incremental_evidence.cpp
     campaign_audit.cpp console_interrupt.cpp evidence_query_index.cpp query_options.cpp)
@@ -207,6 +213,11 @@ endif()
 
 add_executable(ayther_audio_qa check_main.cpp)
 target_compile_features(ayther_audio_qa PRIVATE cxx_std_20)
+if(DEFINED AYTHER_RUNTIME_GENERATED_DIR)
+    # Spec 002 (RF-1.8): `options --format toml` names the compiled Runtime version.
+    target_include_directories(ayther_audio_qa PRIVATE "${AYTHER_RUNTIME_GENERATED_DIR}")
+    target_compile_definitions(ayther_audio_qa PRIVATE AYTHER_AUDIO_QA_HAS_RUNTIME_VERSION=1)
+endif()
 target_link_libraries(ayther_audio_qa PRIVATE
     ayther_audio_qa_domain
     ayther_audio_qa_materials

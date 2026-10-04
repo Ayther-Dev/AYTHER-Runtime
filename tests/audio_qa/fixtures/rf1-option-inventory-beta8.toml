@@ -1,0 +1,141 @@
+# Inventario de opciones de ayther_audio_qa generado por cli_option_inventory.py
+schema = 1
+source = "Ayther-Dev/AYTHER-Runtime"
+ref = "v0.1.0-beta.8"
+commit = "94bd583503dcaf76cb553f31d240e879e0cc49e4"
+
+[limits]
+check_arguments = 4096
+check_option_value_bytes = 32768
+check_takes = 1024
+identity_bytes = 256
+
+[[option]]
+command = "check"
+flag = "--runtime"
+required = true
+repeatable = false
+
+[[option]]
+command = "check"
+flag = "--reference"
+required = true
+repeatable = false
+
+[[option]]
+command = "check"
+flag = "--play-manifest"
+required = true
+repeatable = false
+
+[[option]]
+command = "check"
+flag = "--pack"
+required = true
+repeatable = false
+
+[[option]]
+command = "check"
+flag = "--output"
+required = true
+repeatable = false
+
+[[option]]
+command = "check"
+flag = "--request-id"
+required = false
+repeatable = false
+
+[[option]]
+command = "check"
+flag = "--language"
+required = false
+repeatable = false
+default = "es"
+values = ["es", "en"]
+
+[[option]]
+command = "check"
+flag = "--trust-registry"
+required = false
+repeatable = false
+
+[[option]]
+command = "check"
+flag = "--presentation"
+required = false
+repeatable = false
+default = "none"
+values = ["none", "visible"]
+
+[[option]]
+command = "check"
+flag = "--pack-mode"
+required = false
+repeatable = false
+default = "hd"
+values = ["hd", "original"]
+
+[[option]]
+command = "check"
+flag = "--take"
+required = false
+repeatable = true
+
+[[option]]
+command = "query"
+flag = "--index"
+required = true
+repeatable = false
+
+[[option]]
+command = "query"
+flag = "--run-id"
+required = true
+repeatable = false
+
+[[option]]
+command = "query"
+flag = "--producer-id"
+required = true
+repeatable = false
+
+[[option]]
+command = "query"
+flag = "--sequence"
+required = true
+repeatable = false
+
+[[option]]
+command = "query"
+flag = "--language"
+required = false
+repeatable = false
+default = "es"
+values = ["es", "en"]
+
+[[option]]
+command = "audit"
+flag = "--run-directory"
+required = true
+repeatable = false
+
+[[option]]
+command = "audit"
+flag = "--run-id"
+required = true
+repeatable = false
+
+[[option]]
+command = "audit"
+flag = "--expected-assignments"
+required = true
+repeatable = false
+
+[[option]]
+command = "audit"
+flag = "--language"
+required = false
+repeatable = false
+default = "es"
+values = ["es", "en"]

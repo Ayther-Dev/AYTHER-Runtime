@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory)][string]$Checker,
     [Parameter(Mandatory)][string]$Runtime,
+    [Parameter(Mandatory)][string]$Rom,
     [Parameter(Mandatory)][string]$Reference,
     [Parameter(Mandatory)][string]$Manifest,
     [Parameter(Mandatory)][string]$Pack,
@@ -15,7 +16,7 @@ $launch.UseShellExecute = $false
 $launch.CreateNoWindow = $true
 $launch.RedirectStandardOutput = $true
 $launch.RedirectStandardError = $true
-foreach ($argument in @('check', '--runtime', $Runtime, '--reference', $Reference,
+foreach ($argument in @('check', '--runtime', $Runtime, '--rom', $Rom, '--reference', $Reference,
         '--play-manifest', $Manifest, '--pack', $Pack, '--trust-registry', $Trust,
         '--take', $Take, '--output', $OutputRoot, '--request-id', 'visible-cancellation',
         '--presentation', 'visible')) {

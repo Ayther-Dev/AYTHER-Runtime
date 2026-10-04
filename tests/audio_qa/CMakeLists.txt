@@ -288,23 +288,286 @@ endif()
 add_test(NAME audio_qa_check_options COMMAND audio_qa_check_options_test)
 set_tests_properties(audio_qa_check_options PROPERTIES
     LABELS "audio_qa;cli;unit" TIMEOUT 10)
-add_executable(audio_qa_check_profile_test check_profile_test.cpp)
-target_link_libraries(audio_qa_check_profile_test PRIVATE ayther_audio_qa_cli)
-target_compile_features(audio_qa_check_profile_test PRIVATE cxx_std_20)
-set_target_properties(audio_qa_check_profile_test PROPERTIES CXX_EXTENSIONS OFF)
+add_executable(audio_qa_check_option_descriptors_test check_option_descriptors_test.cpp)
+target_link_libraries(audio_qa_check_option_descriptors_test PRIVATE
+    ayther_audio_qa_cli tomlplusplus::tomlplusplus)
+target_compile_features(audio_qa_check_option_descriptors_test PRIVATE cxx_std_20)
+set_target_properties(audio_qa_check_option_descriptors_test PROPERTIES CXX_EXTENSIONS OFF)
 if(AYTHER_CLANG_TIDY_COMMAND)
-    set_target_properties(audio_qa_check_profile_test PROPERTIES
+    set_target_properties(audio_qa_check_option_descriptors_test PROPERTIES
         CXX_CLANG_TIDY "${AYTHER_CLANG_TIDY_COMMAND}")
 endif()
 if(MSVC)
-    target_compile_options(audio_qa_check_profile_test PRIVATE
+    target_compile_options(audio_qa_check_option_descriptors_test PRIVATE
         /W4 /WX /permissive- /EHsc)
 else()
-    target_compile_options(audio_qa_check_profile_test PRIVATE
+    target_compile_options(audio_qa_check_option_descriptors_test PRIVATE
         -Wall -Wextra -Wpedantic -Werror)
 endif()
-add_test(NAME audio_qa_check_profile COMMAND audio_qa_check_profile_test)
-set_tests_properties(audio_qa_check_profile PROPERTIES
+if(WIN32)
+    find_file(qa_descriptor_toml_dll_release NAMES tomlplusplus-3.dll
+        PATHS "${tomlplusplus_DIR}/../../bin" NO_DEFAULT_PATH REQUIRED)
+    find_file(qa_descriptor_toml_dll_debug NAMES tomlplusplus-3.dll
+        PATHS "${tomlplusplus_DIR}/../../debug/bin" NO_DEFAULT_PATH REQUIRED)
+    add_custom_command(TARGET audio_qa_check_option_descriptors_test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<IF:$<CONFIG:Debug>,${qa_descriptor_toml_dll_debug},${qa_descriptor_toml_dll_release}>"
+            "$<TARGET_FILE_DIR:audio_qa_check_option_descriptors_test>" VERBATIM)
+endif()
+add_test(NAME audio_qa_check_option_descriptors
+    COMMAND audio_qa_check_option_descriptors_test
+        "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/rf1-option-inventory-beta8.toml"
+        "$<TARGET_FILE:ayther_audio_qa>")
+set_tests_properties(audio_qa_check_option_descriptors PROPERTIES
+    LABELS "audio_qa;cli;unit;contract" TIMEOUT 10)
+add_executable(audio_qa_take_plan_test take_plan_test.cpp)
+target_link_libraries(audio_qa_take_plan_test PRIVATE ayther_audio_qa_cli)
+target_compile_features(audio_qa_take_plan_test PRIVATE cxx_std_20)
+set_target_properties(audio_qa_take_plan_test PROPERTIES CXX_EXTENSIONS OFF)
+if(AYTHER_CLANG_TIDY_COMMAND)
+    set_target_properties(audio_qa_take_plan_test PROPERTIES
+        CXX_CLANG_TIDY "${AYTHER_CLANG_TIDY_COMMAND}")
+endif()
+if(MSVC)
+    target_compile_options(audio_qa_take_plan_test PRIVATE
+        /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(audio_qa_take_plan_test PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME audio_qa_take_plan COMMAND audio_qa_take_plan_test)
+set_tests_properties(audio_qa_take_plan PROPERTIES
+    LABELS "audio_qa;cli;unit" TIMEOUT 10)
+add_executable(audio_qa_material_preflight_test material_preflight_test.cpp)
+target_link_libraries(audio_qa_material_preflight_test PRIVATE ayther_audio_qa_cli)
+target_compile_features(audio_qa_material_preflight_test PRIVATE cxx_std_20)
+set_target_properties(audio_qa_material_preflight_test PROPERTIES CXX_EXTENSIONS OFF)
+if(AYTHER_CLANG_TIDY_COMMAND)
+    set_target_properties(audio_qa_material_preflight_test PROPERTIES
+        CXX_CLANG_TIDY "${AYTHER_CLANG_TIDY_COMMAND}")
+endif()
+if(MSVC)
+    target_compile_options(audio_qa_material_preflight_test PRIVATE
+        /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(audio_qa_material_preflight_test PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME audio_qa_material_preflight COMMAND audio_qa_material_preflight_test)
+set_tests_properties(audio_qa_material_preflight PROPERTIES
+    LABELS "audio_qa;cli;unit" TIMEOUT 30)
+add_executable(audio_qa_take_preflight_test take_preflight_test.cpp)
+target_link_libraries(audio_qa_take_preflight_test PRIVATE ayther_audio_qa_cli)
+target_compile_features(audio_qa_take_preflight_test PRIVATE cxx_std_20)
+set_target_properties(audio_qa_take_preflight_test PROPERTIES CXX_EXTENSIONS OFF)
+if(AYTHER_CLANG_TIDY_COMMAND)
+    set_target_properties(audio_qa_take_preflight_test PROPERTIES
+        CXX_CLANG_TIDY "${AYTHER_CLANG_TIDY_COMMAND}")
+endif()
+if(MSVC)
+    target_compile_options(audio_qa_take_preflight_test PRIVATE
+        /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(audio_qa_take_preflight_test PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME audio_qa_take_preflight COMMAND audio_qa_take_preflight_test)
+set_tests_properties(audio_qa_take_preflight PROPERTIES
+    LABELS "audio_qa;cli;unit" TIMEOUT 30)
+add_executable(audio_qa_request_summary_store_test request_summary_store_test.cpp)
+target_link_libraries(audio_qa_request_summary_store_test PRIVATE ayther_audio_qa_cli)
+target_compile_features(audio_qa_request_summary_store_test PRIVATE cxx_std_20)
+set_target_properties(audio_qa_request_summary_store_test PROPERTIES CXX_EXTENSIONS OFF)
+if(MSVC)
+    target_compile_options(audio_qa_request_summary_store_test PRIVATE
+        /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(audio_qa_request_summary_store_test PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(WIN32)
+    add_custom_command(TARGET audio_qa_request_summary_store_test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<IF:$<CONFIG:Debug>,${qa_descriptor_toml_dll_debug},${qa_descriptor_toml_dll_release}>"
+            "$<TARGET_FILE_DIR:audio_qa_request_summary_store_test>" VERBATIM)
+endif()
+add_test(NAME audio_qa_request_summary_store COMMAND audio_qa_request_summary_store_test)
+set_tests_properties(audio_qa_request_summary_store PROPERTIES
+    LABELS "audio_qa;cli;unit" TIMEOUT 10)
+add_executable(audio_qa_runtime_protocol_v11_test runtime_protocol_v11_test.cpp)
+target_link_libraries(audio_qa_runtime_protocol_v11_test PRIVATE ayther_audio_qa_cli
+    ayther_audio_qa_model_toml)
+target_compile_features(audio_qa_runtime_protocol_v11_test PRIVATE cxx_std_20)
+set_target_properties(audio_qa_runtime_protocol_v11_test PROPERTIES CXX_EXTENSIONS OFF)
+if(MSVC)
+    target_compile_options(audio_qa_runtime_protocol_v11_test PRIVATE
+        /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(audio_qa_runtime_protocol_v11_test PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(WIN32)
+    add_custom_command(TARGET audio_qa_runtime_protocol_v11_test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<IF:$<CONFIG:Debug>,${qa_descriptor_toml_dll_debug},${qa_descriptor_toml_dll_release}>"
+            "$<TARGET_FILE_DIR:audio_qa_runtime_protocol_v11_test>" VERBATIM)
+endif()
+add_test(NAME audio_qa_runtime_protocol_v11 COMMAND audio_qa_runtime_protocol_v11_test)
+set_tests_properties(audio_qa_runtime_protocol_v11 PROPERTIES
+    LABELS "audio_qa;protocol;unit" TIMEOUT 10)
+add_executable(audio_qa_inspection_evidence_test inspection_evidence_test.cpp)
+target_link_libraries(audio_qa_inspection_evidence_test PRIVATE ayther_audio_qa_cli)
+target_compile_features(audio_qa_inspection_evidence_test PRIVATE cxx_std_20)
+set_target_properties(audio_qa_inspection_evidence_test PROPERTIES CXX_EXTENSIONS OFF)
+if(MSVC)
+    target_compile_options(audio_qa_inspection_evidence_test PRIVATE
+        /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(audio_qa_inspection_evidence_test PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(WIN32)
+    add_custom_command(TARGET audio_qa_inspection_evidence_test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<IF:$<CONFIG:Debug>,${qa_descriptor_toml_dll_debug},${qa_descriptor_toml_dll_release}>"
+            "$<TARGET_FILE_DIR:audio_qa_inspection_evidence_test>" VERBATIM)
+endif()
+add_test(NAME audio_qa_inspection_evidence COMMAND audio_qa_inspection_evidence_test)
+set_tests_properties(audio_qa_inspection_evidence PROPERTIES
+    LABELS "audio_qa;evidence;unit" TIMEOUT 10)
+add_executable(audio_qa_inspection_facts_test inspection_facts_test.cpp)
+target_link_libraries(audio_qa_inspection_facts_test PRIVATE ayther_audio_qa_cli
+    ayther_audio_qa_evidence ayther_audio_qa_model_toml ayther_audio_qa_transport)
+target_compile_features(audio_qa_inspection_facts_test PRIVATE cxx_std_20)
+set_target_properties(audio_qa_inspection_facts_test PROPERTIES CXX_EXTENSIONS OFF)
+if(MSVC)
+    target_compile_options(audio_qa_inspection_facts_test PRIVATE
+        /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(audio_qa_inspection_facts_test PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(WIN32)
+    add_custom_command(TARGET audio_qa_inspection_facts_test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<IF:$<CONFIG:Debug>,${qa_descriptor_toml_dll_debug},${qa_descriptor_toml_dll_release}>"
+            "$<TARGET_FILE_DIR:audio_qa_inspection_facts_test>" VERBATIM)
+endif()
+add_test(NAME audio_qa_inspection_facts COMMAND audio_qa_inspection_facts_test)
+set_tests_properties(audio_qa_inspection_facts PROPERTIES
+    LABELS "audio_qa;evidence;unit" TIMEOUT 10)
+add_executable(audio_qa_evidence_completeness_test evidence_completeness_test.cpp)
+target_link_libraries(audio_qa_evidence_completeness_test PRIVATE ayther_audio_qa_cli)
+target_compile_features(audio_qa_evidence_completeness_test PRIVATE cxx_std_20)
+set_target_properties(audio_qa_evidence_completeness_test PROPERTIES CXX_EXTENSIONS OFF)
+if(MSVC)
+    target_compile_options(audio_qa_evidence_completeness_test PRIVATE
+        /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(audio_qa_evidence_completeness_test PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME audio_qa_evidence_completeness COMMAND audio_qa_evidence_completeness_test)
+set_tests_properties(audio_qa_evidence_completeness PROPERTIES
+    LABELS "audio_qa;evidence;unit" TIMEOUT 10)
+add_executable(audio_qa_evidence_schema_v11_test evidence_schema_v11_test.cpp)
+target_link_libraries(audio_qa_evidence_schema_v11_test PRIVATE ayther_audio_qa_cli
+    ayther_audio_qa_model_toml tomlplusplus::tomlplusplus)
+target_compile_features(audio_qa_evidence_schema_v11_test PRIVATE cxx_std_20)
+set_target_properties(audio_qa_evidence_schema_v11_test PROPERTIES CXX_EXTENSIONS OFF)
+if(MSVC)
+    target_compile_options(audio_qa_evidence_schema_v11_test PRIVATE
+        /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(audio_qa_evidence_schema_v11_test PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(WIN32)
+    add_custom_command(TARGET audio_qa_evidence_schema_v11_test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<IF:$<CONFIG:Debug>,${qa_descriptor_toml_dll_debug},${qa_descriptor_toml_dll_release}>"
+            "$<TARGET_FILE_DIR:audio_qa_evidence_schema_v11_test>" VERBATIM)
+endif()
+add_test(NAME audio_qa_evidence_schema_v11 COMMAND audio_qa_evidence_schema_v11_test)
+set_tests_properties(audio_qa_evidence_schema_v11 PROPERTIES
+    LABELS "audio_qa;evidence;unit" TIMEOUT 10)
+add_executable(audio_qa_request_terminal_arbiter_test request_terminal_arbiter_test.cpp)
+target_link_libraries(audio_qa_request_terminal_arbiter_test PRIVATE ayther_audio_qa_cli)
+target_compile_features(audio_qa_request_terminal_arbiter_test PRIVATE cxx_std_20)
+set_target_properties(audio_qa_request_terminal_arbiter_test PROPERTIES CXX_EXTENSIONS OFF)
+if(AYTHER_CLANG_TIDY_COMMAND)
+    set_target_properties(audio_qa_request_terminal_arbiter_test PROPERTIES
+        CXX_CLANG_TIDY "${AYTHER_CLANG_TIDY_COMMAND}")
+endif()
+if(MSVC)
+    target_compile_options(audio_qa_request_terminal_arbiter_test PRIVATE
+        /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(audio_qa_request_terminal_arbiter_test PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME audio_qa_request_terminal_arbiter COMMAND audio_qa_request_terminal_arbiter_test)
+set_tests_properties(audio_qa_request_terminal_arbiter PROPERTIES
+    LABELS "audio_qa;cli;unit" TIMEOUT 10)
+add_executable(audio_qa_runtime_probe_test runtime_probe_test.cpp)
+target_link_libraries(audio_qa_runtime_probe_test PRIVATE ayther_audio_qa_cli)
+target_compile_features(audio_qa_runtime_probe_test PRIVATE cxx_std_20)
+set_target_properties(audio_qa_runtime_probe_test PROPERTIES CXX_EXTENSIONS OFF)
+if(AYTHER_CLANG_TIDY_COMMAND)
+    set_target_properties(audio_qa_runtime_probe_test PROPERTIES
+        CXX_CLANG_TIDY "${AYTHER_CLANG_TIDY_COMMAND}")
+endif()
+if(MSVC)
+    target_compile_options(audio_qa_runtime_probe_test PRIVATE
+        /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(audio_qa_runtime_probe_test PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME audio_qa_runtime_probe COMMAND audio_qa_runtime_probe_test)
+set_tests_properties(audio_qa_runtime_probe PROPERTIES
+    LABELS "audio_qa;cli;unit" TIMEOUT 10)
+add_executable(audio_qa_json_fields_test json_fields_test.cpp)
+target_link_libraries(audio_qa_json_fields_test PRIVATE ayther_audio_qa_cli)
+target_compile_features(audio_qa_json_fields_test PRIVATE cxx_std_20)
+set_target_properties(audio_qa_json_fields_test PROPERTIES CXX_EXTENSIONS OFF)
+if(AYTHER_CLANG_TIDY_COMMAND)
+    set_target_properties(audio_qa_json_fields_test PROPERTIES
+        CXX_CLANG_TIDY "${AYTHER_CLANG_TIDY_COMMAND}")
+endif()
+if(MSVC)
+    target_compile_options(audio_qa_json_fields_test PRIVATE
+        /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(audio_qa_json_fields_test PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME audio_qa_json_fields COMMAND audio_qa_json_fields_test)
+set_tests_properties(audio_qa_json_fields PROPERTIES
+    LABELS "audio_qa;cli;unit" TIMEOUT 10)
+add_executable(audio_qa_effective_values_test effective_values_test.cpp)
+target_link_libraries(audio_qa_effective_values_test PRIVATE ayther_audio_qa_cli)
+target_compile_features(audio_qa_effective_values_test PRIVATE cxx_std_20)
+set_target_properties(audio_qa_effective_values_test PROPERTIES CXX_EXTENSIONS OFF)
+if(AYTHER_CLANG_TIDY_COMMAND)
+    set_target_properties(audio_qa_effective_values_test PROPERTIES
+        CXX_CLANG_TIDY "${AYTHER_CLANG_TIDY_COMMAND}")
+endif()
+if(MSVC)
+    target_compile_options(audio_qa_effective_values_test PRIVATE
+        /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(audio_qa_effective_values_test PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(WIN32)
+    add_custom_command(TARGET audio_qa_effective_values_test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<IF:$<CONFIG:Debug>,${qa_descriptor_toml_dll_debug},${qa_descriptor_toml_dll_release}>"
+            "$<TARGET_FILE_DIR:audio_qa_effective_values_test>" VERBATIM)
+endif()
+add_test(NAME audio_qa_effective_values COMMAND audio_qa_effective_values_test)
+set_tests_properties(audio_qa_effective_values PROPERTIES
     LABELS "audio_qa;cli;unit" TIMEOUT 10)
 add_executable(audio_qa_check_admission_test check_admission_test.cpp)
 target_link_libraries(audio_qa_check_admission_test PRIVATE ayther_audio_qa_cli)
@@ -445,6 +708,22 @@ add_test(NAME audio_qa_public_recording_fixture
 set_tests_properties(audio_qa_public_recording_fixture PROPERTIES
     LABELS "audio_qa;fixture;integration" TIMEOUT 15
     FIXTURES_SETUP audio_qa_public_recording)
+# Spec 002, BR-152 (RF-2.8): synthetic takes of N frames, among them the take of one frame.
+foreach(frames IN ITEMS 1 6 600)
+    add_test(NAME audio_qa_public_recording_fixture_${frames}
+        COMMAND audio_qa_public_recording_fixture
+            "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic-${frames}.arp"
+            --frames ${frames})
+    set_tests_properties(audio_qa_public_recording_fixture_${frames} PROPERTIES
+        LABELS "audio_qa;fixture" TIMEOUT 30
+        PASS_REGULAR_EXPRESSION "public_recording_fixture: frames=${frames} "
+        FIXTURES_SETUP audio_qa_public_recording)
+endforeach()
+add_test(NAME audio_qa_public_recording_fixture_zero
+    COMMAND audio_qa_public_recording_fixture
+        "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic-0.arp" --frames 0)
+set_tests_properties(audio_qa_public_recording_fixture_zero PROPERTIES
+    LABELS "audio_qa;fixture" TIMEOUT 30 WILL_FAIL TRUE)
 add_executable(audio_qa_public_pack_fixture public_pack_fixture.cpp)
 target_link_libraries(audio_qa_public_pack_fixture PRIVATE Ayther::engine)
 target_compile_features(audio_qa_public_pack_fixture PRIVATE cxx_std_20)
@@ -543,6 +822,147 @@ if(AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE AND WIN32)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/runtime_capabilities_test.cmake")
     set_tests_properties(audio_qa_runtime_capabilities PROPERTIES
         LABELS "audio_qa;runtime;contract;integration" TIMEOUT 15)
+    # Spec 002 (BR-060, BR-063, BR-067 to BR-069): run_check with the real Runtime, no GPU.
+    add_test(NAME audio_qa_public_long_recording_fixture
+        COMMAND audio_qa_public_recording_fixture
+            "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic-long.arp" --long)
+    set_tests_properties(audio_qa_public_long_recording_fixture PROPERTIES
+        LABELS "audio_qa;fixture" TIMEOUT 30 FIXTURES_SETUP audio_qa_public_recording)
+    add_test(NAME audio_qa_public_broken_recording_fixture
+        COMMAND audio_qa_public_recording_fixture
+            "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic-broken.arp" --broken)
+    set_tests_properties(audio_qa_public_broken_recording_fixture PROPERTIES
+        LABELS "audio_qa;fixture" TIMEOUT 30 FIXTURES_SETUP audio_qa_public_recording)
+    add_executable(audio_qa_check_runner_integration_test check_runner_integration_test.cpp)
+    target_link_libraries(audio_qa_check_runner_integration_test PRIVATE ayther_audio_qa_cli)
+    target_compile_features(audio_qa_check_runner_integration_test PRIVATE cxx_std_20)
+    set_target_properties(audio_qa_check_runner_integration_test PROPERTIES CXX_EXTENSIONS OFF)
+    target_compile_options(audio_qa_check_runner_integration_test PRIVATE
+        /W4 /WX /permissive- /EHsc)
+    add_custom_command(TARGET audio_qa_check_runner_integration_test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<IF:$<CONFIG:Debug>,${qa_descriptor_toml_dll_debug},${qa_descriptor_toml_dll_release}>"
+            "$<TARGET_FILE_DIR:audio_qa_check_runner_integration_test>" VERBATIM)
+    add_dependencies(audio_qa_check_runner_integration_test ayther_runtime synthetic_libretro_core)
+    add_test(NAME audio_qa_check_runner_integration
+        COMMAND audio_qa_check_runner_integration_test
+            "$<TARGET_FILE:ayther_runtime>"
+            "$<TARGET_FILE:synthetic_libretro_core>"
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic.aytest"
+            "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic.arp"
+            "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic-long.arp"
+            "${CMAKE_CURRENT_BINARY_DIR}/check-runner/$<CONFIG>")
+    set_tests_properties(audio_qa_check_runner_integration PROPERTIES
+        LABELS "audio_qa;cli;runtime;integration"
+        TIMEOUT 240 FIXTURES_REQUIRED audio_qa_public_recording
+        ENVIRONMENT
+            "SDL_AUDIO_DRIVER=dummy;SDL_AUDIO_FREQUENCY=48000;SDL_AUDIO_CHANNELS=2;SDL_AUDIO_DEVICE_SAMPLE_FRAMES=512")
+    # Spec 002 (BR-135): a synthetic supervisor speaks protocol 1.1 with the real Runtime.
+    add_executable(audio_qa_runtime_session_v11_test runtime_session_v11_test.cpp)
+    target_link_libraries(audio_qa_runtime_session_v11_test PRIVATE ayther_audio_qa_cli
+        ayther_audio_qa_transport ayther_audio_qa_model_toml)
+    target_compile_features(audio_qa_runtime_session_v11_test PRIVATE cxx_std_20)
+    set_target_properties(audio_qa_runtime_session_v11_test PROPERTIES CXX_EXTENSIONS OFF)
+    target_compile_options(audio_qa_runtime_session_v11_test PRIVATE /W4 /WX /permissive- /EHsc)
+    add_custom_command(TARGET audio_qa_runtime_session_v11_test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<IF:$<CONFIG:Debug>,${qa_descriptor_toml_dll_debug},${qa_descriptor_toml_dll_release}>"
+            "$<TARGET_FILE_DIR:audio_qa_runtime_session_v11_test>" VERBATIM)
+    add_dependencies(audio_qa_runtime_session_v11_test ayther_runtime synthetic_libretro_core)
+    add_test(NAME audio_qa_runtime_session_v11
+        COMMAND audio_qa_runtime_session_v11_test
+            "$<TARGET_FILE:ayther_runtime>"
+            "$<TARGET_FILE:synthetic_libretro_core>"
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic.aytest"
+            "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic.arp"
+            "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic-long.arp"
+            "${CMAKE_CURRENT_BINARY_DIR}/runtime-session-v11/$<CONFIG>")
+    set_tests_properties(audio_qa_runtime_session_v11 PROPERTIES
+        LABELS "audio_qa;runtime;protocol;integration"
+        TIMEOUT 120 FIXTURES_REQUIRED audio_qa_public_recording)
+    # Spec 002 (BR-139, BR-155): checkpoints and oracle O3 with the Engine session.
+    add_executable(audio_qa_checkpoint_recovery_test checkpoint_recovery_test.cpp
+        "${PROJECT_SOURCE_DIR}/src/audio_qa_inspection.cpp")
+    target_include_directories(audio_qa_checkpoint_recovery_test PRIVATE
+        "${PROJECT_SOURCE_DIR}/src")
+    target_link_libraries(audio_qa_checkpoint_recovery_test PRIVATE
+        ayther_audio_qa_engine_replay ayther_replay_inspection Ayther::engine)
+    target_compile_features(audio_qa_checkpoint_recovery_test PRIVATE cxx_std_20)
+    set_target_properties(audio_qa_checkpoint_recovery_test PROPERTIES CXX_EXTENSIONS OFF)
+    target_compile_options(audio_qa_checkpoint_recovery_test PRIVATE /W4 /WX /permissive- /EHsc)
+    add_custom_command(TARGET audio_qa_checkpoint_recovery_test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_RUNTIME_DLLS:audio_qa_checkpoint_recovery_test>"
+            "$<TARGET_FILE_DIR:audio_qa_checkpoint_recovery_test>"
+        COMMAND_EXPAND_LISTS VERBATIM)
+    add_dependencies(audio_qa_checkpoint_recovery_test synthetic_libretro_core)
+    add_test(NAME audio_qa_checkpoint_recovery
+        COMMAND audio_qa_checkpoint_recovery_test
+            "$<TARGET_FILE:synthetic_libretro_core>"
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic.aytest"
+            "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic-600.arp")
+    set_tests_properties(audio_qa_checkpoint_recovery PROPERTIES
+        LABELS "audio_qa;replay_inspection;integration" TIMEOUT 300
+        FIXTURES_REQUIRED audio_qa_public_recording)
+    # Spec 002 (BR-137 to BR-151): the inspection in the Runtime loop, no GPU.
+    add_executable(audio_qa_runtime_inspection_session_test runtime_inspection_session_test.cpp)
+    target_link_libraries(audio_qa_runtime_inspection_session_test PRIVATE ayther_audio_qa_cli
+        ayther_audio_qa_transport ayther_audio_qa_model_toml)
+    target_compile_features(audio_qa_runtime_inspection_session_test PRIVATE cxx_std_20)
+    set_target_properties(audio_qa_runtime_inspection_session_test PROPERTIES
+        CXX_EXTENSIONS OFF)
+    target_compile_options(audio_qa_runtime_inspection_session_test PRIVATE
+        /W4 /WX /permissive- /EHsc)
+    add_custom_command(TARGET audio_qa_runtime_inspection_session_test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<IF:$<CONFIG:Debug>,${qa_descriptor_toml_dll_debug},${qa_descriptor_toml_dll_release}>"
+            "$<TARGET_FILE_DIR:audio_qa_runtime_inspection_session_test>" VERBATIM)
+    add_dependencies(audio_qa_runtime_inspection_session_test ayther_runtime
+        synthetic_libretro_core audio_qa_public_recording_fixture)
+    add_test(NAME audio_qa_runtime_inspection_session
+        COMMAND audio_qa_runtime_inspection_session_test
+            "$<TARGET_FILE:ayther_runtime>"
+            "$<TARGET_FILE:synthetic_libretro_core>"
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic.aytest"
+            "$<TARGET_FILE:audio_qa_public_recording_fixture>"
+            "${CMAKE_CURRENT_BINARY_DIR}/runtime-inspection/$<CONFIG>")
+    set_tests_properties(audio_qa_runtime_inspection_session PROPERTIES
+        LABELS "audio_qa;runtime;replay_inspection;integration" TIMEOUT 300)
+    # Spec 002 (BR-058): validation before admission with the real Runtime, no GPU.
+    add_test(NAME audio_qa_check_preflight_integration
+        COMMAND ${CMAKE_COMMAND}
+            "-DCHECK_EXE=$<TARGET_FILE:ayther_audio_qa>"
+            "-DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>"
+            "-DCORE_DLL=$<TARGET_FILE:synthetic_libretro_core>"
+            "-DNON_CORE_DLL=$<TARGET_FILE:non_libretro_library>"
+            "-DROM_FILE=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic.aytest"
+            "-DTAKE_FILE=${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic.arp"
+            "-DFIXTURES=${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+            "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/check-preflight/$<CONFIG>"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/check_preflight_integration_test.cmake")
+    set_tests_properties(audio_qa_check_preflight_integration PROPERTIES
+        LABELS "audio_qa;cli;runtime;integration"
+        TIMEOUT 180 FIXTURES_REQUIRED audio_qa_public_recording
+        ENVIRONMENT
+            "SDL_AUDIO_DRIVER=dummy;SDL_AUDIO_FREQUENCY=48000;SDL_AUDIO_CHANNELS=2;SDL_AUDIO_DEVICE_SAMPLE_FRAMES=512")
+    # Spec 002 (BR-056): the pack probe with a valid, an unverified and a corrupt pack.
+    add_test(NAME audio_qa_runtime_pack_probe
+        COMMAND ${CMAKE_COMMAND}
+            "-DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>"
+            "-DFIXTURES=${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/runtime_pack_probe_test.cmake")
+    set_tests_properties(audio_qa_runtime_pack_probe PROPERTIES
+        LABELS "audio_qa;runtime;contract;integration" TIMEOUT 60)
+    # Spec 002 (BR-055): the core probe with the synthetic core and a non-libretro DLL.
+    add_test(NAME audio_qa_runtime_probe_integration
+        COMMAND audio_qa_runtime_probe_test
+            "$<TARGET_FILE:ayther_runtime>"
+            "$<TARGET_FILE:synthetic_libretro_core>"
+            "$<TARGET_FILE:non_libretro_library>"
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic.aytest"
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+    set_tests_properties(audio_qa_runtime_probe_integration PROPERTIES
+        LABELS "audio_qa;cli;runtime;integration" TIMEOUT 60)
     add_test(NAME audio_qa_real_replay_integration
         COMMAND ${CMAKE_COMMAND}
             "-DCHECK_EXE=$<TARGET_FILE:ayther_audio_qa>"
@@ -552,6 +972,7 @@ if(AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE AND WIN32)
             "-DPACK_FILE=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic.ay"
             "-DTRUST_REGISTRY=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic-trust.toml"
             "-DTAKE_FILE=${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic.arp"
+            "-DBROKEN_TAKE_FILE=${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic-broken.arp"
             "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/real-replay/$<CONFIG>"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/real_replay_integration_test.cmake")
     set_tests_properties(audio_qa_real_replay_integration PROPERTIES
@@ -570,12 +991,67 @@ if(AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE AND WIN32)
                 "-DPACK_FILE=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic.ay"
                 "-DTRUST_REGISTRY=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic-trust.toml"
                 "-DTAKE_FILE=${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic.arp"
+                "-DBROKEN_TAKE_FILE=${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic-broken.arp"
                 "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/visible-replay/$<CONFIG>"
                 "-DFIXTURE_EXE=$<TARGET_FILE:audio_qa_public_recording_fixture>"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/visible_replay_integration_test.cmake")
         set_tests_properties(audio_qa_visible_replay_integration PROPERTIES
             LABELS "audio_qa;gpu;integration" TIMEOUT 90 RUN_SERIAL TRUE
             FIXTURES_REQUIRED audio_qa_public_recording)
+        # Spec 002 (BR-144 to BR-148, BR-153, BR-154): the visible inspection with simulated
+        # events, through a synthetic supervisor.
+        add_executable(audio_qa_visible_inspection_test runtime_visible_inspection_test.cpp)
+        target_link_libraries(audio_qa_visible_inspection_test PRIVATE ayther_audio_qa_cli
+            ayther_audio_qa_transport ayther_audio_qa_model_toml)
+        target_compile_features(audio_qa_visible_inspection_test PRIVATE cxx_std_20)
+        set_target_properties(audio_qa_visible_inspection_test PROPERTIES CXX_EXTENSIONS OFF)
+        target_compile_options(audio_qa_visible_inspection_test PRIVATE
+            /W4 /WX /permissive- /EHsc)
+        add_custom_command(TARGET audio_qa_visible_inspection_test POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<IF:$<CONFIG:Debug>,${qa_descriptor_toml_dll_debug},${qa_descriptor_toml_dll_release}>"
+                "$<TARGET_FILE_DIR:audio_qa_visible_inspection_test>" VERBATIM)
+        add_dependencies(audio_qa_visible_inspection_test ayther_runtime synthetic_libretro_core
+            audio_qa_public_recording_fixture)
+        add_test(NAME audio_qa_visible_inspection_integration
+            COMMAND audio_qa_visible_inspection_test
+                "$<TARGET_FILE:ayther_runtime>"
+                "$<TARGET_FILE:synthetic_libretro_core>"
+                "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic.aytest"
+                "$<TARGET_FILE:audio_qa_public_recording_fixture>"
+                "${CMAKE_CURRENT_BINARY_DIR}/visible-inspection/$<CONFIG>")
+        set_tests_properties(audio_qa_visible_inspection_integration PROPERTIES
+            LABELS "audio_qa;gpu;integration;replay_inspection" TIMEOUT 300 RUN_SERIAL TRUE)
+        # Spec 002 (BR-156): the measurements of plan §8 on the reference equipment. Not a
+        # ctest: it is run by hand on an idle machine and its table goes to evidence/perf.md.
+        add_executable(audio_qa_inspection_measurement inspection_measurement.cpp)
+        target_link_libraries(audio_qa_inspection_measurement PRIVATE ayther_audio_qa_cli
+            ayther_audio_qa_transport ayther_audio_qa_model_toml ayther_replay_inspection)
+        target_compile_features(audio_qa_inspection_measurement PRIVATE cxx_std_20)
+        set_target_properties(audio_qa_inspection_measurement PROPERTIES CXX_EXTENSIONS OFF)
+        target_compile_options(audio_qa_inspection_measurement PRIVATE /W4 /WX /permissive- /EHsc)
+        add_custom_command(TARGET audio_qa_inspection_measurement POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<IF:$<CONFIG:Debug>,${qa_descriptor_toml_dll_debug},${qa_descriptor_toml_dll_release}>"
+                "$<TARGET_FILE_DIR:audio_qa_inspection_measurement>" VERBATIM)
+        # BR-156 (DI-11): the measurement drives a real take (Toma 3) with its pack, zones and
+        # rate; the dry run checks the plan without timing anything.
+        add_test(NAME audio_qa_inspection_measurement_plan
+            COMMAND audio_qa_inspection_measurement
+                "$<TARGET_FILE:ayther_runtime>"
+                "$<TARGET_FILE:synthetic_libretro_core>"
+                "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic.aytest"
+                "$<TARGET_FILE:audio_qa_public_recording_fixture>"
+                "${CMAKE_CURRENT_BINARY_DIR}/inspection-measurement-plan/$<CONFIG>"
+                --take "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic-600.arp"
+                --zones 100,300,500 --fps 59.922743 --core-option region=us
+                --pack "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic.ay"
+                --trust-registry "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic-trust.toml"
+                --dry-run)
+        set_tests_properties(audio_qa_inspection_measurement_plan PROPERTIES
+            LABELS "audio_qa;perf;unit" TIMEOUT 30 FIXTURES_REQUIRED audio_qa_public_recording
+            PASS_REGULAR_EXPRESSION
+                "plan take_frames=600 zones=100,300,500 fps=59.9227 pack=yes trust=yes core_options=1")
     endif()
 
     set(AYTHER_AUDIO_QA_LEGACY_RUNTIME "" CACHE FILEPATH

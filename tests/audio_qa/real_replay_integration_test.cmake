@@ -92,6 +92,7 @@ value = "qa170-public"
 execute_process(
     COMMAND "${CHECK_EXE}" check
         --runtime "${RUNTIME_EXE}"
+        --rom "${ROM_FILE}"
         --reference "${REFERENCE}"
         --play-manifest "${MANIFEST}"
         --pack "${PACK_FILE}"
@@ -123,7 +124,8 @@ foreach(expected IN ITEMS
         "decision=5:"
         "effect=5:"
         "mix_span=6:"
-        "durable_facts=123"
+        # Spec 002 (BR-146, contracts.md C2): 123 engine facts and one render_frame per frame.
+        "durable_facts=129"
         "durable_pcm_blocks="
         "fact_integrity_complete=true"
         "relationships_reopened=true"
@@ -142,6 +144,7 @@ endforeach()
 execute_process(
     COMMAND "${CHECK_EXE}" check
         --runtime "${RUNTIME_EXE}"
+        --rom "${ROM_FILE}"
         --reference "${REFERENCE}"
         --play-manifest "${MANIFEST}"
         --pack "${PACK_FILE}"
@@ -209,6 +212,7 @@ endif()
 execute_process(
     COMMAND "${CHECK_EXE}" check
         --runtime "${RUNTIME_EXE}"
+        --rom "${ROM_FILE}"
         --reference "${REFERENCE}"
         --play-manifest "${MANIFEST}"
         --pack "${PACK_FILE}"
@@ -222,13 +226,91 @@ execute_process(
     ERROR_VARIABLE failed_errors
     TIMEOUT 30)
 set(failed_report "${failed_output}${failed_errors}")
-if(NOT failed_result EQUAL 2 OR
-   NOT failed_report MATCHES "diagnostic=audio_assignment_catalog_empty" OR
-   failed_report MATCHES "runtime_replay_input_mismatch")
+# Spec 002 (RF-2.1, RF-2.2, plan §5.2): a missing trust registry is a material error
+# found before admission; the request ends with 3 and never reaches the Runtime, where
+# it used to fail later as an empty audio catalog (`audio_assignment_catalog_empty`, no
+# longer a failure: a valid pack without audio catalog replays with zero assignments).
+if(NOT failed_result EQUAL 3 OR
+   NOT failed_report MATCHES "material_not_found: --trust-registry" OR
+   EXISTS "${TEST_ROOT}/failed-evidence")
     message(FATAL_ERROR
-        "Failed replay did not preserve its Runtime diagnostic: result=${failed_result}\n"
+        "A missing trust registry was not rejected before admission: result=${failed_result}\n"
         "${failed_report}")
 endif()
 
+# Spec 002, BR-072 (RF-1.3, RF-1.4, RF-2.3, RF-2.5), without GPU. A material changed
+# between validation and its take needs a hook in the middle of the request and is
+# covered by audio_qa_check_runner_integration (RF-2.11).
+function(spec002_check expected output_root)
+    execute_process(
+        COMMAND "${CHECK_EXE}" check --runtime "${RUNTIME_EXE}" --rom "${ROM_FILE}"
+                --core "${CORE_DLL}" --output "${output_root}" --language es ${ARGN}
+        RESULT_VARIABLE code OUTPUT_VARIABLE out ERROR_VARIABLE err TIMEOUT 60)
+    if(NOT code EQUAL expected)
+        message(FATAL_ERROR "spec 002 check returned ${code}, expected ${expected}:\n${out}${err}")
+    endif()
+    set(spec002_report "${out}${err}" PARENT_SCOPE)
+endfunction()
+
+# RF-1.3: without pack the take replays the ROM alone.
+spec002_check(0 "${TEST_ROOT}/spec002" --take "${TAKE_FILE}" --request-id spec002-nopack)
+foreach(expected IN ITEMS "pack=none source=explicit" "assignments=0" "exit_code=0")
+    if(NOT spec002_report MATCHES "${expected}")
+        message(FATAL_ERROR "No-pack request omitted ${expected}:\n${spec002_report}")
+    endif()
+endforeach()
+
+# BR-074 (RF-5.8, RF-2.13): each run keeps its traversal; without navigation it is one
+# linear segment over every frame consumed.
+file(GLOB traversals "${TEST_ROOT}/spec002/runs/*/traversal.toml")
+list(LENGTH traversals traversal_count)
+if(NOT traversal_count EQUAL 1)
+    message(FATAL_ERROR "The run has no traversal.toml: ${traversals}")
+endif()
+file(READ "${traversals}" traversal_text)
+foreach(expected IN ITEMS "schema_minor = 1" "kind = 'linear'" "linear_completed = true"
+                          "frames_total = 6" "from = 0" "to = 5")
+    string(FIND "${traversal_text}" "${expected}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR "traversal.toml omitted ${expected}:
+${traversal_text}")
+    endif()
+endforeach()
+
+# RF-2.3: the same request returns its confirmed summary without starting the Runtime.
+spec002_check(0 "${TEST_ROOT}/spec002" --take "${TAKE_FILE}" --request-id spec002-nopack)
+if(NOT spec002_report MATCHES "request_known: spec002-nopack" OR
+   spec002_report MATCHES "audio_qa_replay:")
+    message(FATAL_ERROR "A known request was not answered from its summary:\n${spec002_report}")
+endif()
+
+# RF-1.4: an explicit repetition runs twice, one run per position.
+spec002_check(0 "${TEST_ROOT}/spec002-repeat" --take "${TAKE_FILE}" --take "${TAKE_FILE}"
+              --request-id spec002-repeat)
+string(REGEX MATCHALL "audio_qa_replay: run_id=[^ ]+ take=[^ ]+ position=[01]" replays
+       "${spec002_report}")
+list(LENGTH replays replay_count)
+file(GLOB repeated_runs "${TEST_ROOT}/spec002-repeat/runs/*")
+list(LENGTH repeated_runs repeated_run_count)
+if(NOT replay_count EQUAL 2 OR NOT repeated_run_count EQUAL 2)
+    message(FATAL_ERROR "The repetition did not run twice:\n${spec002_report}")
+endif()
+
+# RF-2.5: [A, B fails, C] keeps A, closes B with its diagnostic and leaves C unstarted.
+if(DEFINED BROKEN_TAKE_FILE AND EXISTS "${BROKEN_TAKE_FILE}")
+    spec002_check(2 "${TEST_ROOT}/spec002-failure" --take "${TAKE_FILE}"
+                  --take "${BROKEN_TAKE_FILE}" --take "${TAKE_FILE}" --request-id spec002-failure)
+    foreach(expected IN ITEMS
+            "position=0 outcome=complete"
+            "position=1 outcome=incomplete diagnostic=[a-z_]+ playback=failed"
+            "position=2 outcome=incomplete diagnostic=not_started_after_failure playback=not_started")
+        if(NOT spec002_report MATCHES "${expected}")
+            message(FATAL_ERROR "The failure did not stop the request (${expected}):\n${spec002_report}")
+        endif()
+    endforeach()
+else()
+    message(FATAL_ERROR "BROKEN_TAKE_FILE is required for the spec 002 failure case")
+endif()
+
 message(STATUS
-    "Real Runtime evidence reopened; facts=123; pcm_blocks=${pcm_block_count}; initial=${initial_hash}; final=${final_hash}")
+    "Real Runtime evidence reopened; facts=129; pcm_blocks=${pcm_block_count}; initial=${initial_hash}; final=${final_hash}")

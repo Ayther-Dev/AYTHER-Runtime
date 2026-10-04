@@ -20,6 +20,9 @@ struct Request {
     std::string conditions_id;
     std::vector<std::string> take_ids;
     Admission admission{Admission::pending};
+    // Spec 002 (contracts.md C1-2): `es` or `en`, mandatory in protocol 1.1 and absent in 1.0.
+    // A request with a language is a 1.1 request.
+    std::optional<std::string> language;
     bool operator==(const Request &) const = default;
 };
 

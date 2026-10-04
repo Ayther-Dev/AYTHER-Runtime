@@ -1,8 +1,11 @@
 #include "check_options.h"
 
-#include <array>
-#include <optional>
+#include "check_option_descriptors.h"
+
+#include <algorithm>
+#include <cstdint>
 #include <utility>
+#include <vector>
 
 namespace ayther::audio_qa {
 
@@ -15,6 +18,19 @@ namespace {
 
 [[nodiscard]] bool is_option(std::string_view argument) noexcept {
     return argument.starts_with("--");
+}
+
+// Decimal digits only, within uint32 (the Runtime parses --subsystems and --mute-buses so).
+[[nodiscard]] bool valid_unsigned_32(std::string_view value) noexcept {
+    if (value.empty() || value.size() > 10U)
+        return false;
+    std::uint64_t parsed = 0;
+    for (const char digit : value) {
+        if (digit < '0' || digit > '9')
+            return false;
+        parsed = parsed * 10U + static_cast<std::uint64_t>(digit - '0');
+    }
+    return parsed <= 0xffffffffULL;
 }
 
 } // namespace
@@ -38,8 +54,10 @@ CheckOptionsParseResult parse_check_options(std::span<const std::string_view> ar
         return CheckOptionsParseResult{
             make_error(CheckOptionErrorCode::too_many_arguments, {}, arguments.size())};
 
+    // Spec 002 (RF-1.5, contracts.md C5): every rule comes from the descriptor table.
+    const auto descriptors = check_option_descriptors();
     CheckOptions options;
-    std::array<bool, 10> seen{};
+    std::vector<bool> seen(descriptors.size(), false);
 
     for (std::size_t index = 0; index < arguments.size(); ++index) {
         const auto option = arguments[index];
@@ -58,78 +76,67 @@ CheckOptionsParseResult parse_check_options(std::span<const std::string_view> ar
             return CheckOptionsParseResult{
                 make_error(CheckOptionErrorCode::value_too_long, option, index)};
 
-        std::string *destination = nullptr;
-        std::size_t slot = 0;
-        if (option == "--runtime") {
-            destination = &options.runtime;
-            slot = 0;
-        } else if (option == "--reference") {
-            destination = &options.reference;
-            slot = 1;
-        } else if (option == "--play-manifest") {
-            destination = &options.play_manifest;
-            slot = 2;
-        } else if (option == "--pack") {
-            destination = &options.pack;
-            slot = 3;
-        } else if (option == "--output") {
-            destination = &options.output;
-            slot = 4;
-        } else if (option == "--request-id") {
-            destination = &options.request_id;
-            slot = 5;
-        } else if (option == "--language") {
-            destination = &options.language;
-            slot = 6;
-        } else if (option == "--trust-registry") {
-            destination = &options.trust_registry;
-            slot = 7;
-        } else if (option == "--presentation") {
-            destination = &options.presentation;
-            slot = 8;
-        } else if (option == "--pack-mode") {
-            destination = &options.pack_mode;
-            slot = 9;
-        } else if (option == "--take") {
-            if (options.takes.size() == max_check_takes)
-                return CheckOptionsParseResult{
-                    make_error(CheckOptionErrorCode::too_many_takes, option, index)};
-            options.takes.emplace_back(value);
-            continue;
-        } else {
+        const auto *descriptor = find_check_option(option);
+        if (descriptor == nullptr)
             return CheckOptionsParseResult{
                 make_error(CheckOptionErrorCode::unknown_option, option, index - 1)};
+        if (descriptor->repeatable) {
+            auto &values = options.*(descriptor->list_field);
+            if (values.size() == max_check_takes)
+                return CheckOptionsParseResult{
+                    make_error(descriptor->list_field == &CheckOptions::takes
+                                   ? CheckOptionErrorCode::too_many_takes
+                                   : CheckOptionErrorCode::too_many_values,
+                               option, index)};
+            values.emplace_back(value);
+            continue;
         }
-
+        const auto slot = static_cast<std::size_t>(descriptor - descriptors.data());
         if (seen[slot])
             return CheckOptionsParseResult{
                 make_error(CheckOptionErrorCode::duplicate_option, option, index - 1)};
         seen[slot] = true;
-        destination->assign(value);
+        (options.*(descriptor->text_field)).assign(value);
     }
 
-    const std::array required{
-        std::pair{std::string_view{"--runtime"}, options.runtime.empty()},
-        std::pair{std::string_view{"--reference"}, options.reference.empty()},
-        std::pair{std::string_view{"--play-manifest"}, options.play_manifest.empty()},
-        std::pair{std::string_view{"--pack"}, options.pack.empty()},
-        std::pair{std::string_view{"--output"}, options.output.empty()},
-    };
-    for (const auto &[option, missing] : required)
+    for (const auto &descriptor : descriptors) {
+        if (!descriptor.required)
+            continue;
+        const bool missing = descriptor.repeatable ? (options.*(descriptor.list_field)).empty()
+                                                   : (options.*(descriptor.text_field)).empty();
         if (missing)
             return CheckOptionsParseResult{make_error(CheckOptionErrorCode::missing_required_option,
-                                                      option, arguments.size())};
+                                                      descriptor.flag, arguments.size())};
+    }
 
-    if (options.language != "es" && options.language != "en")
-        return CheckOptionsParseResult{
-            make_error(CheckOptionErrorCode::unsupported_language, "--language", arguments.size())};
+    for (const auto &descriptor : descriptors) {
+        if (descriptor.kind != CheckOptionKind::choice)
+            continue;
+        const auto &value = options.*(descriptor.text_field);
+        // An optional choice without a default may be absent (spec 002, --shaders).
+        if (value.empty() && descriptor.default_value.empty())
+            continue;
+        if (std::find(descriptor.values.begin(), descriptor.values.end(), value) ==
+            descriptor.values.end())
+            return CheckOptionsParseResult{
+                make_error(descriptor.invalid_value_error, descriptor.flag, arguments.size())};
+    }
 
-    if (options.presentation != "none" && options.presentation != "visible")
-        return CheckOptionsParseResult{make_error(CheckOptionErrorCode::unsupported_presentation,
-                                                  "--presentation", arguments.size())};
-    if (options.pack_mode != "hd" && options.pack_mode != "original")
-        return CheckOptionsParseResult{make_error(CheckOptionErrorCode::unsupported_pack_mode,
-                                                  "--pack-mode", arguments.size())};
+    for (const auto &descriptor : descriptors) {
+        if (descriptor.kind == CheckOptionKind::unsigned_integer) {
+            const auto &value = options.*(descriptor.text_field);
+            if (!value.empty() && !valid_unsigned_32(value))
+                return CheckOptionsParseResult{
+                    make_error(descriptor.invalid_value_error, descriptor.flag, arguments.size())};
+        } else if (descriptor.kind == CheckOptionKind::key_value) {
+            for (const auto &value : options.*(descriptor.list_field)) {
+                const auto equals = value.find('=');
+                if (equals == std::string::npos || equals == 0U)
+                    return CheckOptionsParseResult{make_error(descriptor.invalid_value_error,
+                                                              descriptor.flag, arguments.size())};
+            }
+        }
+    }
     return CheckOptionsParseResult{std::move(options)};
 }
 
@@ -159,6 +166,14 @@ std::string_view check_option_error_code(CheckOptionErrorCode code) noexcept {
         return "unsupported_presentation";
     case CheckOptionErrorCode::unsupported_pack_mode:
         return "unsupported_pack_mode";
+    case CheckOptionErrorCode::unsupported_shaders:
+        return "unsupported_shaders";
+    case CheckOptionErrorCode::invalid_unsigned_value:
+        return "invalid_unsigned_value";
+    case CheckOptionErrorCode::malformed_core_option:
+        return "malformed_core_option";
+    case CheckOptionErrorCode::too_many_values:
+        return "too_many_values";
     }
     return "invalid_option";
 }

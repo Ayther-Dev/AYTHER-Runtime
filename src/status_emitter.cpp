@@ -1,5 +1,8 @@
 #include "status_emitter.h"
 
+#include <array>
+#include <charconv>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -14,6 +17,8 @@ namespace {
 
 constexpr std::string_view status_prefix = "AYTHER_STATUS ";
 constexpr char hex_digits[] = "0123456789abcdef";
+
+} // namespace
 
 void append_json_string(std::string &output, const std::string_view value) {
     output.push_back('"');
@@ -54,6 +59,8 @@ void append_json_string(std::string &output, const std::string_view value) {
     output.push_back('"');
 }
 
+namespace {
+
 class JsonObject final {
   public:
     JsonObject() { json_.push_back('{'); }
@@ -80,6 +87,14 @@ class JsonObject final {
     void field(const std::string_view name, const std::uint64_t value) {
         append_name(name);
         json_ += std::to_string(value);
+    }
+
+    // Shortest text that reads back as the same double; callers only pass finite values.
+    void field(const std::string_view name, const double value) {
+        append_name(name);
+        std::array<char, 32> text{};
+        const auto written = std::to_chars(text.data(), text.data() + text.size(), value);
+        json_.append(text.data(), written.ptr);
     }
 
     [[nodiscard]] std::string finish() {
@@ -116,6 +131,21 @@ class JsonObject final {
                 json.field("valid_extensions", status.valid_extensions);
                 json.field("need_fullpath", status.need_fullpath);
                 json.field("block_extract", status.block_extract);
+                if (status.game) {
+                    const auto &game = *status.game;
+                    json.field("game_loaded", game.loaded);
+                    if (game.loaded && std::isfinite(game.timing_fps) && game.timing_fps > 0.0)
+                        json.field("timing_fps", game.timing_fps);
+                    if (game.loaded) {
+                        json.field("geometry_known", game.geometry_known);
+                        if (game.geometry_known) {
+                            json.field("geometry_width", game.geometry_width);
+                            json.field("geometry_height", game.geometry_height);
+                        }
+                    }
+                    if (!game.loaded && !game.message.empty())
+                        json.field("game_message", game.message);
+                }
             } else if constexpr (std::is_same_v<Status, ProbeFailedStatus>) {
                 json.field("event", "probe");
                 json.field("ok", false);

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <initializer_list>
 #include <iterator>
 #include <limits>
 #include <sstream>
@@ -123,7 +124,76 @@ namespace {
     return true;
 }
 
+[[nodiscard]] bool one_of(const std::optional<std::string> &value,
+                          std::initializer_list<std::string_view> accepted) noexcept {
+    return !value || std::find(accepted.begin(), accepted.end(), *value) != accepted.end();
+}
+
+[[nodiscard]] bool terminal_fields_well_formed(const ReplayExecutionResult &result) noexcept {
+    return one_of(result.traversal, {"linear", "inspection", "post_end_inspection"}) &&
+           one_of(result.playback, {"natural_end", "cancelled", "failed", "interrupted"}) &&
+           result.traversal.has_value() == result.playback.has_value() &&
+           result.evidence_reasons.size() <= max_terminal_evidence_reasons &&
+           std::all_of(result.evidence_reasons.begin(), result.evidence_reasons.end(),
+                       [](const std::string &reason) { return identifier(reason); }) &&
+           (!result.linear_completed ||
+            (result.traversal == "linear" && result.playback == "natural_end" &&
+             result.inputs_consumed == result.recording_frames));
+}
+
+// The 1.4 fields, in the order of contracts.md C1-5.
+[[nodiscard]] bool parse_terminal_fields(const toml::table &document,
+                                         ReplayExecutionResult &result) {
+    const auto traversal = document["traversal"].value<std::string>();
+    const auto playback = document["playback"].value<std::string>();
+    const auto linear_completed = document["linear_completed"].value<bool>();
+    const auto *reasons = document["evidence_reasons"].as_array();
+    const auto ended_paused = document["ended_paused"].value<bool>();
+    const auto pause_text = document["user_pause_ms"].value<std::string>();
+    const auto interruptions = document["interruptions"].value<std::int64_t>();
+    if (!traversal || !playback || !linear_completed || reasons == nullptr || !ended_paused ||
+        !pause_text || !interruptions || *interruptions < 0 ||
+        *interruptions > std::numeric_limits<std::uint32_t>::max())
+        return false;
+    std::uint64_t pause{};
+    const auto parsed =
+        std::from_chars(pause_text->data(), pause_text->data() + pause_text->size(), pause);
+    if (pause_text->empty() || parsed.ec != std::errc{} ||
+        parsed.ptr != pause_text->data() + pause_text->size())
+        return false;
+    result.evidence_reasons.clear();
+    for (const auto &node : *reasons) {
+        const auto reason = node.value<std::string>();
+        if (!reason)
+            return false;
+        result.evidence_reasons.push_back(*reason);
+    }
+    result.traversal = *traversal;
+    result.playback = *playback;
+    result.linear_completed = *linear_completed;
+    result.ended_paused = *ended_paused;
+    result.user_pause_ms = pause;
+    result.interruptions = static_cast<std::uint32_t>(*interruptions);
+    return true;
+}
+
 } // namespace
+
+void describe_linear_terminal(ReplayExecutionResult &result, const bool cancelled) {
+    const bool all_inputs =
+        result.recording_frames > 0U && result.inputs_consumed == result.recording_frames;
+    result.traversal = "linear";
+    result.playback = cancelled ? "cancelled" : (all_inputs ? "natural_end" : "failed");
+    result.linear_completed = !cancelled && all_inputs;
+    // Reasons the caller already recorded are kept; a failure adds its own code.
+    if (!result.succeeded && !cancelled &&
+        std::find(result.evidence_reasons.begin(), result.evidence_reasons.end(), result.code) ==
+            result.evidence_reasons.end())
+        result.evidence_reasons.push_back(result.code);
+    result.ended_paused = false;
+    result.user_pause_ms = 0U;
+    result.interruptions = 0U;
+}
 
 bool well_formed(const ReplayExecutionResult &result) noexcept {
     const auto &p = result.presentation;
@@ -135,6 +205,8 @@ bool well_formed(const ReplayExecutionResult &result) noexcept {
                                      p.last_affected_frame >= result.inputs_consumed)) ||
         (result.succeeded &&
          (!p.complete() || (p.mode == "visible" && p.presented_frames != result.inputs_consumed))))
+        return false;
+    if (!terminal_fields_well_formed(result))
         return false;
     return identifier(result.run_id) && !result.take_id.empty() &&
            result.take_id.size() <= max_reference_value_bytes &&
@@ -163,11 +235,14 @@ bool well_formed(const ReplayExecutionResult &result) noexcept {
 
 EncodedReplayExecutionResult encode_replay_execution_result(const ReplayExecutionResult &result,
                                                             const std::uint64_t sequence) {
-    if (!well_formed(result) || sequence == 0U)
+    if (!well_formed(result) || sequence == 0U || !result.traversal || !result.playback)
         return ReplayExecutionResultError::invalid_model;
     const auto &p = result.presentation;
+    toml::array reasons;
+    for (const auto &reason : result.evidence_reasons)
+        reasons.push_back(reason);
     toml::table document{
-        {"schema", "1.3"},
+        {"schema", "1.4"},
         {"presentation", toml::table{{"mode", p.mode},
                                      {"code", p.code},
                                      {"output_profile", p.output_profile},
@@ -191,7 +266,14 @@ EncodedReplayExecutionResult encode_replay_execution_result(const ReplayExecutio
         {"final_game_state", identity_table(result.final_game_state)},
         {"trace", trace_table(result.trace)},
         {"succeeded", result.succeeded},
-        {"code", result.code}};
+        {"code", result.code},
+        {"traversal", *result.traversal},
+        {"playback", *result.playback},
+        {"linear_completed", result.linear_completed},
+        {"evidence_reasons", std::move(reasons)},
+        {"ended_paused", result.ended_paused},
+        {"user_pause_ms", std::to_string(result.user_pause_ms)},
+        {"interruptions", static_cast<std::int64_t>(result.interruptions)}};
     std::ostringstream output;
     output << document;
     const std::string payload = output.str();
@@ -225,12 +307,17 @@ decode_replay_execution_result(const std::span<const std::byte> message,
         const auto payload = message.subspan(protocol_header_bytes);
         const std::string_view text{reinterpret_cast<const char *>(payload.data()), payload.size()};
         const auto document = toml::parse(text);
-        const bool legacy = document["schema"].value<std::string>() == "1.2";
-        if ((legacy && document.size() != 11U) ||
-            (!legacy &&
-             (document.size() != 12U || document["schema"].value<std::string>() != "1.3")))
+        // 1.2 has no presentation; 1.4 adds the seven fields of contracts.md C1-5.
+        const auto schema = document["schema"].value<std::string>();
+        const bool legacy = schema == "1.2";
+        const bool terminal_1_4 = schema == "1.4";
+        if ((legacy && document.size() != 11U) || (schema == "1.3" && document.size() != 12U) ||
+            (terminal_1_4 && document.size() != 19U) ||
+            (!legacy && !terminal_1_4 && schema != "1.3"))
             return ReplayExecutionResultError::invalid_payload;
         ReplayExecutionResult result;
+        if (terminal_1_4 && !parse_terminal_fields(document, result))
+            return ReplayExecutionResultError::invalid_payload;
         if (!legacy) {
             const auto *p = document["presentation"].as_table();
             if (!p || p->size() != 14U ||

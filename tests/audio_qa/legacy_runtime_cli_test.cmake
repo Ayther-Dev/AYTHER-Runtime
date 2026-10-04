@@ -24,13 +24,12 @@ file(WRITE "${MANIFEST}"
     "rom = \"${ROM_FILE_TOML}\"\n"
     "core = \"${CORE_DLL_TOML}\"\n"
     "pack = \"${PACK_FILE_TOML}\"\n")
-set(REFERENCE "${TEST_ROOT}/reference.toml")
-file(WRITE "${REFERENCE}" "schema = \"qa173\"\n")
 
+# Spec 002 (RF-1.1): the ROM is explicit and the campaign reference is optional.
 execute_process(
     COMMAND "${CHECK_EXE}" check
         --runtime "${LEGACY_RUNTIME_EXE}"
-        --reference "${REFERENCE}"
+        --rom "${ROM_FILE}"
         --play-manifest "${MANIFEST}"
         --pack "${PACK_FILE}"
         --trust-registry "${TRUST_REGISTRY}"
@@ -41,22 +40,19 @@ execute_process(
     RESULT_VARIABLE result
     OUTPUT_VARIABLE output
     ERROR_VARIABLE errors
-    TIMEOUT 10)
+    TIMEOUT 30)
 
-if(NOT result EQUAL 2)
+# Spec 002 (RF-2.2, contracts.md C5): a Runtime without the ROM probe is found before
+# admission and the request ends with 3.
+if(NOT result EQUAL 3)
     message(FATAL_ERROR
-        "Legacy Runtime check returned ${result}, expected incompatibility (2)\n"
+        "Legacy Runtime check returned ${result}, expected a preflight rejection (3)\n"
         "stdout:\n${output}\nstderr:\n${errors}")
 endif()
 set(report "${output}${errors}")
-foreach(expected IN ITEMS
-        "audio_qa_error: runtime_incompatible"
-        "diagnostic=runtime_incompatible")
-    string(FIND "${report}" "${expected}" found)
-    if(found EQUAL -1)
-        message(FATAL_ERROR "Legacy check omitted ${expected}:\n${report}")
-    endif()
-endforeach()
+if(NOT report MATCHES "audio_qa_error: (runtime_rom_probe_unsupported|runtime_probe_failed): --runtime")
+    message(FATAL_ERROR "Legacy check omitted the Runtime probe rejection:\n${report}")
+endif()
 foreach(forbidden IN ITEMS
         "audio_qa_replay:"
         "status=replay_evidence_reopened"
@@ -76,4 +72,4 @@ if(replay_artifacts)
 endif()
 
 message(STATUS
-    "Legacy Runtime rejected before replay; diagnostic=runtime_incompatible")
+    "Legacy Runtime rejected before admission by the Runtime probe")

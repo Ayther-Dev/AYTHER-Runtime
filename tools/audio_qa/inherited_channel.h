@@ -67,6 +67,10 @@ using ChannelAdoptResult = std::variant<OwnedChannelHandle, ChannelError>;
 [[nodiscard]] bool channel_handle_is_inheritable(NativeChannelHandle handle) noexcept;
 [[nodiscard]] bool write_channel(OwnedChannelHandle &channel,
                                  std::span<const std::byte> bytes) noexcept;
+// Spec 002 (contracts.md C1): whether a read would not block. `pending` when bytes wait,
+// `closed` when the writer is gone, `idle` otherwise.
+enum class ChannelPollResult { idle, pending, closed, failed };
+[[nodiscard]] ChannelPollResult poll_channel(OwnedChannelHandle &channel) noexcept;
 [[nodiscard]] ChannelReadResult read_channel(OwnedChannelHandle &channel,
                                              std::span<std::byte> buffer,
                                              std::size_t &bytes_read) noexcept;

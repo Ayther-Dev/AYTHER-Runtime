@@ -1,5 +1,7 @@
 #include "fact_trace_summary.h"
 
+#include "inspection_fact_builder.h"
+
 #include "model_limits.h"
 
 #include <array>
@@ -320,6 +322,16 @@ bool ReplayFactTraceAccumulator::consume(const Fact &fact) noexcept {
     if (!impl_ || !impl_->valid)
         return false;
     try {
+        // Spec 002 (contracts.md C2): the Runtime's own inspection facts travel in the same
+        // batches, but they are not part of the audio trace.
+        if (fact.id.producer_id == inspection_producer) {
+            if (fact.id.run_id != impl_->run_id || fact.id.producer_sequence == 0U ||
+                (fact.kind != "inspection_event" && fact.kind != "render_frame" &&
+                 fact.kind != "render_summary"))
+                return impl_->valid = false;
+            ++impl_->fact_count;
+            return true;
+        }
         const auto producer = producer_number(fact.id.producer_id);
         if (!producer || fact.id.run_id != impl_->run_id || fact.id.producer_sequence == 0U)
             return impl_->valid = false;

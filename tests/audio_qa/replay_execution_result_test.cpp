@@ -6,7 +6,10 @@
 #include <cstddef>
 #include <cstdio>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 #include <variant>
+#include <vector>
 
 namespace qa = ayther::audio_qa;
 
@@ -41,6 +44,42 @@ qa::ReplayExecutionResult result() {
     value.trace.loss_free = true;
     value.succeeded = true;
     value.code = "replay_complete";
+    qa::describe_linear_terminal(value, false);
+    return value;
+}
+
+// The terminal without the fields of a newer schema, as an older Runtime wrote it.
+std::vector<std::byte> downgraded(const std::vector<std::byte> &message, std::string_view schema,
+                                  bool without_presentation) {
+    const std::string_view payload{
+        reinterpret_cast<const char *>(message.data() + qa::protocol_header_bytes),
+        message.size() - qa::protocol_header_bytes};
+    auto document = toml::parse(payload);
+    for (const auto *key : {"traversal", "playback", "linear_completed", "evidence_reasons",
+                            "ended_paused", "user_pause_ms", "interruptions"})
+        document.erase(key);
+    if (without_presentation)
+        document.erase("presentation");
+    document.insert_or_assign("schema", std::string{schema});
+    std::ostringstream text;
+    text << document;
+    const auto bytes = text.str();
+    const auto header = qa::encode_protocol_header(
+        {qa::MessageType::terminal, static_cast<std::uint32_t>(bytes.size()), 2U, 2U});
+    std::vector<std::byte> result(header.begin(), header.end());
+    for (const auto byte : bytes)
+        result.push_back(static_cast<std::byte>(byte));
+    return result;
+}
+
+qa::ReplayExecutionResult without_terminal_fields(qa::ReplayExecutionResult value) {
+    value.traversal.reset();
+    value.playback.reset();
+    value.linear_completed = false;
+    value.evidence_reasons.clear();
+    value.ended_paused = false;
+    value.user_pause_ms = 0U;
+    value.interruptions = 0U;
     return value;
 }
 
@@ -79,23 +118,59 @@ int main() {
         const auto decoded = qa::decode_replay_execution_result(*message, 2U);
         const auto *actual = std::get_if<qa::ReplayExecutionResult>(&decoded);
         require(actual != nullptr && *actual == expected, "replay_result_round_trip_changed");
+        // Spec 002 (contracts.md C1-5, C2): terminal 1.4 keeps playback, traversal and
+        // evidence apart; 1.3 and 1.2 are still read, with those fields unknown.
         const std::string_view payload{
             reinterpret_cast<const char *>(message->data() + qa::protocol_header_bytes),
             message->size() - qa::protocol_header_bytes};
-        auto legacy_document = toml::parse(payload);
-        legacy_document.erase("presentation");
-        legacy_document.insert_or_assign("schema", "1.2");
-        std::ostringstream legacy_text;
-        legacy_text << legacy_document;
-        const auto legacy_payload = legacy_text.str();
-        const auto legacy_header = qa::encode_protocol_header(
-            {qa::MessageType::terminal, static_cast<std::uint32_t>(legacy_payload.size()), 2U, 2U});
-        std::vector<std::byte> legacy_bytes(legacy_header.begin(), legacy_header.end());
-        for (const auto byte : legacy_payload)
-            legacy_bytes.push_back(static_cast<std::byte>(byte));
-        const auto legacy_decoded = qa::decode_replay_execution_result(legacy_bytes, 2U);
+        const auto document = toml::parse(payload);
+        require(document["schema"].value<std::string>() == "1.4" &&
+                    document["traversal"].value<std::string>() == "linear" &&
+                    document["playback"].value<std::string>() == "natural_end" &&
+                    document["linear_completed"].value<bool>() == true &&
+                    document["user_pause_ms"].value<std::string>() == "0",
+                "terminal_1_4_fields_missing");
+        const auto previous =
+            qa::decode_replay_execution_result(downgraded(*message, "1.3", false), 2U);
+        const auto *previous_result = std::get_if<qa::ReplayExecutionResult>(&previous);
+        require(previous_result && *previous_result == without_terminal_fields(expected) &&
+                    !previous_result->traversal && !previous_result->playback,
+                "terminal_1_3_not_read_with_unknown_traversal");
+        const auto legacy_decoded =
+            qa::decode_replay_execution_result(downgraded(*message, "1.2", true), 2U);
         const auto *legacy_result = std::get_if<qa::ReplayExecutionResult>(&legacy_decoded);
-        require(legacy_result && *legacy_result == expected, "legacy_terminal_not_supported");
+        require(legacy_result && *legacy_result == without_terminal_fields(expected),
+                "legacy_terminal_not_supported");
+        require(std::holds_alternative<qa::ReplayExecutionResultError>(
+                    qa::encode_replay_execution_result(without_terminal_fields(expected), 2U)),
+                "terminal_without_playback_was_encoded");
+        auto cancelled = expected;
+        cancelled.succeeded = false;
+        cancelled.code = "replay_cancelled";
+        cancelled.inputs_consumed = 3;
+        qa::describe_linear_terminal(cancelled, true);
+        require(cancelled.playback == "cancelled" && !cancelled.linear_completed &&
+                    cancelled.evidence_reasons.empty(),
+                "cancelled_terminal_not_described");
+        auto cancelled_early = expected;
+        cancelled_early.succeeded = false;
+        cancelled_early.code = "replay_cancelled";
+        cancelled_early.inputs_consumed = 0;
+        cancelled_early.evidence_reasons = {"audio_trace_incomplete_empty_pcm"};
+        qa::describe_linear_terminal(cancelled_early, true);
+        require(cancelled_early.playback == "cancelled" &&
+                    cancelled_early.evidence_reasons ==
+                        std::vector<std::string>{"audio_trace_incomplete_empty_pcm"},
+                "cancellation_lost_its_evidence_reasons");
+        auto failed = expected;
+        failed.succeeded = false;
+        failed.code = "game_state_restore_failed";
+        failed.inputs_consumed = 0;
+        qa::describe_linear_terminal(failed, false);
+        require(failed.playback == "failed" &&
+                    failed.evidence_reasons ==
+                        std::vector<std::string>{"game_state_restore_failed"},
+                "failed_terminal_not_described");
         const auto wrong_sequence = qa::decode_replay_execution_result(*message, 3U);
         require(std::get_if<qa::ReplayExecutionResultError>(&wrong_sequence) != nullptr,
                 "sequence_mismatch_was_accepted");

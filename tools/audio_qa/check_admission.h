@@ -1,10 +1,11 @@
 #pragma once
 
-#include "check_options.h"
-#include "check_profile.h"
+#include "effective_values.h"
+#include "material_preflight.h"
 #include "request_ledger.h"
 #include "session_occupancy.h"
 
+#include <span>
 #include <string>
 #include <variant>
 
@@ -33,9 +34,14 @@ struct CheckAdmissionResult {
 
 using CheckAdmissionOutcome = std::variant<CheckAdmissionResult, RequestLedgerError>;
 
-[[nodiscard]] CheckRequestDraft make_check_request(const CheckOptions &options,
-                                                   const TakeSelection &selection,
+// Spec 002 (RF-2.3, plan §5.2): the identity of the conditions covers the effective
+// values and the pinned content of every material, so the same paths with another
+// content are another request.
+[[nodiscard]] CheckRequestDraft make_check_request(const EffectiveRequest &effective,
+                                                   std::span<const MaterialPin> pins,
                                                    std::string request_id, std::string run_id);
+[[nodiscard]] std::string check_conditions_id(const EffectiveRequest &effective,
+                                              std::span<const MaterialPin> pins);
 [[nodiscard]] bool restore_check_occupancy(const RequestLedger &ledger,
                                            SessionOccupancy &occupancy);
 [[nodiscard]] CheckAdmissionOutcome admit_check_request(RequestLedger &ledger,

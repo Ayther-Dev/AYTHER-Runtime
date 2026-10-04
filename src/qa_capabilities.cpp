@@ -51,8 +51,8 @@ std::string qa_capabilities_report() {
     report.append(linked_engine_version());
     report.append(R"(","contracts":{"engine":)");
     append_version(report, ayther::audio_qa::engine_contract_version);
-    report.append(R"(,"runtime":)");
-    append_version(report, ayther::audio_qa::runtime_protocol_version);
+    // Spec 002 (contracts.md C1): protocol 1.0 and 1.1; the supervisor chooses.
+    report.append(R"(,"runtime":["1.0","1.1"])");
     report.append(R"(,"evidence":)");
     append_version(report, ayther::audio_qa::evidence_schema_version);
     report.append(R"(,"hd_state":)");
@@ -67,7 +67,7 @@ std::string qa_capabilities_report() {
         report.push_back('"');
     }
     const auto &limits = ayther::audio_qa::required_limits;
-    report.append(R"(,"visible_replay_v1")");
+    report.append(R"(,"visible_replay_v1","inspection_v1")");
     report.append(R"(],"limits":{"fact_bytes":)");
     report.append(std::to_string(limits.fact_bytes));
     report.append(R"(,"batch_bytes":)");
