@@ -2986,3 +2986,10 @@ if(AYTHER_CLANG_TIDY_COMMAND)
         endif()
     endforeach()
 endif()
+
+# BR-175 probe (do not merge): a deliberately failing audio_qa test, only in the QA build, so that
+# the "Windows / QA" check alone fails and blocks the PR.
+if(AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE)
+    add_test(NAME audio_qa_deliberate_failure COMMAND ${CMAKE_COMMAND} -E false)
+    set_tests_properties(audio_qa_deliberate_failure PROPERTIES LABELS "audio_qa;unit")
+endif()
