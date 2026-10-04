@@ -16,10 +16,14 @@ namespace ayther::replay_inspection {
 // Spec 002, BR-135 and BR-153 (RF-2.6, RF-4, RF-5, RF-6): the scripted input of the QA tests,
 // which drive the inspection without a person. One step per line, `#` starts a comment:
 //
-//   <trigger> <action>
+//   <trigger> [retry=<ms>] <action>
 //   trigger: frame=<k>    the take completed frame k or a later one
 //            paused=<k>   the take is paused at frame k
 //            after=<ms>   ms milliseconds after the step before (or the start)
+//   retry:   only after paused=<k>. When the take is not paused at k within ms of the step
+//            before, the last key pressed is pressed again (down and up) once, as a retry;
+//            then a pause at k or later satisfies the step. If that pause does not come within
+//            ms either, the script is abandoned instead of waiting forever (BR-156).
 //   action:  key <space|left|right|up|down|i|other> <down|up|repeat>
 //            focus <on|off> | minimize | restore | video_fail <n> | audio_removed |
 //            audio_added | close | corrupt_checkpoints | corrupt_visual_state |
@@ -33,6 +37,7 @@ enum class ScriptTriggerKind { frame, paused, after_ms };
 struct ScriptTrigger {
     ScriptTriggerKind kind{ScriptTriggerKind::after_ms};
     std::uint64_t value{};
+    std::optional<std::uint64_t> retry_ms;
 };
 
 enum class ScriptActionKind {
@@ -61,6 +66,8 @@ struct ScriptAction {
     // video_fail: the number of presentations that fail.
     std::uint32_t count{};
     ScrollKey scroll{ScrollKey::home};
+    // A key pressed again because the pause it asked for did not come (`retry=<ms>`).
+    bool retry{};
 };
 
 struct ScriptStep {
@@ -93,11 +100,17 @@ class InputScript final {
     // The actions due now, in order; a fired step lets the next one be evaluated at once.
     [[nodiscard]] std::vector<ScriptAction> due(const ScriptState &state);
     [[nodiscard]] bool finished() const noexcept { return next_ >= steps_.size(); }
+    [[nodiscard]] std::size_t retries() const noexcept { return retries_; }
+    [[nodiscard]] bool abandoned() const noexcept { return abandoned_; }
 
   private:
     std::vector<ScriptStep> steps_;
     std::size_t next_{};
     std::optional<double> last_fired_ms_;
+    std::optional<Key> last_key_;
+    std::optional<double> retried_ms_;
+    std::size_t retries_{};
+    bool abandoned_{};
 };
 
 } // namespace ayther::replay_inspection

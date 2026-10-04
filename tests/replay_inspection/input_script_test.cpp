@@ -94,11 +94,64 @@ void evaluation() {
     expect(script.due({5U, true, 500.0}).empty(), "a finished script does nothing");
 }
 
+// BR-156 (measurement driver): a key that does not reach the pause must not leave the script
+// waiting forever. `paused=<k> retry=<ms>` presses the last key again once when the take is not
+// paused at k within ms of the step before; after that retry any pause at k or later lets the
+// script go on, and a second miss abandons the script. Retries and abandonment are reported.
+void retry() {
+    const auto parsed = ri::parse_input_script("frame=3 key space down\n"
+                                               "after=0 key space up\n"
+                                               "paused=4 retry=100 key other up\n"
+                                               "after=10 key space down\n");
+    const auto *steps = std::get_if<std::vector<ri::ScriptStep>>(&parsed);
+    expect(steps != nullptr && steps->size() == 4U && (*steps)[2].trigger.retry_ms == 100U &&
+               (*steps)[2].action.kind == ri::ScriptActionKind::key_up &&
+               (*steps)[2].action.key == ri::Key::other && !(*steps)[0].trigger.retry_ms,
+           "paused=4 retry=100 is read with its action");
+    for (const auto *invalid : {"frame=1 retry=100 key space down\n",
+                                "paused=1 retry=x key space down\n", "paused=1 retry=100\n"}) {
+        const auto rejected = ri::parse_input_script(invalid);
+        expect(std::holds_alternative<ri::ScriptError>(rejected),
+               std::string{"a retry only waits on a pause, with a number: "} + invalid);
+    }
+    if (steps == nullptr)
+        return;
+
+    ri::InputScript script{*steps};
+    expect(script.due({3U, false, 0.0}).size() == 2U, "the pause key is pressed at frame 3");
+    expect(script.due({5U, false, 99.0}).empty(), "within 100 ms the script waits");
+    const auto again = script.due({6U, false, 100.0});
+    expect(again.size() == 2U && again[0].kind == ri::ScriptActionKind::key_down &&
+               again[0].key == ri::Key::space && again[0].retry &&
+               again[1].kind == ri::ScriptActionKind::key_up && again[1].key == ri::Key::space &&
+               again[1].retry && script.retries() == 1U,
+           "after 100 ms the last key is pressed again once, marked as a retry");
+    expect(script.due({7U, false, 150.0}).empty(), "the retry is not repeated");
+    const auto landed = script.due({7U, true, 160.0});
+    expect(landed.size() == 1U && landed[0].kind == ri::ScriptActionKind::key_up &&
+               !landed[0].retry && !script.abandoned(),
+           "after the retry a pause at a later frame lets the script go on");
+
+    ri::InputScript lost{*steps};
+    (void)lost.due({3U, false, 0.0});
+    (void)lost.due({6U, false, 100.0});
+    expect(lost.due({9U, false, 199.0}).empty() && !lost.abandoned(),
+           "the retry has its own 100 ms");
+    expect(lost.due({10U, false, 200.0}).empty() && lost.abandoned() && lost.finished(),
+           "a second miss abandons the script instead of waiting forever");
+
+    ri::InputScript plain{*steps};
+    (void)plain.due({3U, false, 0.0});
+    expect(plain.due({4U, true, 30.0}).size() == 1U && plain.retries() == 0U,
+           "a pause that lands needs no retry");
+}
+
 } // namespace
 
 int main() {
     parsing();
     evaluation();
+    retry();
     if (failures != 0)
         return 1;
     std::cout << "the input script drives the inspection in order\n";

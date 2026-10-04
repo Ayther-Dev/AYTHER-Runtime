@@ -29,7 +29,8 @@ void remove_tree(const std::filesystem::path &path) {
 }
 
 qa::Request request() {
-    return {"request-144", "session-144", "conditions-a", {"take-main"}, qa::Admission::pending};
+    return {"request-144", "session-144",          "conditions-a",
+            {"take-main"}, qa::Admission::pending, std::nullopt};
 }
 
 qa::Run run() {

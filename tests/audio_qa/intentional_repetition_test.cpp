@@ -14,8 +14,8 @@ void require(const bool condition, const char *const message) {
 }
 
 qa::Request request(const std::string &request_id) {
-    return {
-        request_id, "session-112", "conditions-golden-axe", {"take-main"}, qa::Admission::pending};
+    return {request_id,    "session-112",          "conditions-golden-axe",
+            {"take-main"}, qa::Admission::pending, std::nullopt};
 }
 
 qa::Run run(const std::string &run_id, const std::string &request_id) {

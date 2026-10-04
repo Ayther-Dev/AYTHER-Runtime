@@ -204,12 +204,15 @@ int main(int argc, char **argv) {
         return std::make_pair(std::move(session), read_marks(log));
     };
 
-    // P-2 and P-5: thirty pauses and resumes along the take.
+    // P-2 and P-5: thirty pauses and resumes along the take. A pause that does not come within
+    // a second is asked for once more and reported (`retry=`), instead of leaving the script
+    // waiting until the end of the take.
+    const std::string retry = " retry=1000";
     std::string pauses;
     for (std::uint32_t cycle = 0; cycle < 30U; ++cycle) {
         const auto frame = 15U + cycle * 18U;
         pauses += "frame=" + std::to_string(frame) + " key space down\nafter=0 key space up\n" +
-                  "paused=" + std::to_string(frame + 1U) + " key other up\n" +
+                  "paused=" + std::to_string(frame + 1U) + retry + " key other up\n" +
                   "after=150 key space down\nafter=0 key space up\n";
     }
     // A long take is closed once its measures are taken.
@@ -220,6 +223,7 @@ int main(int argc, char **argv) {
     for (const std::uint32_t zone : zones) {
         steps += "frame=" + std::to_string(zone - 1U) + " key space down\nafter=0 key space up\n";
         auto position = zone;
+        steps += "paused=" + std::to_string(position) + retry + " key other up\n";
         for (int step = 0; step < 10; ++step, ++position)
             steps +=
                 "paused=" + std::to_string(position) + " key right down\nafter=0 key right up\n";
@@ -277,6 +281,19 @@ int main(int argc, char **argv) {
         for (auto &value : *values)
             value /= period_ms;
 
+    // BR-156: the pauses asked for again, and scripts abandoned after a second miss.
+    for (const auto *marks : {&pause_marks, &step_marks}) {
+        std::size_t retried{};
+        std::size_t abandoned{};
+        for (const auto &mark : *marks) {
+            retried += !mark.fields.empty() && mark.fields[0] == "script_retry" ? 1U : 0U;
+            abandoned += !mark.fields.empty() && mark.fields[0] == "script_abandoned" ? 1U : 0U;
+        }
+        std::cout << "script " << (marks == &pause_marks ? "pause-resume" : "steps")
+                  << " retries=" << retried << " abandoned=" << abandoned << '\n';
+        if (abandoned != 0U)
+            ++failures;
+    }
     std::cout << "device=" << device << " refresh_hz=" << refresh << " take_frames=" << frames
               << " fps=" << fps << '\n';
     std::cout << "| Id | Medida | n | p95 | máximo | Presupuesto | Resultado "

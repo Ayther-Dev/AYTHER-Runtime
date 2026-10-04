@@ -40,7 +40,7 @@ std::optional<ScriptTrigger> trigger(std::string_view text) {
     for (const auto &[prefix, kind] : kinds)
         if (text.starts_with(prefix))
             if (const auto value = number(text.substr(prefix.size())))
-                return ScriptTrigger{kind, *value};
+                return ScriptTrigger{kind, *value, std::nullopt};
     return std::nullopt;
 }
 
@@ -131,12 +131,20 @@ ScriptParseResult parse_input_script(std::string_view text) {
         const auto parts = words(line);
         if (parts.empty())
             continue;
-        const auto when = trigger(parts[0]);
+        auto when = trigger(parts[0]);
         if (!when)
             return ScriptError{number_of_line, "invalid_trigger"};
-        if (parts.size() < 2U)
+        auto rest = parts;
+        if (rest.size() >= 2U && rest[1].starts_with("retry=")) {
+            const auto retry = number(rest[1].substr(6));
+            if (!retry || when->kind != ScriptTriggerKind::paused)
+                return ScriptError{number_of_line, "invalid_retry"};
+            when->retry_ms = *retry;
+            rest.erase(rest.begin() + 1);
+        }
+        if (rest.size() < 2U)
             return ScriptError{number_of_line, "missing_action"};
-        const auto what = action(parts);
+        const auto what = action(rest);
         if (!what)
             return ScriptError{number_of_line, "invalid_action"};
         steps.push_back({*when, *what});
@@ -158,16 +166,39 @@ std::vector<ScriptAction> InputScript::due(const ScriptState &state) {
             ready = state.position && *state.position >= step.trigger.value;
             break;
         case ScriptTriggerKind::paused:
-            ready = state.paused && state.position && *state.position == step.trigger.value;
+            // After a retry the pause may land later than k.
+            ready = state.paused && state.position &&
+                    (retried_ms_ ? *state.position >= step.trigger.value
+                                 : *state.position == step.trigger.value);
             break;
         case ScriptTriggerKind::after_ms:
             ready = state.now_ms - *last_fired_ms_ >= static_cast<double>(step.trigger.value);
             break;
         }
-        if (!ready)
+        if (!ready) {
+            if (step.trigger.kind == ScriptTriggerKind::paused && step.trigger.retry_ms) {
+                const auto wait = static_cast<double>(*step.trigger.retry_ms);
+                if (!retried_ms_ && last_key_ && state.now_ms - *last_fired_ms_ >= wait) {
+                    ScriptAction down{ScriptActionKind::key_down, *last_key_, 0};
+                    down.retry = true;
+                    ScriptAction up{ScriptActionKind::key_up, *last_key_, 0};
+                    up.retry = true;
+                    actions.push_back(down);
+                    actions.push_back(up);
+                    retried_ms_ = state.now_ms;
+                    ++retries_;
+                } else if (retried_ms_ && state.now_ms - *retried_ms_ >= wait) {
+                    abandoned_ = true;
+                    next_ = steps_.size();
+                }
+            }
             break;
+        }
         actions.push_back(step.action);
+        if (step.action.kind == ScriptActionKind::key_down)
+            last_key_ = step.action.key;
         last_fired_ms_ = state.now_ms;
+        retried_ms_.reset();
         ++next_;
     }
     return actions;

@@ -13,11 +13,8 @@ void require(const bool condition, const char *const message) {
 }
 
 qa::Request request() {
-    return {"request-111",
-            "session-111",
-            "conditions-a",
-            {"take-main", "take-extra"},
-            qa::Admission::pending};
+    return {"request-111",          "session-111", "conditions-a", {"take-main", "take-extra"},
+            qa::Admission::pending, std::nullopt};
 }
 
 qa::Run run() {

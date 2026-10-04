@@ -17,11 +17,9 @@ void require(const bool condition, const char *message) {
 
 int main() {
     try {
-        const qa::Request pending{"request-91",
-                                  "session-1",
-                                  "conditions-a",
-                                  {"take-main", "take-extra"},
-                                  qa::Admission::pending};
+        const qa::Request pending{"request-91",           "session-1",
+                                  "conditions-a",         {"take-main", "take-extra"},
+                                  qa::Admission::pending, std::nullopt};
         const auto encoded_request = qa::encode_request_message(pending, 17);
         const auto *request_bytes = std::get_if<std::vector<std::byte>>(&encoded_request);
         require(request_bytes != nullptr, "request_encoding_failed");

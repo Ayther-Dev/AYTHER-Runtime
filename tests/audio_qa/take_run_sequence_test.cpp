@@ -15,8 +15,8 @@ void require(const bool condition, const char *const message) {
 }
 
 qa::Request request(std::vector<std::string> take_ids) {
-    return {"request-113", "session-113", "conditions-golden-axe", std::move(take_ids),
-            qa::Admission::accepted};
+    return {"request-113",       "session-113",           "conditions-golden-axe",
+            std::move(take_ids), qa::Admission::accepted, std::nullopt};
 }
 
 } // namespace

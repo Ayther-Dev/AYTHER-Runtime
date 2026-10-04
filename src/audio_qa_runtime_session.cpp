@@ -1450,7 +1450,11 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                 const ri::ScriptState state{controller.position(),
                                             controller.phase() == ri::InspectionPhase::paused,
                                             now_ms()};
+                const bool was_abandoned = script->abandoned();
                 for (const auto &action : script->due(state)) {
+                    // BR-156: a key pressed again because its pause did not come is recorded.
+                    if (action.retry && action.kind == ri::ScriptActionKind::key_down)
+                        timing.mark("script_retry", clock_ms(), controller.position().value_or(0U));
                     if (action.kind == ri::ScriptActionKind::corrupt_checkpoints) {
                         checkpoints.corrupt_all_for_test();
                     } else if (action.kind == ri::ScriptActionKind::corrupt_visual_state) {
@@ -1482,6 +1486,8 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                         }
                     }
                 }
+                if (!was_abandoned && script->abandoned())
+                    timing.mark("script_abandoned", clock_ms(), controller.position().value_or(0U));
             }
             if (presentation)
                 presentation->poll_events(events);
@@ -1554,6 +1560,15 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
             switch (controller.phase()) {
             case ri::InspectionPhase::playing:
             case ri::InspectionPhase::pausing: {
+                // P-2: the wait for the turn of the next frame attends the keys; a pause
+                // requested during it finishes that frame at once.
+                const auto now = std::chrono::steady_clock::now();
+                if (!ri::start_frame_now(controller.phase(), now, next_frame)) {
+                    const std::chrono::steady_clock::duration poll{std::chrono::milliseconds{1}};
+                    const auto remaining = next_frame - now;
+                    std::this_thread::sleep_for(remaining < poll ? remaining : poll);
+                    break;
+                }
                 const auto frame = controller.next_frame();
                 set_audible(true);
                 if (!produce(frame)) {
@@ -1579,14 +1594,13 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                 apply(controller.frame_completed(frame));
                 if (controller.phase() == ri::InspectionPhase::playing) {
                     next_frame += frame_period;
-                    const auto now = std::chrono::steady_clock::now();
-                    if (presentation && now > next_frame + frame_period) {
+                    const auto completed = std::chrono::steady_clock::now();
+                    if (presentation && completed > next_frame + frame_period) {
                         result.presentation.affect(frame);
                         if (result.presentation.code == "presented")
                             result.presentation.code = "cadence_degraded";
-                        next_frame = now;
+                        next_frame = completed;
                     }
-                    std::this_thread::sleep_until(next_frame);
                 }
                 break;
             }

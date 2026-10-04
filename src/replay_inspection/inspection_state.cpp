@@ -26,6 +26,13 @@ Commands InspectionController::prepared() {
     return {};
 }
 
+bool start_frame_now(InspectionPhase phase, std::chrono::steady_clock::time_point now,
+                     std::chrono::steady_clock::time_point due) noexcept {
+    if (phase == InspectionPhase::pausing)
+        return true;
+    return phase == InspectionPhase::playing && now >= due;
+}
+
 Commands InspectionController::pause_at(std::uint32_t frame) {
     phase_ = InspectionPhase::paused;
     position_ = frame;

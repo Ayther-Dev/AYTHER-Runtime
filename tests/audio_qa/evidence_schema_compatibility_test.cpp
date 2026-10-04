@@ -54,7 +54,8 @@ std::string replace_once(std::string text, const std::string_view expected,
 }
 
 qa::Request request() {
-    return {"request-146", "session-146", "conditions-a", {"take-main"}, qa::Admission::pending};
+    return {"request-146", "session-146",          "conditions-a",
+            {"take-main"}, qa::Admission::pending, std::nullopt};
 }
 
 qa::Run run() {

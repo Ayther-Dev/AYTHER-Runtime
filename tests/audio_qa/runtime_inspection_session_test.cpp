@@ -84,10 +84,32 @@ std::uint64_t frames_of_pcm(std::uint64_t bytes, std::uint64_t per_frame) {
     return per_frame == 0U ? 0U : (bytes + per_frame / 2U) / per_frame;
 }
 
-// The capture follows the audio device, so a take's PCM is only close to N frames (a few frames
-// of jitter between runs). The bounds below still tell apart any leak of silent production.
-bool within(std::uint64_t measured, std::uint64_t low, std::uint64_t high) {
-    return measured >= low && measured <= high;
+// The PCM capture follows the audio device: its priming, its tail and the wall time of the take
+// move it by some ±5 frames between runs with the same input, so it is only reported. What
+// sounded is checked on the Engine facts of each frame instead: the Engine produces the same
+// facts for the same inputs (RNF-1), and silent production sends none (DI-8). The Engine numbers
+// the frame of take frame k as k + 1; its frame 0 holds the facts of the preparation.
+std::uint64_t facts_of(const hn::Session &session, const std::string &label,
+                       std::uint64_t engine_frame) {
+    const auto found = session.engine_facts_by_frame.find({"run-" + label, engine_frame});
+    return found == session.engine_facts_by_frame.end() ? 0U : found->second;
+}
+
+// Every take frame k sounded `times(k)` times the facts it has in the linear take.
+template <class Times>
+bool sounded(const hn::Session &session, const std::string &label, const hn::Session &linear,
+             Times times) {
+    bool matched = facts_of(session, label, 0U) == facts_of(linear, "linear", 0U);
+    for (std::uint64_t frame = 0; frame < frames; ++frame) {
+        const auto found = facts_of(session, label, frame + 1U);
+        const auto expected = times(frame) * facts_of(linear, "linear", frame + 1U);
+        if (found != expected) {
+            std::cerr << label << " frame " << frame << ": " << found << " engine facts, "
+                      << expected << " expected\n";
+            matched = false;
+        }
+    }
+    return matched;
 }
 
 } // namespace
@@ -155,8 +177,8 @@ int main(int argc, char **argv) {
            "RF-7.6: a pause adds no record");
     expect(has_event(paused, "pause", 21U, 21U) && has_event(paused, "resume", 21U, 21U),
            "C2: the pause and the resume are inspection events");
-    // BR-138: the pause drains; it neither loses nor adds PCM.
-    expect(within(frames_of_pcm(paused.pcm_bytes, pcm_per_frame), frames - 5U, frames + 5U),
+    // BR-138: the pause drains; it neither loses nor adds audio.
+    expect(sounded(paused, "pause", linear, [](std::uint64_t) { return 1U; }),
            "RF-4.1, RF-4.2: the pause loses no audio and adds none");
     expect(paused_terminal && digest(paused_terminal->final_game_state) == linear_final,
            "a pause does not change the replay");
@@ -185,8 +207,9 @@ int main(int argc, char **argv) {
         });
     expect(back_states >= 1, "RF-5.1: the window presents the target, paused");
     // The three frames 29, 30, 31 play again with audio after the resume; nothing else sounds.
-    // A leak of the silent re-simulation of frames 0..28 would add some 28 frames.
-    expect(within(frames_of_pcm(back.pcm_bytes, pcm_per_frame), frames - 5U, frames + 10U),
+    // A leak of the silent re-simulation of frames 0..28 would sound them twice.
+    expect(sounded(back, "back", linear,
+                   [](std::uint64_t frame) { return frame >= 29U && frame <= 31U ? 2U : 1U; }),
            "RF-5.4: navigation is silent; only the frames played again after the resume sound");
     expect(back.duplicate_fact_ids == 0U, "RF-2.13: no fact is duplicated");
     bool silent_excluded = true;
@@ -229,8 +252,9 @@ int main(int argc, char **argv) {
                has_event(forward, "step_forward", 20U, 21U) && records_of(forward, 12U) == 1U &&
                records_of(forward, 22U) == 1U,
            "RF-5.1: → in pause produces k+1 and presents it");
-    // Ten silent frames are ten frames less than the linear take; a leak would keep N.
-    expect(within(frames_of_pcm(forward.pcm_bytes, pcm_per_frame), frames - 16U, frames - 5U),
+    // The ten frames produced in pause never sound; every other frame sounds once.
+    expect(sounded(forward, "forward", linear,
+                   [](std::uint64_t frame) { return frame >= 12U && frame <= 21U ? 0U : 1U; }),
            "RF-5.4, RF-5.7: frames 12 to 21 are silent and 22 follows without repeating 21");
 
     // BR-143: damaged checkpoints; the window stays at 71, resumes and ends naturally.

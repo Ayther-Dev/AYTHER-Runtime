@@ -8,6 +8,7 @@
 #include "inspection_state.h"
 
 #include <algorithm>
+#include <chrono>
 #include <iostream>
 #include <string_view>
 #include <vector>
@@ -86,6 +87,24 @@ void playback_and_pause() {
            "RF-4.4: Space in pause resumes");
     expect(controller.phase() == Phase::playing && controller.next_frame() == 3U,
            "RF-4.4: playback resumes at k+1");
+}
+
+// P-2 (RF-4.1): playback waits for the turn of each frame; Space during that wait finishes the
+// frame in progress at once instead of waiting for its turn, so the pause is presented after its
+// production and one presentation, not after the rest of the wait.
+void frame_start() {
+    using namespace std::chrono_literals;
+    const auto due = std::chrono::steady_clock::time_point{} + 100ms;
+    expect(!ri::start_frame_now(Phase::playing, due - 5ms, due),
+           "playback waits for the turn of the next frame");
+    expect(ri::start_frame_now(Phase::playing, due, due) &&
+               ri::start_frame_now(Phase::playing, due + 3ms, due),
+           "playback starts the frame on its turn or late");
+    expect(ri::start_frame_now(Phase::pausing, due - 15ms, due),
+           "P-2: a requested pause finishes the frame in progress without waiting for its turn");
+    for (const auto phase : {Phase::preparing, Phase::paused, Phase::recovering, Phase::interrupted,
+                             Phase::closing, Phase::failed})
+        expect(!ri::start_frame_now(phase, due + 1s, due), "only playing and pausing run frames");
 }
 
 void navigation() {
@@ -214,6 +233,7 @@ void natural_end() {
 
 int main() {
     playback_and_pause();
+    frame_start();
     navigation();
     recovery_and_failure();
     info_and_debug();

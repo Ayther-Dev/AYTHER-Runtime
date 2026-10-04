@@ -2,6 +2,7 @@
 
 #include "key_router.h"
 
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -89,5 +90,11 @@ class InspectionController final {
     bool ended_naturally_{};
     std::string cause_;
 };
+
+// P-2 (RF-4.1): whether the loop starts the next frame now. Playback waits for the turn of each
+// frame (`due`); a requested pause finishes the frame in progress at once, without waiting for
+// its turn, so that the paused image follows the key by one production and one presentation.
+[[nodiscard]] bool start_frame_now(InspectionPhase phase, std::chrono::steady_clock::time_point now,
+                                   std::chrono::steady_clock::time_point due) noexcept;
 
 } // namespace ayther::replay_inspection
