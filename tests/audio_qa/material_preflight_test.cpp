@@ -149,7 +149,6 @@ void a_material_being_written_is_in_use(const std::filesystem::path &root) {
                     qa::MaterialPinError::in_use),
            "RF-2.11: a material open for writing is reported in use");
 }
-#endif
 
 qa::FieldIssue hold_issue(const qa::HoldResult &result) {
     const auto *issue = std::get_if<qa::FieldIssue>(&result);
@@ -172,7 +171,6 @@ void materials_are_held_during_a_take(const std::filesystem::path &root) {
         expect(std::holds_alternative<qa::HeldMaterials>(held) &&
                    std::get<qa::HeldMaterials>(held).size() == 1U,
                "RF-2.11: an unchanged material is held");
-#ifdef _WIN32
         std::ofstream writer{path, std::ios::binary | std::ios::app};
         expect(!writer.is_open(), "RF-2.11: a held material cannot be written");
         std::error_code error;
@@ -181,7 +179,6 @@ void materials_are_held_during_a_take(const std::filesystem::path &root) {
         error.clear();
         std::filesystem::rename(path, root / "renamed.ayr", error);
         expect(static_cast<bool>(error), "RF-2.11: a held material cannot be renamed");
-#endif
     }
     {
         std::ofstream writer{path, std::ios::binary | std::ios::app};
@@ -194,16 +191,15 @@ void materials_are_held_during_a_take(const std::filesystem::path &root) {
     {
         std::ofstream writer{path, std::ios::binary | std::ios::app};
         const auto busy = qa::hold_materials(pins);
-#ifdef _WIN32
         expect(hold_issue(busy) == qa::FieldIssue{"--take[0]", "material_in_use"},
                "RF-2.11: a material open for writing is not handed over");
-#endif
     }
     std::filesystem::remove(path);
     expect(hold_issue(qa::hold_materials(pins)) ==
                qa::FieldIssue{"--take[0]", "material_unavailable"},
            "RF-2.11: a material that disappeared stops the take");
 }
+#endif
 
 void codes_are_stable() {
     expect(qa::material_pin_error_code(qa::MaterialPinError::not_found) == "material_not_found" &&
