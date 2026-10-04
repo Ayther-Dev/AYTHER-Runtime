@@ -70,9 +70,12 @@ void regular_file_is_pinned(const std::filesystem::path &root) {
     expect(pinned(changed) != nullptr && pinned(changed)->content != pin->content,
            "RF-2.11: other content gives another SHA-256");
 
-    // Same bytes in a new file: the content matches but the file does not.
-    std::filesystem::remove(path);
-    write_file(path, "rom-content");
+    // Same bytes in a new file that replaces it: the content matches but the file does not. The
+    // new file is created while the old one exists, as an editor saving over it does, so POSIX
+    // cannot hand it the old inode.
+    const auto replacement = path.string() + ".new";
+    write_file(replacement, "rom-content");
+    std::filesystem::rename(replacement, path);
     const auto replaced = qa::pin_material(qa::MaterialPinRole::take, "--take", path, 2);
     expect(pinned(replaced) != nullptr && pinned(replaced)->content == pin->content &&
                pinned(replaced)->file != pin->file,

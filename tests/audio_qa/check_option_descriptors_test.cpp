@@ -179,10 +179,12 @@ void test_published_inventory_matches_table() {
 
 // Runs `<cli> options --format toml` and compares its output with the table.
 void test_cli_inventory_matches_table(const std::string &cli) {
-    const std::string command = "\"\"" + cli + "\" options --format toml\"";
 #ifdef _WIN32
+    // cmd.exe strips the outer quotes of the whole line.
+    const std::string command = "\"\"" + cli + "\" options --format toml\"";
     FILE *pipe = _popen(command.c_str(), "r");
 #else
+    const std::string command = "'" + cli + "' options --format toml";
     FILE *pipe = popen(command.c_str(), "r");
 #endif
     expect(pipe != nullptr, "RF-1.8: the CLI inventory can be requested");
