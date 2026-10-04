@@ -163,7 +163,27 @@ $elsewhere = New-ReleaseLock (Join-Path $WorkDirectory 'elsewhere.lock.json') @{
 Assert-Fails { & $Bootstrap -LockFile $elsewhere -ValidateOnly } 'release asset' `
     'RNF-8: an artifact of another release must be refused'
 
-# 9. A complete remote lock validates offline, without downloading.
+# 9. A relative cache directory belongs to the repository, not to the caller's working directory.
+$repository = [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $Bootstrap) '..'))
+$relative = "out/qa-bootstrap-relative-$([guid]::NewGuid().ToString('N'))"
+$previous = [Environment]::CurrentDirectory
+try {
+    [Environment]::CurrentDirectory = $WorkDirectory
+    Push-Location -LiteralPath $WorkDirectory
+    $placed = & $Bootstrap -LockFile $lock -DestinationDirectory $relative -AllowLocalArtifactForTest |
+        Select-Object -Last 1
+} finally {
+    Pop-Location
+    [Environment]::CurrentDirectory = $previous
+}
+$expectedRoot = [IO.Path]::GetFullPath((Join-Path $repository $relative))
+Assert-Condition ([IO.Path]::GetFullPath([string]$placed).StartsWith($expectedRoot, [StringComparison]::OrdinalIgnoreCase)) `
+    "a relative cache directory resolves against the repository: '$placed', expected under '$expectedRoot'"
+Assert-Condition (-not (Test-Path -LiteralPath (Join-Path $WorkDirectory $relative))) `
+    'nothing is written under the caller working directory'
+Remove-Item -LiteralPath $expectedRoot -Recurse -Force -ErrorAction SilentlyContinue
+
+# 10. A complete remote lock validates offline, without downloading.
 $remote = New-ReleaseLock (Join-Path $WorkDirectory 'remote.lock.json') @{
     'artifact.url' = "$published/$root.zip"
     'release.checksumsUrl' = "$published/CHECKSUMS.sha256"

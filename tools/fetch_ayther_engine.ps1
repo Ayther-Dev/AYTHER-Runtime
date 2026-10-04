@@ -42,6 +42,10 @@ $ErrorActionPreference = "Stop"
 function Get-NormalizedPath {
     param([Parameter(Mandatory)][string]$Path)
 
+    # A relative path belongs to the repository, whatever the caller's working directory.
+    if (-not [IO.Path]::IsPathRooted($Path)) {
+        $Path = Join-Path (Join-Path $PSScriptRoot '..') $Path
+    }
     return [IO.Path]::GetFullPath($Path)
 }
 

@@ -306,7 +306,12 @@ $selection = Read-QaLock -Path $LockFile
 $lock = $selection.Lock
 $lockDirectory = Split-Path -Parent $selection.Path
 $isRelease = $lock.selection -ceq 'qa-release'
-$destination = [IO.Path]::GetFullPath($DestinationDirectory)
+# A relative cache directory belongs to the repository, whatever the caller's working directory.
+$destination = if ([IO.Path]::IsPathRooted($DestinationDirectory)) {
+    [IO.Path]::GetFullPath($DestinationDirectory)
+} else {
+    [IO.Path]::GetFullPath((Join-Path (Join-Path $PSScriptRoot '..') $DestinationDirectory))
+}
 if ($isRelease) {
     if ($ValidateOnly) {
         Write-Host "AYTHER Engine QA release lock valid: $($lock.package.id)"
