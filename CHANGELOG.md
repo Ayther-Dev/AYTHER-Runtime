@@ -60,6 +60,15 @@ once stable compatibility guarantees are defined.
   linear take still needs one continuous interval, and an inspection is never
   accredited as linear audio. Evidence 1.1 still reads: its PCM blocks are
   segment 0 and its traversal has no audio segments.
+- A trust registry that is missing, unreadable or malformed (including a path
+  pasted between quotes) is no longer reported as `pack_untrusted`:
+  `--probe-pack` ends with 78 and `trust_registry_invalid`, and the checker
+  rejects it in `--trust-registry`. `pack_untrusted` is kept for a pack the
+  Engine refuses for its signature or trust policy; another failure to open is
+  `pack_open_failed`.
+- The replay QA launcher strips one pair of surrounding double quotes from a
+  pasted path (Windows "Copy as path") in every path field; the summary and the
+  request record the unquoted path.
 
 ### Known issues
 
