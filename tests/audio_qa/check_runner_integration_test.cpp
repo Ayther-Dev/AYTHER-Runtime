@@ -65,7 +65,7 @@ class Recorder final : public qa::CheckObserver {
 };
 
 struct Paths {
-    std::filesystem::path runtime, core, rom, take, long_take, root;
+    std::filesystem::path runtime, core, rom, take, long_take, rejected_state, root;
 };
 
 qa::ReplayRequest request(const Paths &paths, const std::string &output,
@@ -128,20 +128,14 @@ void phases_in_order(const Paths &paths) {
            "RNF-5: cessation is confirmed after exit and evidence close");
 }
 
-// BR-063: [A, B fails, C] keeps A, closes B with its diagnostic and leaves C unstarted.
+// BR-063: [A, B fails, C] keeps A, closes B with its diagnostic and leaves C unstarted. B's
+// initial state decompresses whole but the core rejects it, which only the Runtime can find.
 void failure_stops_the_request(const Paths &paths) {
-    auto bytes = read_file(paths.take);
-    const auto layout = qa::decode_recording_layout(std::as_bytes(std::span{bytes}));
-    expect(layout.error == qa::RecordingLayoutError::none, "the public take is readable");
-    const auto state = layout.layout.compressed_state;
-    for (std::uint64_t offset = 0; offset < state.size; ++offset)
-        bytes[static_cast<std::size_t>(state.offset + offset)] ^= static_cast<char>(0x5a);
-    const auto broken = paths.root / "broken.arp";
-    write_file(broken, bytes);
     Recorder observer;
     qa::CancelToken cancel;
     const auto outcome = qa::run_check(
-        request(paths, "failure", {paths.take.string(), broken.string(), paths.take.string()},
+        request(paths, "failure",
+                {paths.take.string(), paths.rejected_state.string(), paths.take.string()},
                 "runner-failure"),
         observer, cancel);
     const auto *first = ran(outcome, 0);
@@ -157,6 +151,30 @@ void failure_stops_the_request(const Paths &paths) {
            "RF-2.5: the take after the failure is not started");
     expect(outcome.exit_code == 2 && !outcome.linear_complete,
            "RF-2.12: the joint result does not credit a linear reproduction");
+}
+
+// D-2 (campaign 2026-10-04; RF-2.2): a take whose compressed initial state is damaged is found
+// before admission, in its field, and nothing runs.
+void damaged_state_is_rejected_before_admission(const Paths &paths) {
+    auto bytes = read_file(paths.take);
+    const auto layout = qa::decode_recording_layout(std::as_bytes(std::span{bytes}));
+    expect(layout.error == qa::RecordingLayoutError::none, "the public take is readable");
+    const auto state = layout.layout.compressed_state;
+    for (std::uint64_t offset = 0; offset < state.size; ++offset)
+        bytes[static_cast<std::size_t>(state.offset + offset)] ^= static_cast<char>(0x5a);
+    const auto broken = paths.root / "broken.arp";
+    write_file(broken, bytes);
+    Recorder observer;
+    qa::CancelToken cancel;
+    const auto outcome = qa::run_check(
+        request(paths, "damaged", {paths.take.string(), broken.string()}, "runner-damaged"),
+        observer, cancel);
+    expect(outcome.exit_code == 3 &&
+               std::find(outcome.issues.begin(), outcome.issues.end(),
+                         qa::FieldIssue{"--take[1]", "take_initial_state_invalid"}) !=
+                   outcome.issues.end() &&
+               outcome.per_take.empty() && !std::filesystem::exists(paths.root / "damaged"),
+           "D-2, RF-2.2: a damaged initial state is rejected before admission");
 }
 
 // BR-067: the token sends `cancel` while the first take runs.
@@ -256,16 +274,18 @@ void interrupted_run_is_recovered(const Paths &paths) {
 } // namespace
 
 int main(int argc, char **argv) {
-    if (argc != 7) {
-        std::cerr << "usage: check_runner_integration_test runtime core rom take long-take root\n";
+    if (argc != 8) {
+        std::cerr << "usage: check_runner_integration_test runtime core rom take long-take "
+                     "rejected-state-take root\n";
         return 2;
     }
-    const Paths paths{argv[1], argv[2], argv[3], argv[4], argv[5], argv[6]};
+    const Paths paths{argv[1], argv[2], argv[3], argv[4], argv[5], argv[6], argv[7]};
     std::error_code ignored;
     std::filesystem::remove_all(paths.root, ignored);
     std::filesystem::create_directories(paths.root);
     phases_in_order(paths);
     failure_stops_the_request(paths);
+    damaged_state_is_rejected_before_admission(paths);
     cancellation_reaches_the_runtime(paths);
     changed_material_stops_its_take(paths);
     interrupted_run_is_recovered(paths);

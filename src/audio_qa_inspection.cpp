@@ -51,9 +51,34 @@ void SilentProductionGate::receive_fact(void *context, const audio::FactView &fa
     }
     if (gate.silent()) {
         gate.excluded_facts_.fetch_add(1, std::memory_order_acq_rel);
+        // DI-15: the interval of this producer's sequences that the recovery excluded.
+        const auto producer = fact.id.producer;
+        if (producer != 0U && producer <= producer_slots) {
+            const auto slot = static_cast<std::size_t>(producer - 1U);
+            const auto sequence = fact.id.sequence;
+            const auto last = gate.excluded_last_[slot].load(std::memory_order_relaxed);
+            if (last == 0U)
+                gate.excluded_first_[slot].store(sequence, std::memory_order_relaxed);
+            else if (sequence <= last)
+                gate.excluded_unordered_[slot].store(true, std::memory_order_relaxed);
+            gate.excluded_last_[slot].store(sequence, std::memory_order_release);
+        }
         return;
     }
     gate.inner_.observe(fact);
+}
+
+std::vector<SilentProductionGate::ExcludedInterval> SilentProductionGate::take_exclusions() {
+    std::vector<ExcludedInterval> result;
+    for (std::size_t slot = 0; slot < producer_slots; ++slot) {
+        const auto last = excluded_last_[slot].exchange(0U, std::memory_order_acq_rel);
+        const auto first = excluded_first_[slot].exchange(0U, std::memory_order_acq_rel);
+        const bool unordered = excluded_unordered_[slot].exchange(false, std::memory_order_acq_rel);
+        if (last == 0U || unordered || first == 0U || first > last)
+            continue;
+        result.push_back({static_cast<std::uint32_t>(slot + 1U), first, last});
+    }
+    return result;
 }
 
 void SilentProductionGate::receive_pcm(void *context, const audio::PcmView &pcm) noexcept {
@@ -68,6 +93,7 @@ void SilentProductionGate::receive_pcm(void *context, const audio::PcmView &pcm)
         gate.excluded_pcm_.fetch_add(1, std::memory_order_acq_rel);
         return;
     }
+    gate.forwarded_pcm_.fetch_add(1, std::memory_order_acq_rel);
     gate.inner_.observe(pcm);
 }
 

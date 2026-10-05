@@ -55,6 +55,14 @@ $runtime = 'C:\ruta\audio-qa\bin\ayther_runtime.exe'
   `--mute-buses`, `--video-output`, `--patch`, `--shaders on|off` y `--core-option
   clave=valor` (repetible). La opción explícita precede al manifiesto y éste a la
   referencia (RF-1.5, RF-1.6).
+- `--profile` sólo se aplica a un pack cargado. Sin pack (o con `--pack-mode original`)
+  la solicitud se acepta con las mismas condiciones que la ejecución con pack: se muestra
+  `profile=<pedido>` y `profile_effective=none source=generated`, y el Runtime no recibe
+  `--profile`. Con pack, un perfil que el pack no ofrece se rechaza antes de admitir la
+  solicitud con `profile_not_in_pack: --profile`; el sondeo del pack lista sus perfiles.
+- Cada toma se valida entera antes de admitir la solicitud: además de cabecera, tamaños
+  y entradas, su estado inicial se descomprime completo, como lo hará el Runtime antes de
+  restaurarlo. Un estado dañado se rechaza con `take_initial_state_invalid: --take[i]`.
 - `--request-id` es opcional; una repetición intencional debe usar otra identidad.
   `--trust-registry` sólo puede omitirse cuando la política efectiva permite abrir
   ese pack sin registro. La raíz `--output` mantiene el ledger y crea una ejecución
@@ -62,10 +70,14 @@ $runtime = 'C:\ruta\audio-qa\bin\ayther_runtime.exe'
 
 Antes de admitir la solicitud, cada valor efectivo se escribe con su origen:
 `audio_qa_effective: <clave>=<valor> source=explicit|play_manifest|reference|environment|default|generated`.
+El origen `explicit` significa que la opción se escribió, aunque su valor coincida con
+el predeterminado (`--language es`); `default`, que no se escribió (RF-1.6).
 
 `ayther_audio_qa options --format toml` publica el inventario de opciones de la
 versión compilada, con el esquema de
-`specs/002-AYTHER-bug-render/evidence/rf1-option-inventory-beta8.toml` (RF-1.8).
+`specs/002-AYTHER-bug-render/evidence/rf1-option-inventory-beta8.toml` (RF-1.8): `ref`
+es la versión del Runtime y `commit`, el commit de las fuentes de la compilación (el
+`HEAD` del checkout al compilar, o `AYTHER_RUNTIME_SOURCE_COMMIT` si se indica).
 
 Los prefijos de diagnóstico tienen funciones distintas:
 
@@ -613,6 +625,13 @@ Desde la spec 002 ese caso ya no llega al Runtime: un registro de confianza que 
 se rechaza antes de admitir (`material_not_found: --trust-registry`) y un pack que no
 se puede usar, con el motivo de `--probe-pack`. Un pack válido sin catálogo de audio
 ya no es un error: la toma se reproduce y registra `assignments=0` (RF-2.1, RF-2.2).
+
+`--probe-pack` comprueba primero el registro de confianza con las mismas reglas que un
+arranque: un registro que falta, no se puede leer o no es válido (también una ruta pegada
+entre comillas) termina con 78 y `trust_registry_invalid`, que el comprobador rechaza en
+`--trust-registry`. `pack_untrusted` queda sólo para el pack que el Engine rechaza por su
+firma o su política de confianza (clave desconocida o revocada, vigencia, ámbito); otro fallo
+al abrirlo es `pack_open_failed` (D-10).
 
 ## Cierre local de presupuestos B06, B10 y B13
 

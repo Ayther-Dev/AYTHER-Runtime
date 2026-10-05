@@ -141,7 +141,10 @@ int main(int argc, char **argv) {
     // Spec 002 (BR-072): `--broken` writes a take whose initial state is not a zstd
     // frame. Its layout is valid, so only the Runtime finds the problem when it restores.
     const bool broken = argc == 3 && std::string_view{argv[2]} == "--broken";
-    if (argc == 3 && !broken) {
+    // Spec 002 (D-2): `--rejected-state` writes a take whose initial state decompresses whole
+    // but is one the core rejects. Only the Runtime finds it, when it restores (RF-2.5).
+    const bool rejected_state = argc == 3 && std::string_view{argv[2]} == "--rejected-state";
+    if (argc == 3 && !broken && !rejected_state) {
         if (std::string_view{argv[2]} != "--long")
             return 2;
         const auto cycle = known_inputs;
@@ -168,6 +171,16 @@ int main(int argc, char **argv) {
                     initial.version == synthetic_state_version && initial.frame == 0,
                 "synthetic_initial_state_invalid");
 
+        if (rejected_state) {
+            auto rejected = initial_state;
+            rejected[0] = static_cast<std::uint8_t>(~rejected[0]);
+            write_recording(output, make_recording(rejected));
+            retro_unload_game();
+            retro_deinit();
+            std::printf("public_recording_fixture: rejected-state take path=%s\n",
+                        output.string().c_str());
+            return 0;
+        }
         auto expected_bytes = make_recording(initial_state);
         if (broken) {
             const auto layout = qa::decode_recording_layout(expected_bytes);

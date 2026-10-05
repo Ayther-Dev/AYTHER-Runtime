@@ -270,7 +270,7 @@ if(NOT traversal_count EQUAL 1)
     message(FATAL_ERROR "The run has no traversal.toml: ${traversals}")
 endif()
 file(READ "${traversals}" traversal_text)
-foreach(expected IN ITEMS "schema_minor = 1" "kind = 'linear'" "linear_completed = true"
+foreach(expected IN ITEMS "schema_minor = 2" "kind = 'linear'" "linear_completed = true"
                           "frames_total = 6" "from = 0" "to = 5")
     string(FIND "${traversal_text}" "${expected}" found)
     if(found EQUAL -1)
@@ -278,6 +278,64 @@ foreach(expected IN ITEMS "schema_minor = 1" "kind = 'linear'" "linear_completed
 ${traversal_text}")
     endif()
 endforeach()
+
+# Spec 002, D-9 (DI-14): an inspection keeps its audio per linear segment. Pause at 3, step back
+# to 2 (a checkpoint is restored and the PCM line goes back), resume: the PCM before the pause
+# and the PCM after the resume are two contiguous segments. The facts of the frames produced
+# silently are not evidence either (plan D14): D-11 (DI-15) declares them as exclusions of the
+# recovery, and the evidence of the take is complete. The request ends with 0 (contracts.md C5:
+# every take ended naturally with complete evidence), and the traversal is an inspection, never
+# accredited as linear (`linear_complete = false`).
+file(WRITE "${TEST_ROOT}/inspection.script"
+    "frame=3 key space down\nafter=0 key space up\npaused=3 key left down\nafter=0 key left up\n"
+    "paused=2 key space down\nafter=0 key space up\n")
+set(ENV{AYTHER_QA_INPUT_SCRIPT} "${TEST_ROOT}/inspection.script")
+spec002_check(0 "${TEST_ROOT}/spec002-inspection" --take "${TAKE_FILE}"
+              --request-id spec002-inspection)
+unset(ENV{AYTHER_QA_INPUT_SCRIPT})
+if(spec002_report MATCHES "evidence_error=" OR
+   NOT spec002_report MATCHES "durable_pcm_blocks=[1-9]" OR
+   NOT spec002_report MATCHES "playback=natural_end traversal=inspection")
+    message(FATAL_ERROR "D-9: an inspection did not keep complete audio evidence:\n${spec002_report}")
+endif()
+file(GLOB inspection_traversals "${TEST_ROOT}/spec002-inspection/runs/*/traversal.toml")
+file(READ "${inspection_traversals}" inspection_traversal)
+foreach(expected IN ITEMS "schema_minor = 2" "kind = 'inspection'" "linear_completed = false"
+                          "[[audio_segments]]" "segment = 1" "frame_from = 3" "frame_to = 5"
+                          "[[fact_exclusions]]" "recovery = 1" "cause = 'silent_recovery'")
+    string(FIND "${inspection_traversal}" "${expected}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR "D-9, D-11: traversal.toml omitted ${expected}:\n${inspection_traversal}")
+    endif()
+endforeach()
+# D-11 (DI-15): the declared exclusions are not losses: the evidence of the inspection is
+# complete, and the take is still not accredited as linear.
+function(spec002_inspection_complete root what)
+    file(GLOB summary "${root}/requests/*/request-summary.toml")
+    file(READ "${summary}" summary_text)
+    if(NOT summary_text MATCHES "traversal = 'inspection'" OR
+       NOT summary_text MATCHES "linear_complete = false" OR
+       NOT summary_text MATCHES "playback = 'natural_end'" OR
+       NOT summary_text MATCHES "evidence = 'complete'" OR
+       summary_text MATCHES "data_lost|fragments_not_flushed|pcm_")
+        message(FATAL_ERROR "D-11, DI-15: the evidence of an inspection ${what} is not complete:\n"
+                            "${summary_text}")
+    endif()
+endfunction()
+spec002_inspection_complete("${TEST_ROOT}/spec002-inspection" "without pack")
+# The same with the pack: its relationships reopen as well.
+set(ENV{AYTHER_QA_INPUT_SCRIPT} "${TEST_ROOT}/inspection.script")
+spec002_check(0 "${TEST_ROOT}/spec002-inspection-pack" --take "${TAKE_FILE}"
+              --pack "${PACK_FILE}" --trust-registry "${TRUST_REGISTRY}"
+              --request-id spec002-inspection-pack)
+unset(ENV{AYTHER_QA_INPUT_SCRIPT})
+if(spec002_report MATCHES "evidence_error=" OR
+   NOT spec002_report MATCHES "assignments=1" OR
+   NOT spec002_report MATCHES "durable_pcm_blocks=[1-9]" OR
+   NOT spec002_report MATCHES "playback=natural_end traversal=inspection")
+    message(FATAL_ERROR "D-9: an inspection with pack lost its audio evidence:\n${spec002_report}")
+endif()
+spec002_inspection_complete("${TEST_ROOT}/spec002-inspection-pack" "with pack")
 
 # RF-2.3: the same request returns its confirmed summary without starting the Runtime.
 spec002_check(0 "${TEST_ROOT}/spec002" --take "${TAKE_FILE}" --request-id spec002-nopack)

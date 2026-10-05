@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.25)
 # error ends with 3 and creates nothing in the destination; a request id is known or
 # conflicting only after it was admitted.
 foreach(required IN ITEMS CHECK_EXE RUNTIME_EXE CORE_DLL NON_CORE_DLL ROM_FILE TAKE_FILE
-                          FIXTURES TEST_ROOT)
+                          BROKEN_TAKE_FILE FIXTURES TEST_ROOT)
     if(NOT DEFINED ${required})
         message(FATAL_ERROR "${required} is required")
     endif()
@@ -124,6 +124,18 @@ rejected("corrupt-asset" "pack_assets_unreadable: --pack"
 rejected("missing-registry" "material_not_found: --trust-registry"
     --rom "${ROM_FILE}" --core "${CORE_DLL}" --take "${TAKE_FILE}"
     --pack "${FIXTURES}/public-synthetic.ay" --trust-registry "${TEST_ROOT}/missing.toml")
+# D-10: a registry that exists but is not a registry is an error of --trust-registry, not
+# pack_untrusted; a valid registry that revokes the key is pack_untrusted.
+file(WRITE "${TEST_ROOT}/malformed-trust.toml" "version = [\n")
+rejected("malformed-registry" "trust_registry_invalid: --trust-registry"
+    --rom "${ROM_FILE}" --core "${CORE_DLL}" --take "${TAKE_FILE}"
+    --pack "${FIXTURES}/public-synthetic.ay" --trust-registry "${TEST_ROOT}/malformed-trust.toml")
+file(READ "${REGISTRY}" registry_text)
+string(REPLACE "revoked = false" "revoked = true" revoked_text "${registry_text}")
+file(WRITE "${TEST_ROOT}/revoked-trust.toml" "${revoked_text}")
+rejected("revoked-registry" "pack_untrusted: --pack"
+    --rom "${ROM_FILE}" --core "${CORE_DLL}" --take "${TAKE_FILE}"
+    --pack "${FIXTURES}/public-synthetic.ay" --trust-registry "${TEST_ROOT}/revoked-trust.toml")
 rejected("second-take-missing" "material_not_found: --take\\[1\\]"
     --rom "${ROM_FILE}" --core "${CORE_DLL}" --take "${TAKE_FILE}"
     --take "${TEST_ROOT}/missing.arp")
@@ -149,6 +161,34 @@ expect_in("${last_report}" "assignments=0" "outcome=complete" "audio_qa_summary:
 if(last_report MATCHES "audio_assignment_catalog_empty")
     message(FATAL_ERROR "A visual-only pack was reported as an empty audio catalog")
 endif()
+
+# 6. D-1 (campaign 2026-10-04, BR-181; spec.md:17, RF-3.5): `--profile` without a pack is
+#    the same condition as the run with the pack. It is accepted, shown and recorded as
+#    requested with no effective profile, and the take never fails after admission.
+check(0 "${TEST_ROOT}/profile-without-pack" --rom "${ROM_FILE}" --core "${CORE_DLL}"
+      --take "${TAKE_FILE}" --profile full --request-id preflight-profile-without-pack)
+expect_in("${last_report}"
+    "audio_qa_effective: profile=full source=explicit"
+    "audio_qa_effective: profile_effective=none source=generated"
+    "playback=natural_end" "audio_qa_summary: exit_code=0")
+file(GLOB profile_summaries "${TEST_ROOT}/profile-without-pack/requests/*/request-summary.toml")
+file(READ "${profile_summaries}" profile_summary)
+expect_in("${profile_summary}" "key = 'profile'" "value = 'full'" "key = 'profile_effective'"
+          "value = 'none'")
+if(last_report MATCHES "audio_profile_unavailable")
+    message(FATAL_ERROR "A profile without pack failed after admission:\n${last_report}")
+endif()
+#    A pack that does not offer the requested profile is a mismatch: rejected before admission
+#    in the field --profile (RF-2.2).
+rejected("profile-not-in-pack" "profile_not_in_pack: --profile"
+    --rom "${ROM_FILE}" --core "${CORE_DLL}" --take "${TAKE_FILE}"
+    --pack "${FIXTURES}/public-synthetic.ay" --trust-registry "${REGISTRY}"
+    --profile no-such-profile)
+
+# 7. D-2 (campaign 2026-10-04, BR-181; RF-2.2): a take whose initial state is damaged is
+#    rejected before admission in its own field, not when the Runtime restores it.
+rejected("damaged-initial-state" "take_initial_state_invalid: --take\\[1\\]"
+    --rom "${ROM_FILE}" --core "${CORE_DLL}" --take "${TAKE_FILE}" --take "${BROKEN_TAKE_FILE}")
 
 # Nothing reached the user's Runtime data.
 if(EXISTS "${TEST_ROOT}/user-appdata/Ayther")

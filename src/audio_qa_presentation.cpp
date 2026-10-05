@@ -324,8 +324,9 @@ VideoResult AudioQaPresentation::present(AytherSession &session, const FrameView
                            .count();
     VkPresent::finalize(context, frame);
     if (swapchain.end_frame(context, frame)) {
+        // D-8: a frame presented again in playback after an inspection counts once.
         if (linear)
-            ++report_.presented_frames;
+            report_.presented(recording_frame);
         return VideoResult::presented;
     }
     report_.affect(recording_frame);

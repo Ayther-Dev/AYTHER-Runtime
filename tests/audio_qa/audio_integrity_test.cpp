@@ -25,8 +25,9 @@ void remove_tree(const std::filesystem::path &path) {
 }
 
 qa::AudioChunk chunk(const std::uint64_t producer_sequence, const std::uint64_t begin,
-                     const std::uint64_t end) {
+                     const std::uint64_t end, const std::uint64_t segment = 0) {
     qa::AudioChunk value;
+    value.segment = segment;
     value.run_id = "run-153";
     value.capture_point = "session-postmix";
     value.producer_sequence = producer_sequence;
@@ -115,6 +116,73 @@ int main() {
         expect_range(qa::audit_audio_integrity(ambiguous_paths),
                      qa::AudioIntegrityIssueKind::ambiguous_effect_boundary,
                      {"synth-input", 44100, 20, 22}, "ambiguous_effect_boundary_was_not_reported");
+
+        // Spec 002, DI-14: an inspection keeps its PCM per linear segment. A step back restores a
+        // checkpoint and the line goes back (segment 1 starts at 2); a step forward produces a
+        // frame silently and the line jumps (segment 2 starts at 20). Neither is a loss.
+        const auto segmented_result =
+            qa::create_exclusive_evidence_directory(fixture / "segmented", "run");
+        const auto &segmented = directory(segmented_result);
+        const std::vector segmented_paths{
+            write(segmented, 1, chunk(1, 0, 4)), write(segmented, 2, chunk(2, 4, 8)),
+            write(segmented, 3, chunk(3, 2, 6, 1)), write(segmented, 4, chunk(4, 20, 24, 2))};
+        const auto per_segment =
+            qa::audit_audio_integrity(segmented_paths, qa::PcmContinuity::per_segment);
+        require(per_segment.evidence_result == qa::EvidenceResult::complete &&
+                    !per_segment.first_issue && per_segment.verified_blocks == 4,
+                "DI-14: a jump between two segments of an inspection is not a loss");
+        require(per_segment.segments ==
+                    std::vector<qa::PcmSegmentInterval>{{0, {"main-output", 48000, 0, 8}, 2},
+                                                        {1, {"main-output", 48000, 2, 6}, 1},
+                                                        {2, {"main-output", 48000, 20, 24}, 1}},
+                "DI-14: each segment declares its sample interval and its blocks");
+        // A linear traversal is one continuous interval, whatever the segments say.
+        expect_range(qa::audit_audio_integrity(segmented_paths),
+                     qa::AudioIntegrityIssueKind::sample_overlap_or_reorder,
+                     {"main-output", 48000, 2, 8},
+                     "DI-14: a linear traversal still requires one continuous interval");
+
+        // Within a segment, continuity is audited as before.
+        const auto inner_gap_result =
+            qa::create_exclusive_evidence_directory(fixture / "inner-gap", "run");
+        const auto &inner_gap = directory(inner_gap_result);
+        const std::vector inner_gap_paths{write(inner_gap, 1, chunk(1, 0, 4)),
+                                          write(inner_gap, 2, chunk(2, 2, 6, 1)),
+                                          write(inner_gap, 3, chunk(3, 7, 9, 1))};
+        expect_range(qa::audit_audio_integrity(inner_gap_paths, qa::PcmContinuity::per_segment),
+                     qa::AudioIntegrityIssueKind::sample_gap, {"main-output", 48000, 6, 7},
+                     "DI-14: a gap inside a segment is a loss");
+        const auto reordered_result =
+            qa::create_exclusive_evidence_directory(fixture / "reordered", "run");
+        const auto &reordered = directory(reordered_result);
+        const std::vector reordered_paths{write(reordered, 1, chunk(1, 0, 4, 1)),
+                                          write(reordered, 2, chunk(2, 4, 8))};
+        const auto reordered_audit =
+            qa::audit_audio_integrity(reordered_paths, qa::PcmContinuity::per_segment);
+        require(reordered_audit.evidence_result == qa::EvidenceResult::incomplete &&
+                    reordered_audit.first_issue &&
+                    reordered_audit.first_issue->kind ==
+                        qa::AudioIntegrityIssueKind::segment_out_of_order,
+                "DI-14: a segment never comes back");
+
+        // The rule itself, block to block.
+        using Join = qa::PcmJoin;
+        const auto per = qa::PcmContinuity::per_segment;
+        const auto single = qa::PcmContinuity::single;
+        require(qa::join_pcm(chunk(1, 0, 4), chunk(2, 4, 8), per) == Join::continues &&
+                    qa::join_pcm(chunk(1, 0, 4), chunk(2, 6, 8), per) == Join::sample_gap &&
+                    qa::join_pcm(chunk(1, 0, 4), chunk(2, 2, 8), per) ==
+                        Join::sample_overlap_or_reorder &&
+                    qa::join_pcm(chunk(1, 0, 4), chunk(2, 2, 8, 1), per) == Join::starts_segment &&
+                    qa::join_pcm(chunk(1, 0, 4), chunk(2, 9, 12, 1), per) == Join::starts_segment &&
+                    qa::join_pcm(chunk(1, 0, 4, 1), chunk(2, 4, 8), per) ==
+                        Join::segment_out_of_order,
+                "DI-14: within a segment contiguous, between segments free, never backwards");
+        require(qa::join_pcm(chunk(1, 0, 4), chunk(2, 4, 8, 1), single) == Join::starts_segment &&
+                    qa::join_pcm(chunk(1, 0, 4), chunk(2, 2, 8, 1), single) ==
+                        Join::sample_overlap_or_reorder &&
+                    qa::join_pcm(chunk(1, 0, 4), chunk(2, 9, 12, 1), single) == Join::sample_gap,
+                "DI-14: a linear traversal joins its segments without a jump");
 
         remove_tree(fixture);
         std::puts("audio_integrity_test: passed");

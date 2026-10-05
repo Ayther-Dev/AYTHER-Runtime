@@ -317,7 +317,7 @@ endif()
 add_test(NAME audio_qa_check_option_descriptors
     COMMAND audio_qa_check_option_descriptors_test
         "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/rf1-option-inventory-beta8.toml"
-        "$<TARGET_FILE:ayther_audio_qa>")
+        "$<TARGET_FILE:ayther_audio_qa>" "${PROJECT_SOURCE_DIR}")
 set_tests_properties(audio_qa_check_option_descriptors PROPERTIES
     LABELS "audio_qa;cli;unit;contract" TIMEOUT 10)
 add_executable(audio_qa_take_plan_test take_plan_test.cpp)
@@ -833,6 +833,12 @@ if(AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE AND WIN32)
             "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic-broken.arp" --broken)
     set_tests_properties(audio_qa_public_broken_recording_fixture PROPERTIES
         LABELS "audio_qa;fixture" TIMEOUT 30 FIXTURES_SETUP audio_qa_public_recording)
+    add_test(NAME audio_qa_public_rejected_state_recording_fixture
+        COMMAND audio_qa_public_recording_fixture
+            "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic-rejected-state.arp"
+            --rejected-state)
+    set_tests_properties(audio_qa_public_rejected_state_recording_fixture PROPERTIES
+        LABELS "audio_qa;fixture" TIMEOUT 30 FIXTURES_SETUP audio_qa_public_recording)
     add_executable(audio_qa_check_runner_integration_test check_runner_integration_test.cpp)
     target_link_libraries(audio_qa_check_runner_integration_test PRIVATE ayther_audio_qa_cli)
     target_compile_features(audio_qa_check_runner_integration_test PRIVATE cxx_std_20)
@@ -851,6 +857,7 @@ if(AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE AND WIN32)
             "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic.aytest"
             "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic.arp"
             "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic-long.arp"
+            "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic-rejected-state.arp"
             "${CMAKE_CURRENT_BINARY_DIR}/check-runner/$<CONFIG>")
     set_tests_properties(audio_qa_check_runner_integration PROPERTIES
         LABELS "audio_qa;cli;runtime;integration"
@@ -937,6 +944,7 @@ if(AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE AND WIN32)
             "-DNON_CORE_DLL=$<TARGET_FILE:non_libretro_library>"
             "-DROM_FILE=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic.aytest"
             "-DTAKE_FILE=${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic.arp"
+            "-DBROKEN_TAKE_FILE=${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic-broken.arp"
             "-DFIXTURES=${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
             "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/check-preflight/$<CONFIG>"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/check_preflight_integration_test.cmake")
@@ -950,6 +958,7 @@ if(AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE AND WIN32)
         COMMAND ${CMAKE_COMMAND}
             "-DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>"
             "-DFIXTURES=${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+            "-DWORK=${CMAKE_CURRENT_BINARY_DIR}/pack-probe/$<CONFIG>"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/runtime_pack_probe_test.cmake")
     set_tests_properties(audio_qa_runtime_pack_probe PROPERTIES
         LABELS "audio_qa;runtime;contract;integration" TIMEOUT 60)
@@ -972,7 +981,7 @@ if(AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE AND WIN32)
             "-DPACK_FILE=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic.ay"
             "-DTRUST_REGISTRY=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic-trust.toml"
             "-DTAKE_FILE=${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic.arp"
-            "-DBROKEN_TAKE_FILE=${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic-broken.arp"
+            "-DBROKEN_TAKE_FILE=${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic-rejected-state.arp"
             "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/real-replay/$<CONFIG>"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/real_replay_integration_test.cmake")
     set_tests_properties(audio_qa_real_replay_integration PROPERTIES

@@ -7,6 +7,7 @@
 #include <ayther/engine/audio_observer.hpp>
 #include <ayther/engine/visual_state.hpp>
 
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -68,6 +69,25 @@ class SilentProductionGate final {
     [[nodiscard]] std::uint64_t excluded_pcm() const noexcept {
         return excluded_pcm_.load(std::memory_order_acquire);
     }
+    // Spec 002, DI-14: the PCM blocks that reached the evidence observer, in order. The sink
+    // consumes them in the same order, so this count marks where a segment begins.
+    [[nodiscard]] std::uint64_t forwarded_pcm() const noexcept {
+        return forwarded_pcm_.load(std::memory_order_acquire);
+    }
+
+    // Spec 002, DI-15 (D-11): the Engine facts excluded since the previous call, one interval
+    // per producer: a recovery is silent from its start to its end, and a producer numbers its
+    // facts in order. Read by the session thread once the producers are quiescent (the
+    // recovery drained); it starts the next recovery empty. A producer whose excluded
+    // sequences did not grow is left out: its gap stays undeclared, a loss.
+    static constexpr std::size_t producer_slots = 64U;
+    struct ExcludedInterval {
+        std::uint32_t producer{};
+        std::uint64_t first{};
+        std::uint64_t last{};
+        bool operator==(const ExcludedInterval &) const = default;
+    };
+    [[nodiscard]] std::vector<ExcludedInterval> take_exclusions();
 
   private:
     static void receive_fact(void *context,
@@ -79,6 +99,11 @@ class SilentProductionGate final {
     std::atomic<bool> silent_{};
     std::atomic<std::uint64_t> excluded_facts_{};
     std::atomic<std::uint64_t> excluded_pcm_{};
+    std::atomic<std::uint64_t> forwarded_pcm_{};
+    // DI-15: per producer slot, written only by that producer while silent.
+    std::array<std::atomic<std::uint64_t>, producer_slots> excluded_first_{};
+    std::array<std::atomic<std::uint64_t>, producer_slots> excluded_last_{};
+    std::array<std::atomic<bool>, producer_slots> excluded_unordered_{};
 };
 
 // Spec 002, plan §4.4 and §5.6 (RF-3.6, RF-5.2, RF-5.6; P-12): the checkpoints of a take.

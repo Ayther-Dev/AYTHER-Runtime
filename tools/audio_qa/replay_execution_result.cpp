@@ -339,8 +339,10 @@ decode_replay_execution_result(const std::span<const std::byte> message,
             if (!mode || !code || !profile || !backend || !shown || !affected || !first || !last ||
                 !cancelled || !width || !height || !hd || !shaders)
                 return ReplayExecutionResultError::invalid_payload;
-            result.presentation = {*mode, *code,      *profile, *backend, *shown, *affected, *first,
-                                   *last, *cancelled, *width,   *height,  *hd,    *shaders};
+            // What a Runtime counted is not part of the terminal: the trackers start empty.
+            result.presentation = {*mode,     *code,  *profile, *backend,   *shown,
+                                   *affected, *first, *last,    *cancelled, *width,
+                                   *height,   *hd,    *shaders, {},         {}};
         }
         const auto run_id = document["run_id"].value<std::string>();
         const auto take_id = document["take_id"].value<std::string>();

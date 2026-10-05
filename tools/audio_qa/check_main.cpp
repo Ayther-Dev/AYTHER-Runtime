@@ -10,6 +10,9 @@
 #if defined(AYTHER_AUDIO_QA_HAS_RUNTIME_VERSION)
 #include "ayther_runtime_version.h"
 #endif
+#if defined(AYTHER_AUDIO_QA_HAS_SOURCE_COMMIT)
+#include "ayther_runtime_commit.h"
+#endif
 
 #include <charconv>
 #include <filesystem>
@@ -156,7 +159,13 @@ int run_options(const std::span<const std::string_view> arguments) {
 #else
     constexpr std::string_view compiled_ref = "unknown";
 #endif
-    std::cout << ayther::audio_qa::format_check_option_inventory(compiled_ref, "");
+    // C5 (D-3): the commit of the sources, as the reference inventory names it.
+#if defined(AYTHER_AUDIO_QA_HAS_SOURCE_COMMIT)
+    constexpr std::string_view compiled_commit = ayther::runtime::source_commit;
+#else
+    constexpr std::string_view compiled_commit{};
+#endif
+    std::cout << ayther::audio_qa::format_check_option_inventory(compiled_ref, compiled_commit);
     return 0;
 }
 

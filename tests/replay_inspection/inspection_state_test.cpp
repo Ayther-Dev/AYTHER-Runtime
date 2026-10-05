@@ -123,6 +123,45 @@ void frame_start() {
         expect(!ri::start_frame_now(phase, due + 1s, due), "only playing and pausing run frames");
 }
 
+// D-6a (campaign 2026-10-04, BR-183): the preparation and prewarm of the first frame are not
+// cadence. The turn starts at the first present after the preparation, the same rule as a
+// resume (plan §5.7): frame 0 is never late, whatever its production took. D-6b (spec-001
+// semantics) is kept: later, an isolated delay of more than one period is late.
+void cadence() {
+    using namespace std::chrono_literals;
+    const auto period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+        std::chrono::duration<double>{1.0 / 60.0});
+    const auto start = std::chrono::steady_clock::time_point{} + 10s;
+    ri::PlaybackCadence cadence{period, start};
+    expect(cadence.due() == start, "the first frame starts as soon as playback starts");
+    // Frame 0 with a pack: preparation and prewarm take 200 ms.
+    const auto first_present = start + 200ms;
+    expect(!cadence.frame_completed(first_present),
+           "D-6a: frame 0 is not late because of the preparation of the take");
+    expect(cadence.due() == first_present + period,
+           "D-6a: the turn of frame 1 counts from the first present");
+    // Frames 1..3 on time.
+    auto completed = first_present;
+    for (int frame = 1; frame <= 3; ++frame) {
+        completed = cadence.due() + 2ms;
+        expect(!cadence.frame_completed(completed), "a frame on its turn is not late");
+    }
+    // Frame 4: an isolated delay of more than one period after its deadline (its turn plus one
+    // period), the spec-001 rule.
+    const auto on_deadline = cadence.due() + period + period;
+    expect(!ri::PlaybackCadence{cadence}.frame_completed(on_deadline),
+           "a frame that completes one period after its deadline is not late yet");
+    const auto late = on_deadline + 1ms;
+    expect(cadence.frame_completed(late),
+           "D-6b: an isolated delay of more than one period after the first frame is late");
+    // RF-4.4: a resume restarts the turn there; the frame after it is judged as before.
+    const auto resumed = late + 5s;
+    cadence.restart(resumed);
+    expect(cadence.due() == resumed, "RF-4.4: resuming restarts the turn at that instant");
+    expect(cadence.frame_completed(resumed + 3 * period),
+           "RF-4.4: the frame after a resume is late if it takes more than two periods");
+}
+
 void navigation() {
     auto controller = paused_at(4);
     const auto back = controller.key(Key::left);
@@ -268,6 +307,7 @@ void natural_end() {
 int main() {
     playback_and_pause();
     frame_start();
+    cadence();
     navigation();
     recovery_and_failure();
     info_and_debug();

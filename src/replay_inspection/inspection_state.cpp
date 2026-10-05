@@ -33,6 +33,26 @@ bool start_frame_now(InspectionPhase phase, std::chrono::steady_clock::time_poin
     return phase == InspectionPhase::playing && now >= due;
 }
 
+PlaybackCadence::PlaybackCadence(Clock::duration period, Clock::time_point now) noexcept
+    : period_(period), next_(now) {}
+
+void PlaybackCadence::restart(Clock::time_point now) noexcept {
+    next_ = now;
+    anchored_ = true;
+}
+
+bool PlaybackCadence::frame_completed(Clock::time_point completed) noexcept {
+    // D-6a (plan §5.7, the rule of a resume): the first frame after the preparation carries the
+    // preparation and the prewarm, which are not cadence. Its present anchors the turn.
+    if (!anchored_) {
+        anchored_ = true;
+        next_ = completed + period_;
+        return false;
+    }
+    next_ += period_;
+    return completed > next_ + period_;
+}
+
 Commands InspectionController::pause_at(std::uint32_t frame) {
     phase_ = InspectionPhase::paused;
     position_ = frame;

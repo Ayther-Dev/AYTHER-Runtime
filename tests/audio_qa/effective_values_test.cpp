@@ -157,6 +157,46 @@ void default_origin() {
            "RF-1.6: unselected values show the default origin");
 }
 
+// D-4 (campaign 2026-10-04, BR-182; RF-1.6): the origin says whether the option was given,
+// not whether its value equals the default. `--language es`, `--presentation none` and
+// `--pack-mode hd` written on the command line are explicit.
+void explicit_value_equal_to_default() {
+    const std::vector<std::string> given{"--runtime",      "runtime.exe",
+                                         "--rom",          "C:/roms/game.md",
+                                         "--core",         "C:/cores/core.dll",
+                                         "--take",         "C:/takes/a.ayr",
+                                         "--output",       "evidence",
+                                         "--language",     "es",
+                                         "--presentation", "none",
+                                         "--pack-mode",    "hd"};
+    std::vector<std::string_view> arguments{given.begin(), given.end()};
+    const auto parsed = qa::parse_check_options(arguments);
+    expect(parsed.options() != nullptr, "the explicit defaults parse");
+    if (parsed.options() == nullptr)
+        return;
+    const auto result = qa::resolve_effective_request(*parsed.options(), {});
+    const auto *request = resolved(result);
+    expect(
+        request != nullptr &&
+            has_value(*request, "language", "es", qa::ValueSource::explicit_option) &&
+            has_value(*request, "presentation", "none", qa::ValueSource::explicit_option) &&
+            has_value(*request, "pack_mode", "hd", qa::ValueSource::explicit_option),
+        "RF-1.6: a value given explicitly keeps the explicit origin even when it is the default");
+
+    // The same command line without them keeps the default origin.
+    arguments.resize(arguments.size() - 6U);
+    const auto omitted = qa::parse_check_options(arguments);
+    const auto omitted_result = omitted.options() != nullptr
+                                    ? qa::resolve_effective_request(*omitted.options(), {})
+                                    : qa::EffectiveResult{std::vector<qa::EffectiveIssue>{}};
+    const auto *defaults = resolved(omitted_result);
+    expect(defaults != nullptr &&
+               has_value(*defaults, "language", "es", qa::ValueSource::default_value) &&
+               has_value(*defaults, "presentation", "none", qa::ValueSource::default_value) &&
+               has_value(*defaults, "pack_mode", "hd", qa::ValueSource::default_value),
+           "RF-1.6: an option that was not given keeps the default origin");
+}
+
 // RF-1.2, RF-1.3: ROM, takes and pack only have the explicit origin, even when every
 // auxiliary source names one.
 void selections_are_only_explicit() {
@@ -290,6 +330,7 @@ int main() {
     minimal_request_is_admissible();
     precedence_by_origin();
     default_origin();
+    explicit_value_equal_to_default();
     selections_are_only_explicit();
     rom_is_only_explicit();
     play_config_resolution();

@@ -35,6 +35,10 @@ struct AudioChunk {
     Field<std::string> checkpoint_id;
     std::vector<FactId> cause_ids;
     std::vector<AudioDiscontinuity> discontinuities;
+    // Spec 002, DI-14 (evidence 1.2): the linear segment of the traversal this PCM belongs to.
+    // 0 from the start of the take; the Runtime opens the next one at every resume. A chunk
+    // never spans two segments. Chunks of evidence 1.1 and earlier are all segment 0.
+    std::uint64_t segment{};
 };
 
 [[nodiscard]] std::optional<std::size_t>

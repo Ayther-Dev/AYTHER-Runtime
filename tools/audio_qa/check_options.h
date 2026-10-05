@@ -37,6 +37,16 @@ struct CheckOptions {
     std::string patch;
     std::string shaders;
     std::vector<std::string> core_options;
+    // RF-1.6 (D-4): the options written on the command line, so that a value equal to its
+    // default still has the explicit origin.
+    std::vector<std::string> given;
+
+    [[nodiscard]] bool was_given(std::string_view flag) const noexcept {
+        for (const auto &option : given)
+            if (option == flag)
+                return true;
+        return false;
+    }
 };
 
 enum class CheckOptionErrorCode {

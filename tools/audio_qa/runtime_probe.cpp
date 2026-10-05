@@ -163,6 +163,10 @@ std::optional<PackProbe> parse_pack_probe(std::string_view output) {
     };
     read_list("unreadable_assets", probe.unreadable_assets);
     read_list("errors", probe.errors);
+    if (fields->size("profiles")) {
+        probe.profiles.emplace();
+        read_list("profiles", *probe.profiles);
+    }
     probe.game_id = fields->string("game_id").value_or(std::string{});
     probe.reason = fields->string("reason").value_or(std::string{});
     probe.message = fields->string("message").value_or(std::string{});
@@ -172,9 +176,21 @@ std::optional<PackProbe> parse_pack_probe(std::string_view output) {
 std::optional<FieldIssue> pack_issue(const PackProbe &probe) {
     if (probe.reason.empty())
         return std::nullopt;
-    if (probe.reason == "pack_trust_unverified")
+    // D-10: a registry that cannot be used (missing, unreadable, malformed) is an error of
+    // --trust-registry, not a trust failure of the pack.
+    if (probe.reason == "pack_trust_unverified" || probe.reason == "trust_registry_invalid")
         return FieldIssue{"--trust-registry", probe.reason};
     return FieldIssue{"--pack", probe.reason};
+}
+
+std::optional<FieldIssue> profile_issue(const std::optional<std::string> &profile,
+                                        const PackProbe &probe) {
+    if (!profile || profile->empty() || !probe.profiles)
+        return std::nullopt;
+    if (std::find(probe.profiles->begin(), probe.profiles->end(), *profile) !=
+        probe.profiles->end())
+        return std::nullopt;
+    return FieldIssue{"--profile", "profile_not_in_pack"};
 }
 
 PackProbeResult probe_pack(const RuntimeBinaryIdentity &runtime, const std::filesystem::path &pack,

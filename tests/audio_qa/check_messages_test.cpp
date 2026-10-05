@@ -97,7 +97,7 @@ constexpr std::array codes{
     // Pack.
     "pack_invalid", "pack_trust_unverified", "pack_untrusted", "pack_open_failed",
     "pack_catalog_invalid", "pack_assets_unreadable", "pack_probe_unavailable",
-    "pack_game_mismatch",
+    "pack_game_mismatch", "trust_registry_invalid",
     // Takes that ran or did not start.
     "replay_evidence_complete", "replay_cancelled", "not_started_after_cancellation",
     "not_started_after_failure", "evidence_reopen_failed", "game_state_restore_failed",

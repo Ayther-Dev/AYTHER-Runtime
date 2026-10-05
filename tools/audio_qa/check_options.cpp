@@ -97,6 +97,7 @@ CheckOptionsParseResult parse_check_options(std::span<const std::string_view> ar
                 make_error(CheckOptionErrorCode::duplicate_option, option, index - 1)};
         seen[slot] = true;
         (options.*(descriptor->text_field)).assign(value);
+        options.given.emplace_back(descriptor->flag);
     }
 
     for (const auto &descriptor : descriptors) {

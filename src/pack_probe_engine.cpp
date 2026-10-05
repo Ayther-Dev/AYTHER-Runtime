@@ -1,4 +1,5 @@
 #include "pack_probe.h"
+#include "trust_registry.h"
 
 #include <ayther/ayther_core_ffi.h>
 #include <ayther/ayther_result.h>
@@ -56,8 +57,21 @@ bool asset_readable(const AyArchive *archive, const std::string &asset) {
 
 } // namespace
 
-PackProbeReport probe_pack(const std::string &pack, const std::string &trust_registry) {
+PackProbeReport probe_pack(const std::string &pack, const std::string &given_registry) {
     PackProbeReport report;
+
+    // D-10: the registry is checked first, with the same rules as a launch: a missing,
+    // unreadable or malformed one is an error of the registry, never a trust failure.
+    std::string trust_registry;
+    if (!given_registry.empty()) {
+        const auto resolved = resolve_trust_registry(given_registry);
+        if (!resolved) {
+            report.trust = "unknown";
+            report.trust_registry_error = resolved.diagnostic;
+            return report;
+        }
+        trust_registry = resolved.path;
+    }
 
     // The pack as a file: the Engine validation, without opening it for a session.
     const auto validation = ayther::engine::validate_pack(pack);
@@ -93,8 +107,16 @@ PackProbeReport probe_pack(const std::string &pack, const std::string &trust_reg
         report.signature = "valid";
     else if (inspected.error.code == ayther::ErrorCode::BadSignature)
         report.signature = "invalid";
-    report.trust =
-        trust_registry.empty() ? "unverified" : (report.opened ? "trusted" : "untrusted");
+    // D-10: with a usable registry and a pack the Engine validated without errors, a refused
+    // opening is a refusal of trust: a bad signature, or the trust policy (unknown or revoked
+    // key, validity, game scope), which the Engine reports as a format error with a generic
+    // message (rc.15). Any other failure (missing file, I/O, unsupported, internal) is not a
+    // trust failure and keeps its own reason (pack_open_failed).
+    const auto code = inspected.error.code;
+    const bool refused_for_trust =
+        !trust_registry.empty() && !report.opened && report.errors.empty() &&
+        (code == ayther::ErrorCode::BadSignature || code == ayther::ErrorCode::BadFormat);
+    report.trust = pack_trust(!trust_registry.empty(), report.opened, refused_for_trust);
     if (!report.opened)
         return report;
 
@@ -106,6 +128,12 @@ PackProbeReport probe_pack(const std::string &pack, const std::string &trust_reg
         report.opened = false;
         return report;
     }
+    // D-1 (RF-2.2): the profiles it offers, so that a requested one is checked before admission.
+    const auto profile_count = ayther_pack_profile_count(archive.get());
+    for (std::uint32_t index = 0; index < profile_count; ++index)
+        if (const char *id = ayther_pack_profile_field(archive.get(), index, "id");
+            id != nullptr && *id != '\0')
+            report.profiles.emplace_back(id);
     const auto poses = catalog_text(archive.get(), "pose_substitutions.toml");
     const auto audio_events = catalog_text(archive.get(), "audio_events.toml");
     if (!poses || !audio_events)

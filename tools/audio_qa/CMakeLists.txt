@@ -218,6 +218,11 @@ if(DEFINED AYTHER_RUNTIME_GENERATED_DIR)
     target_include_directories(ayther_audio_qa PRIVATE "${AYTHER_RUNTIME_GENERATED_DIR}")
     target_compile_definitions(ayther_audio_qa PRIVATE AYTHER_AUDIO_QA_HAS_RUNTIME_VERSION=1)
 endif()
+if(TARGET ayther_runtime_source_commit)
+    # Spec 002 (C5, RF-1.8): and the commit of its sources.
+    add_dependencies(ayther_audio_qa ayther_runtime_source_commit)
+    target_compile_definitions(ayther_audio_qa PRIVATE AYTHER_AUDIO_QA_HAS_SOURCE_COMMIT=1)
+endif()
 target_link_libraries(ayther_audio_qa PRIVATE
     ayther_audio_qa_domain
     ayther_audio_qa_materials

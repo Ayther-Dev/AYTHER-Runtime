@@ -195,6 +195,9 @@ bool asset_decodes(std::span<const std::uint8_t> bytes) noexcept {
 }
 
 std::string pack_probe_reason(const PackProbeReport &report) {
+    // D-10: a registry that cannot be used says nothing about the pack.
+    if (!report.trust_registry_error.empty())
+        return "trust_registry_invalid";
     if (!report.errors.empty())
         return "pack_invalid";
     if (report.signed_pack && report.trust == "unverified")
@@ -208,6 +211,23 @@ std::string pack_probe_reason(const PackProbeReport &report) {
     if (!report.unreadable_assets.empty())
         return "pack_assets_unreadable";
     return {};
+}
+
+int pack_probe_exit_code(const PackProbeReport &report) {
+    const auto reason = pack_probe_reason(report);
+    if (reason.empty())
+        return 0;
+    return reason == "trust_registry_invalid" ? pack_probe_registry_invalid_exit_code
+                                              : pack_probe_unusable_exit_code;
+}
+
+std::string pack_trust(const bool registry_given, const bool opened_with_registry,
+                       const bool refused_for_trust) {
+    if (!registry_given)
+        return "unverified";
+    if (opened_with_registry)
+        return "trusted";
+    return refused_for_trust ? "untrusted" : "unknown";
 }
 
 std::string format_pack_probe_line(const PackProbeReport &report) {
@@ -227,12 +247,16 @@ std::string format_pack_probe_line(const PackProbeReport &report) {
     }
     json += R"(,"unreadable_assets":)";
     append_string_array(json, report.unreadable_assets);
+    json += R"(,"profiles":)";
+    append_string_array(json, report.profiles);
     append_field(json, "game_id", report.game_id);
     json += R"(,"errors":)";
     append_string_array(json, report.errors);
     if (const auto reason = pack_probe_reason(report); !reason.empty()) {
         append_field(json, "reason", reason);
-        if (!report.message.empty())
+        if (!report.trust_registry_error.empty())
+            append_field(json, "message", report.trust_registry_error);
+        else if (!report.message.empty())
             append_field(json, "message", report.message);
     }
     json.push_back('}');

@@ -55,6 +55,8 @@ struct IncrementalEvidenceWriter::Impl {
     std::vector<FactArtifact> fact_artifacts;
     std::deque<PendingFactArtifact> pending_fact_artifacts;
     std::vector<PcmArtifact> pcm_artifacts;
+    // DI-14: the interval kept for each segment, in order.
+    std::vector<PcmSegmentInterval> pcm_segments;
     ReplayTraceSummary final_trace;
     std::uint64_t fact_fragment_sequence{1U};
     std::uint64_t pcm_sequence{1U};
@@ -156,11 +158,16 @@ IncrementalEvidenceWriter::append_pcm(const AudioChunk &chunk) noexcept {
         confirmed.durability = Durability::confirmed;
         confirmed.checkpoint_id = {
             Availability::known, "audio-qa-pcm-" + std::to_string(impl_->pcm_sequence), {}};
+        // DI-14: contiguous within a segment; a later segment may start anywhere on the line.
+        // Whether the traversal needed one single interval is decided at `finish`.
         const bool continuity_failed =
             impl_->previous_pcm &&
             (!same_stream(*impl_->previous_pcm, confirmed) ||
-             impl_->previous_pcm->range.end != confirmed.range.begin ||
-             impl_->previous_pcm->producer_sequence >= confirmed.producer_sequence);
+             impl_->previous_pcm->producer_sequence >= confirmed.producer_sequence || [&] {
+                 const auto join =
+                     join_pcm(*impl_->previous_pcm, confirmed, PcmContinuity::per_segment);
+                 return join != PcmJoin::continues && join != PcmJoin::starts_segment;
+             }());
         const auto stored = write_pcm_block(impl_->directory, impl_->pcm_sequence, confirmed);
         const auto *block = std::get_if<StoredPcmBlock>(&stored);
         if (block == nullptr) {
@@ -175,6 +182,13 @@ IncrementalEvidenceWriter::append_pcm(const AudioChunk &chunk) noexcept {
         impl_->pcm_bytes += confirmed.bytes.size();
         ++impl_->pcm_blocks;
         impl_->pcm_artifacts.push_back({block->path, block->sequence, block->document_identity});
+        if (!continuity_failed) {
+            auto &segments = impl_->pcm_segments;
+            if (segments.empty() || segments.back().segment != confirmed.segment)
+                segments.push_back({confirmed.segment, confirmed.range, 0U});
+            segments.back().samples.end = confirmed.range.end;
+            ++segments.back().blocks;
+        }
         ++impl_->pcm_sequence;
         impl_->previous_pcm = std::move(confirmed);
         if (continuity_failed) {
@@ -188,9 +202,14 @@ IncrementalEvidenceWriter::append_pcm(const AudioChunk &chunk) noexcept {
     }
 }
 
+std::vector<PcmSegmentInterval> IncrementalEvidenceWriter::pcm_segments() const {
+    return impl_ ? impl_->pcm_segments : std::vector<PcmSegmentInterval>{};
+}
+
 IntegratedEvidenceResult
 IncrementalEvidenceWriter::finish(const ReplayTraceSummary &transport_trace,
-                                  const bool require_hd_relationships) noexcept {
+                                  const bool require_hd_relationships,
+                                  const PcmContinuity continuity) noexcept {
     if (!impl_ || !impl_->valid || impl_->finished || impl_->facts == 0U ||
         impl_->pcm_blocks == 0U || impl_->facts != transport_trace.observed_fact_count)
         return IntegratedEvidenceError::invalid_input;
@@ -216,25 +235,39 @@ IncrementalEvidenceWriter::finish(const ReplayTraceSummary &transport_trace,
     if (reopened_facts != impl_->facts)
         return IntegratedEvidenceError::fact_reopen_failed;
 
+    // DI-14: the reopened blocks are audited again, per segment for an inspection and as one
+    // single interval for a linear traversal.
     std::optional<AudioChunk> previous_pcm;
     std::uint64_t reopened_pcm_bytes{};
+    bool single_interval_broken{};
     for (const auto &artifact : impl_->pcm_artifacts) {
         const auto reopened = read_pcm_block(artifact.path);
         const auto *verified = std::get_if<StoredPcmBlock>(&reopened);
         if (verified == nullptr || verified->sequence != artifact.sequence ||
             verified->document_identity != artifact.document_identity ||
-            verified->chunk.durability != Durability::confirmed ||
-            (previous_pcm &&
-             (!same_stream(*previous_pcm, verified->chunk) ||
-              previous_pcm->range.end != verified->chunk.range.begin ||
-              previous_pcm->producer_sequence >= verified->chunk.producer_sequence)))
+            verified->chunk.durability != Durability::confirmed)
             return IntegratedEvidenceError::pcm_reopen_failed;
+        if (previous_pcm) {
+            if (!same_stream(*previous_pcm, verified->chunk) ||
+                previous_pcm->producer_sequence >= verified->chunk.producer_sequence)
+                return IntegratedEvidenceError::pcm_reopen_failed;
+            const auto join = join_pcm(*previous_pcm, verified->chunk, PcmContinuity::per_segment);
+            if (join != PcmJoin::continues && join != PcmJoin::starts_segment)
+                return IntegratedEvidenceError::pcm_reopen_failed;
+            const auto single = join_pcm(*previous_pcm, verified->chunk, PcmContinuity::single);
+            single_interval_broken = single_interval_broken || (single != PcmJoin::continues &&
+                                                                single != PcmJoin::starts_segment);
+        }
         reopened_pcm_bytes += verified->chunk.bytes.size();
         previous_pcm = verified->chunk;
     }
+    if (continuity == PcmContinuity::single && single_interval_broken)
+        return IntegratedEvidenceError::pcm_continuity_failed;
     if (impl_->pcm_artifacts.size() != impl_->pcm_blocks || reopened_pcm_bytes != impl_->pcm_bytes)
         return IntegratedEvidenceError::pcm_reopen_failed;
 
+    // DI-15 (D-11): the reopened fragments carry the exclusions each silent recovery declared;
+    // a declared gap is not a loss, an undeclared one is, for every traversal.
     impl_->final_trace = reopened_trace.summarize(transport_trace.loss_free);
     if (require_hd_relationships && transport_trace.loss_free &&
         !impl_->final_trace.causally_connected)

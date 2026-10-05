@@ -24,8 +24,25 @@ void fail(AudioIntegrityAudit &audit, AudioIntegrityIssue issue) {
 
 } // namespace
 
-AudioIntegrityAudit
-audit_audio_integrity(const std::span<const std::filesystem::path> block_paths) noexcept {
+PcmJoin join_pcm(const AudioChunk &previous, const AudioChunk &next,
+                 const PcmContinuity continuity) noexcept {
+    // DI-14: within an inspection a segment never comes back, and a later one may start
+    // anywhere on the line: its frames follow a navigation produced silently.
+    if (continuity == PcmContinuity::per_segment) {
+        if (next.segment < previous.segment)
+            return PcmJoin::segment_out_of_order;
+        if (next.segment > previous.segment)
+            return PcmJoin::starts_segment;
+    }
+    if (next.range.begin > previous.range.end)
+        return PcmJoin::sample_gap;
+    if (next.range.begin < previous.range.end)
+        return PcmJoin::sample_overlap_or_reorder;
+    return next.segment == previous.segment ? PcmJoin::continues : PcmJoin::starts_segment;
+}
+
+AudioIntegrityAudit audit_audio_integrity(const std::span<const std::filesystem::path> block_paths,
+                                          const PcmContinuity continuity) noexcept {
     AudioIntegrityAudit audit;
     try {
         if (block_paths.empty()) {
@@ -77,18 +94,25 @@ audit_audio_integrity(const std::span<const std::filesystem::path> block_paths) 
                          {AudioIntegrityIssueKind::timeline_changed, path, block->chunk.range});
                     return audit;
                 }
-                if (block->chunk.range.begin > previous->range.end) {
+                switch (join_pcm(*previous, block->chunk, continuity)) {
+                case PcmJoin::continues:
+                case PcmJoin::starts_segment:
+                    break;
+                case PcmJoin::sample_gap:
                     fail(audit,
                          {AudioIntegrityIssueKind::sample_gap, path,
                           SampleFrameRange{previous->range.timeline_id, previous->range.sample_rate,
                                            previous->range.end, block->chunk.range.begin}});
                     return audit;
-                }
-                if (block->chunk.range.begin < previous->range.end) {
+                case PcmJoin::sample_overlap_or_reorder:
                     fail(audit,
                          {AudioIntegrityIssueKind::sample_overlap_or_reorder, path,
                           SampleFrameRange{previous->range.timeline_id, previous->range.sample_rate,
                                            block->chunk.range.begin, previous->range.end}});
+                    return audit;
+                case PcmJoin::segment_out_of_order:
+                    fail(audit, {AudioIntegrityIssueKind::segment_out_of_order, path,
+                                 block->chunk.range, previous->segment, block->chunk.segment});
                     return audit;
                 }
             }
@@ -114,6 +138,13 @@ audit_audio_integrity(const std::span<const std::filesystem::path> block_paths) 
                 }
                 ++audit.verified_effect_boundaries;
             }
+
+            // DI-14: the interval of each segment, as its blocks were verified.
+            if (audit.segments.empty() || audit.segments.back().segment != block->chunk.segment)
+                audit.segments.push_back({block->chunk.segment, block->chunk.range, 0U});
+            auto &segment = audit.segments.back();
+            segment.samples.end = block->chunk.range.end;
+            ++segment.blocks;
 
             previous = block->chunk;
             audit.last_verified_sample = block->chunk.range.end;

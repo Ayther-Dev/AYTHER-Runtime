@@ -35,6 +35,8 @@ enum class IntegratedEvidenceError {
     pcm_reopen_failed,
     pcm_continuity_failed,
     relationship_reopen_failed,
+    // Spec 002, DI-14: the PCM segments do not match the linear segments of the traversal.
+    pcm_segment_mismatch,
 };
 
 using IntegratedEvidenceResult = std::variant<IntegratedEvidenceSummary, IntegratedEvidenceError>;

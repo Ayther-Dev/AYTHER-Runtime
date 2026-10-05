@@ -127,6 +127,11 @@ using TakeInspection = std::variant<TakeFacts, std::string>;
 
 [[nodiscard]] TakeInspection inspect_take(std::span<const std::byte> bytes);
 
+// RF-2.2 (D-2 of the 2026-10-04 campaign): the initial state of a take whose layout is valid
+// decompresses whole, as the Runtime will decompress it before restoring it
+// (`decompress_recording_state`). `take_initial_state_invalid` otherwise.
+[[nodiscard]] std::optional<std::string> take_state_issue(std::span<const std::byte> bytes);
+
 // RF-2.2, RNF-3 (contracts.md C5, «Sondeo del core con la ROM»): N / timing_fps must not
 // exceed 900 s, with the timing the core reports for that ROM; at 59.92 fps 54 000 frames
 // already do. A missing or invalid timing is a problem of the core.

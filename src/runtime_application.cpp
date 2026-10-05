@@ -206,9 +206,7 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
         const auto report =
             ayther::runtime::probe_pack(options.probe_pack, options.trust_registry_path);
         std::fputs(ayther::runtime::format_pack_probe_line(report).c_str(), stdout);
-        return ayther::runtime::pack_probe_reason(report).empty()
-                   ? 0
-                   : ayther::runtime::pack_probe_unusable_exit_code;
+        return ayther::runtime::pack_probe_exit_code(report);
 #else
         std::fprintf(stdout, "AYTHER_PACK_PROBE {\"schema\":\"1.0\","
                              "\"status\":\"unavailable\","

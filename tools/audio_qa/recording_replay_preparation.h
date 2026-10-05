@@ -35,6 +35,15 @@ struct RecordingReplayPreparationResult {
     std::optional<RecordingInputSource> inputs;
 };
 
+// Spec 002 (RF-2.2, D-2 of the 2026-10-04 campaign): the initial state of the take, whole.
+// The compressed state must be one zstd frame spanning exactly its declared bytes, the size
+// that frame declares (when it declares one) must be the raw size of the take, and it must
+// decompress to exactly that size. The supervisor runs it before admission and the Runtime
+// before restoring, so both judge the same bytes the same way.
+[[nodiscard]] RecordingStateError decompress_recording_state(std::span<const std::byte> recording,
+                                                             const RecordingLayout &layout,
+                                                             std::vector<std::uint8_t> &state);
+
 [[nodiscard]] RecordingReplayPreparationResult
 prepare_recording_replay(std::span<const std::byte> recording, const RecordingLayout &layout,
                          void *restore_context, RestoreGameStateOperation restore) noexcept;

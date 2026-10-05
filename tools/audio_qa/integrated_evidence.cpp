@@ -55,7 +55,7 @@ namespace {
            expected.format.sample_rate == actual.format.sample_rate &&
            expected.format.channels == actual.format.channels && expected.range == actual.range &&
            expected.bytes == actual.bytes && expected.sha256 == actual.sha256 &&
-           expected.cause_ids == actual.cause_ids;
+           expected.cause_ids == actual.cause_ids && expected.segment == actual.segment;
 }
 
 [[nodiscard]] bool reopened_relationships(const std::span<const Fact> facts,
@@ -216,6 +216,8 @@ std::string_view integrated_evidence_error_code(const IntegratedEvidenceError er
         return "pcm_reopen_failed";
     case IntegratedEvidenceError::pcm_continuity_failed:
         return "pcm_continuity_failed";
+    case IntegratedEvidenceError::pcm_segment_mismatch:
+        return "pcm_segment_mismatch";
     case IntegratedEvidenceError::relationship_reopen_failed:
         return "relationship_reopen_failed";
     }

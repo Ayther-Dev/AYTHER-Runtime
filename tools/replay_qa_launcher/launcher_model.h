@@ -41,6 +41,11 @@ struct TakeResultRow {
     std::string diagnostic;
 };
 
+// D-10 (RF-1.6): a path pasted between one pair of double quotes (Windows "Copy as path") is
+// the path without them; anything else is kept as typed. Every path field goes through it, so
+// the effective value shown and the one recorded are the path itself.
+[[nodiscard]] std::string unquoted_path(std::string value);
+
 using Preflighter = std::function<audio_qa::PreflightResult(const audio_qa::ReplayRequest &)>;
 
 class LauncherModel final {
