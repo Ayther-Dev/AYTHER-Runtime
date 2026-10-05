@@ -69,12 +69,16 @@ once stable compatibility guarantees are defined.
 - The replay QA launcher strips one pair of surrounding double quotes from a
   pasted path (Windows "Copy as path") in every path field; the summary and the
   request record the unquoted path.
-
-### Known issues
-
-- The facts of the frames an inspection produces silently are not evidence,
-  and the reopened trace still counts their absence as a loss: an inspected
-  take reports its evidence as incomplete (`data_lost`).
+- An inspected take no longer reports its evidence as incomplete (`data_lost`,
+  `fragments_not_flushed`) because of the Engine facts its recoveries produce
+  silently. After each recovery the Runtime declares, per Engine producer, the
+  interval of sequences it excluded and its cause (`silent_recovery`) in a
+  `fact_exclusion` fact, and `traversal.toml` 1.2 lists them in
+  `fact_exclusions`. The trace audit takes a declared gap as an exclusion, not
+  a loss, and a cause on an excluded fact as excluded; an undeclared gap is
+  still a loss. An inspection whose only gaps are declared has complete
+  evidence and is still never accredited as linear. Evidence 1.0, 1.1 and an
+  earlier 1.2 still read; with nothing declared, their gaps stay losses.
 
 ## [0.1.0-beta.9] - 2026-10-04
 
