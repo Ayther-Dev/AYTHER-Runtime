@@ -8,12 +8,77 @@ once stable compatibility guarantees are defined.
 
 > [!WARNING]
 > AYTHER Runtime is in early development. The build reports product version
-> `0.1.0-beta.9`; this is an internal prerelease and is not supported for
+> `0.1.0-beta.10`; this is an internal prerelease and is not supported for
 > production use. The Runtime–Play process
 > protocol v1 is the exception: its documented wire fields, reason identifiers,
 > and exit codes are stable within v1.
 
 ## [Unreleased]
+
+## [0.1.0-beta.10] - 2026-10-04
+
+### Added
+
+- `--probe-pack` lists the profiles the pack offers (`profiles`), and the
+  checker preflight rejects a `--profile` the selected pack does not offer
+  (`profile_not_in_pack: --profile`) before admitting the request.
+- The checker preflight decompresses the initial state of every take whole, as
+  the Runtime does before restoring it, and rejects a damaged state before
+  admission (`take_initial_state_invalid: --take[i]`).
+- `ayther_audio_qa options --format toml` publishes the commit of the sources
+  of the build (`git` HEAD at build time, or `AYTHER_RUNTIME_SOURCE_COMMIT`).
+
+### Changed
+
+- `--profile` without a pack (or with `--pack-mode original`) is accepted with
+  the same conditions as the run with the pack: the request shows and records
+  the requested profile and `profile_effective=none`, and the Runtime only
+  applies a profile to a loaded pack.
+- The cadence of a visible take starts at the first present after its
+  preparation, as after a resume, so the preparation and prewarm of the first
+  frame no longer mark `cadence_degraded`. An isolated delay of more than one
+  period still does.
+
+### Fixed
+
+- A visible inspection that played frames again after a step back could end
+  with `runtime_evidence_stream_invalid` and no terminal: those frames were
+  counted again among the presented or affected frames, and the terminal was
+  rejected as malformed. Each take frame now counts once.
+- `traversal.toml` records every stretch played between two inspection events,
+  not only the one after the last event.
+- `--language`, `--presentation` and `--pack-mode` given explicitly keep the
+  `explicit` origin even when their value is the default.
+- After a pause or a step, the debug overlay shows the current phase instead of
+  the phase of the moment its frame was produced.
+- An inspected take no longer ends with `evidence_error=pcm_continuity_failed`.
+  Its evidence PCM is kept per linear segment (evidence 1.2): the Runtime opens
+  a segment at every resume and tags each PCM block with it (PCM metadata 1.2,
+  `segment`), and `traversal.toml` 1.2 declares the frames and samples of each
+  segment in `audio_segments`. Continuity is audited within each segment; the
+  jump between two segments left by a step forward or back is not a loss. A
+  linear take still needs one continuous interval, and an inspection is never
+  accredited as linear audio. Evidence 1.1 still reads: its PCM blocks are
+  segment 0 and its traversal has no audio segments.
+- A trust registry that is missing, unreadable or malformed (including a path
+  pasted between quotes) is no longer reported as `pack_untrusted`:
+  `--probe-pack` ends with 78 and `trust_registry_invalid`, and the checker
+  rejects it in `--trust-registry`. `pack_untrusted` is kept for a pack the
+  Engine refuses for its signature or trust policy; another failure to open is
+  `pack_open_failed`.
+- The replay QA launcher strips one pair of surrounding double quotes from a
+  pasted path (Windows "Copy as path") in every path field; the summary and the
+  request record the unquoted path.
+- An inspected take no longer reports its evidence as incomplete (`data_lost`,
+  `fragments_not_flushed`) because of the Engine facts its recoveries produce
+  silently. After each recovery the Runtime declares, per Engine producer, the
+  interval of sequences it excluded and its cause (`silent_recovery`) in a
+  `fact_exclusion` fact, and `traversal.toml` 1.2 lists them in
+  `fact_exclusions`. The trace audit takes a declared gap as an exclusion, not
+  a loss, and a cause on an excluded fact as excluded; an undeclared gap is
+  still a loss. An inspection whose only gaps are declared has complete
+  evidence and is still never accredited as linear. Evidence 1.0, 1.1 and an
+  earlier 1.2 still read; with nothing declared, their gaps stay losses.
 
 ## [0.1.0-beta.9] - 2026-10-04
 
