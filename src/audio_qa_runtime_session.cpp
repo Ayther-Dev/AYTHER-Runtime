@@ -1603,6 +1603,9 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                 controller.phase() != ri::InspectionPhase::interrupted &&
                 controller.phase() != ri::InspectionPhase::closing) {
                 apply(controller.presentation_interrupted(health.cause()));
+                // D-14 (RF-2.6, plan §5.10 step 3): recovered or not, the incident leaves the
+                // audiovisual observation of the take incomplete, with its cause as reason.
+                result.presentation.interrupted(health.cause());
                 notice_text = notice_of(ri::Notice::interrupted);
                 push_debug();
             }

@@ -45,6 +45,15 @@ struct ReplayPresentation {
         if (first_time(affected_seen, frame))
             ++affected_frames;
     }
+    // D-14 (campaign 2026-10-05; RF-2.6, plan §5.10 step 3): an interruption of the
+    // presentation (minimized window, audio device removed, video lost), even if it recovers,
+    // is an incomplete audiovisual observation. The presentation is no longer complete and
+    // the interruption is its reason; the first problem keeps naming it, as with a degraded
+    // frame. The playback and the frames presented are not touched.
+    void interrupted(const std::string &cause) {
+        if (code == "presented" && !cause.empty())
+            code = cause;
+    }
     [[nodiscard]] bool complete() const noexcept {
         return mode == "none" || (code == "presented" && affected_frames == 0U && !cancelled);
     }

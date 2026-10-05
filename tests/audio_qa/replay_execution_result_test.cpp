@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdio>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -137,6 +138,45 @@ int main() {
                     std::holds_alternative<std::vector<std::byte>>(
                         qa::encode_replay_execution_result(revisited, 2U)),
                 "revisited_affected_frames_malformed");
+        // D-14 (campaign 2026-10-05, BR-191; RF-2.6, plan §5.10 step 3): an interruption of
+        // the presentation, even recovered and with every frame presented, leaves the
+        // audiovisual observation incomplete, with the interruption as its reason. The
+        // playback is not touched: the take still ends naturally.
+        for (const char *cause : {"window_minimized", "audio_device_removed"}) {
+            auto recovered = expected;
+            recovered.presentation.mode = "visible";
+            recovered.presentation.code = "presented";
+            for (std::uint32_t frame = 0; frame < 6U; ++frame)
+                recovered.presentation.presented(frame);
+            recovered.presentation.interrupted(cause);
+            recovered.presentation.interrupted("video_acquire_failed");
+            require(!recovered.presentation.complete() &&
+                        recovered.presentation.code == std::string_view{cause} &&
+                        recovered.presentation.affected_frames == 0U &&
+                        recovered.presentation.presented_frames == 6U,
+                    "D-14: a recovered interruption is an incomplete audiovisual observation, "
+                    "named by its first cause");
+            require(!qa::well_formed(recovered),
+                    "D-14: a terminal with an interrupted presentation cannot claim success");
+            recovered.succeeded = false;
+            recovered.code = "presentation_incomplete";
+            qa::describe_linear_terminal(recovered, false);
+            require(recovered.playback == std::optional<std::string>{"natural_end"} &&
+                        recovered.linear_completed &&
+                        recovered.evidence_reasons ==
+                            std::vector<std::string>{"presentation_incomplete"} &&
+                        qa::well_formed(recovered) &&
+                        std::holds_alternative<std::vector<std::byte>>(
+                            qa::encode_replay_execution_result(recovered, 2U)),
+                    "D-14: the take ends naturally with presentation_incomplete");
+        }
+        auto degraded_first = expected;
+        degraded_first.presentation.mode = "visible";
+        degraded_first.presentation.code = "video_acquire_failed";
+        degraded_first.presentation.interrupted("window_minimized");
+        require(degraded_first.presentation.code == "video_acquire_failed",
+                "D-14: the first problem of the presentation keeps naming it");
+
         const auto encoded = qa::encode_replay_execution_result(expected, 2U);
         const auto *message = std::get_if<std::vector<std::byte>>(&encoded);
         require(message != nullptr, "valid_replay_result_not_encoded");

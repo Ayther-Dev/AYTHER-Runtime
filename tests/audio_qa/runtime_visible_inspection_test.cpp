@@ -20,6 +20,7 @@
 #include <iostream>
 #include <string>
 #include <string_view>
+#include <tuple>
 
 namespace qa = ayther::audio_qa;
 namespace hn = ayther::audio_qa::harness;
@@ -193,6 +194,44 @@ int main(int argc, char **argv) {
                !resumed->fps_instant && resumed->processing_ms,
            "RF-7.4: FPS only between consecutive presentations of continuous playback");
 
+    // D-14 (campaign 2026-10-05, BR-191; RF-2.6, plan §5.10 step 3): a minimized window or a
+    // removed audio device that recovers keeps the take paused until it is resumed, and the
+    // incident is an incomplete audiovisual observation: the take is not accredited as
+    // complete, its playback still ends naturally and every frame is presented.
+    for (const auto &[label, loss, cause] :
+         {std::tuple{"minimized", "frame=30 minimize\nafter=300 restore\n", "window_minimized"},
+          std::tuple{"audio-removed", "frame=30 audio_removed\nafter=300 audio_added\n",
+                     "audio_device_removed"}}) {
+        const auto recovered =
+            run(label,
+                std::string{loss} + "after=500 key space down\nafter=0 key space up\n"
+                                    "paused=119 close\n",
+                take);
+        const auto *recovered_terminal = terminal(recovered);
+        dump(recovered);
+        expect(recovered.stream_valid && has_event(recovered, "interrupted") &&
+                   has_event(recovered, "recovered"),
+               "RF-2.6: the loss interrupts the take and it recovers");
+        expect(recovered_terminal && recovered_terminal->interruptions == 1U &&
+                   recovered_terminal->playback == "natural_end" &&
+                   recovered_terminal->presentation.presented_frames == 120U,
+               "RF-2.6: the incident is kept and the playback still ends naturally");
+        expect(recovered_terminal && !recovered_terminal->succeeded &&
+                   recovered_terminal->code == "presentation_incomplete" &&
+                   recovered_terminal->presentation.code == cause &&
+                   std::find(recovered_terminal->evidence_reasons.begin(),
+                             recovered_terminal->evidence_reasons.end(),
+                             "presentation_incomplete") !=
+                       recovered_terminal->evidence_reasons.end(),
+               "D-14, RF-2.6: a recovered interruption is an incomplete audiovisual observation, "
+               "with the interruption as its reason");
+        if (recovered_terminal)
+            std::cout << "D-14 " << label << ": code=" << recovered_terminal->code
+                      << " succeeded=" << recovered_terminal->succeeded
+                      << " presentation=" << recovered_terminal->presentation.code
+                      << " interruptions=" << recovered_terminal->interruptions
+                      << " playback=" << recovered_terminal->playback.value_or("") << std::endl;
+    }
     // BR-148: a video loss and an audio loss, each recovered to a pause; the incidents count.
     const auto losses = run("losses",
                             "frame=20 video_fail 3\n"
