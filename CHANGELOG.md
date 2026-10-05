@@ -51,6 +51,21 @@ once stable compatibility guarantees are defined.
   `explicit` origin even when their value is the default.
 - After a pause or a step, the debug overlay shows the current phase instead of
   the phase of the moment its frame was produced.
+- An inspected take no longer ends with `evidence_error=pcm_continuity_failed`.
+  Its evidence PCM is kept per linear segment (evidence 1.2): the Runtime opens
+  a segment at every resume and tags each PCM block with it (PCM metadata 1.2,
+  `segment`), and `traversal.toml` 1.2 declares the frames and samples of each
+  segment in `audio_segments`. Continuity is audited within each segment; the
+  jump between two segments left by a step forward or back is not a loss. A
+  linear take still needs one continuous interval, and an inspection is never
+  accredited as linear audio. Evidence 1.1 still reads: its PCM blocks are
+  segment 0 and its traversal has no audio segments.
+
+### Known issues
+
+- The facts of the frames an inspection produces silently are not evidence,
+  and the reopened trace still counts their absence as a loss: an inspected
+  take reports its evidence as incomplete (`data_lost`).
 
 ## [0.1.0-beta.9] - 2026-10-04
 
