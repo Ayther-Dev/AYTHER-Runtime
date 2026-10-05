@@ -190,6 +190,20 @@ EffectiveResult resolve_effective_request(const CheckOptions &options,
 
     auto &conditions_out = request.conditions;
     conditions_out.profile = builder.pick(options.profile, "profile", "profile");
+    // D-1 (RF-1.6, RF-3.5): the profile only applies to a loaded pack. Without one (or with
+    // `--pack-mode original`) the request keeps the requested profile, so that the run without
+    // pack has the same conditions as the run with it, and says that none is in effect. With a
+    // pack, the preflight has checked that the pack offers it.
+    if (conditions_out.profile) {
+        const bool pack_loaded = !options.pack.empty() && options.pack_mode == "hd";
+        const auto requested =
+            std::find_if(builder.request.values.rbegin(), builder.request.values.rend(),
+                         [](const EffectiveValue &value) { return value.key == "profile"; });
+        builder.add("profile_effective", pack_loaded ? *conditions_out.profile : "none",
+                    pack_loaded && requested != builder.request.values.rend()
+                        ? requested->source
+                        : ValueSource::generated);
+    }
     conditions_out.subsystems = builder.pick(options.subsystems, "subsystems", "subsystems");
     conditions_out.mute_buses = builder.pick(options.mute_buses, "muted_buses", "mute_buses");
     conditions_out.video_output = builder.pick(options.video_output, "output", "video_output");
@@ -231,15 +245,18 @@ EffectiveResult resolve_effective_request(const CheckOptions &options,
         }
     }
 
-    builder.add("language", options.language,
-                options.language == "es" ? ValueSource::default_value
-                                         : ValueSource::explicit_option);
+    // RF-1.6 (D-4): the origin is whether the option was given, never a comparison with its
+    // default. A value set without the parser (a client building the options) that differs from
+    // the default is still explicit.
+    const auto origin = [&options](std::string_view flag, const std::string &value,
+                                   std::string_view default_value) {
+        return options.was_given(flag) || value != default_value ? ValueSource::explicit_option
+                                                                 : ValueSource::default_value;
+    };
+    builder.add("language", options.language, origin("--language", options.language, "es"));
     builder.add("presentation", options.presentation,
-                options.presentation == "none" ? ValueSource::default_value
-                                               : ValueSource::explicit_option);
-    builder.add("pack_mode", options.pack_mode,
-                options.pack_mode == "hd" ? ValueSource::default_value
-                                          : ValueSource::explicit_option);
+                origin("--presentation", options.presentation, "none"));
+    builder.add("pack_mode", options.pack_mode, origin("--pack-mode", options.pack_mode, "hd"));
 
     if (!builder.issues.empty())
         return EffectiveResult{std::move(builder.issues)};

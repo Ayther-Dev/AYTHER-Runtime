@@ -81,6 +81,45 @@ void rebuilt_from_terminal() {
            "RF-2.13: a cancelled take is not a complete traversal");
 }
 
+// D-5 (campaign 2026-10-04, BR-183): every stretch played between two events is kept, not
+// only the one after the last event. Pause at 0, resume, pause at 1000, resume, natural end.
+void every_resumed_stretch_is_kept() {
+    const std::vector<qa::InspectionEvent> events{
+        event(1, "overlay_toggle", 0, 0), event(2, "pause", 0, 0), event(3, "resume", 0, 0),
+        event(4, "pause", 1000, 1000), event(5, "resume", 1000, 1000)};
+    const auto document = qa::traversal_of_take(7892, 7892, events);
+    expect(document.segments == std::vector<qa::TraversalSegment>{{0, 0, "linear"}},
+           "C2: the linear segment ends at the first event");
+    expect(document.resume_after == std::vector<qa::TraversalResume>{{3, 1, 1000, "continued"},
+                                                                     {5, 1001, 7891, "continued"}},
+           "C2, RF-2.12: frames 1 to 1000, played after the resume seq 3, are recorded");
+    expect(document.kind == qa::TraversalKind::linear && document.linear_completed,
+           "RF-5.8: pauses without navigation keep the traversal linear and complete");
+
+    // BR-184: pause at 1, ← to 0, → to 1, 2 and 3, resume at 3, and again at 1500.
+    const std::vector<qa::InspectionEvent> arrows{
+        event(1, "pause", 1, 1),        event(2, "step_back", 1, 0),
+        event(3, "step_forward", 0, 1), event(4, "step_forward", 1, 2),
+        event(5, "step_forward", 2, 3), event(6, "resume", 3, 3),
+        event(7, "pause", 1500, 1500),  event(8, "step_back", 1500, 1499),
+        event(9, "resume", 1499, 1499)};
+    const auto inspected = qa::traversal_of_take(7892, 7892, arrows);
+    expect(inspected.kind == qa::TraversalKind::inspection &&
+               inspected.segments == std::vector<qa::TraversalSegment>{{0, 1, "linear"}} &&
+               inspected.resume_after ==
+                   std::vector<qa::TraversalResume>{{6, 4, 1500, "continued"},
+                                                    {9, 1500, 7891, "continued"}},
+           "C2: frames 4 to 1500 between the two inspections are recorded");
+
+    // A cancellation while playing after a resume ends the stretch at the last frame consumed.
+    const auto cancelled =
+        qa::traversal_of_take(7892, 1201,
+                              std::vector<qa::InspectionEvent>{event(1, "pause", 500, 500),
+                                                               event(2, "resume", 500, 500)});
+    expect(cancelled.resume_after == std::vector<qa::TraversalResume>{{2, 501, 1200, "continued"}},
+           "C2: the last stretch ends at the last frame consumed");
+}
+
 void pause_alone_stays_linear() {
     qa::TraversalRecorder recorder{6};
     for (std::uint64_t frame = 0; frame <= 2; ++frame)
@@ -148,6 +187,7 @@ void durable_at_each_confirmation() {
 int main() {
     segments_and_visits();
     rebuilt_from_terminal();
+    every_resumed_stretch_is_kept();
     pause_alone_stays_linear();
     durable_at_each_confirmation();
     if (failures != 0)

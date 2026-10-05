@@ -12,6 +12,7 @@
 #include <iostream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace qa = ayther::audio_qa;
@@ -177,19 +178,17 @@ void test_published_inventory_matches_table() {
     check_inventory_against_table(parsed, "published inventory");
 }
 
-// Runs `<cli> options --format toml` and compares its output with the table.
-void test_cli_inventory_matches_table(const std::string &cli) {
+// Runs a command line and returns its standard output and exit status.
+std::pair<std::string, int> run_command(const std::string &command_line) {
 #ifdef _WIN32
     // cmd.exe strips the outer quotes of the whole line.
-    const std::string command = "\"\"" + cli + "\" options --format toml\"";
+    const std::string command = "\"" + command_line + "\"";
     FILE *pipe = _popen(command.c_str(), "r");
 #else
-    const std::string command = "'" + cli + "' options --format toml";
-    FILE *pipe = popen(command.c_str(), "r");
+    FILE *pipe = popen(command_line.c_str(), "r");
 #endif
-    expect(pipe != nullptr, "RF-1.8: the CLI inventory can be requested");
     if (pipe == nullptr)
-        return;
+        return {{}, -1};
     std::string output;
     std::array<char, 4096> buffer{};
     while (const auto read = std::fread(buffer.data(), 1, buffer.size(), pipe))
@@ -199,15 +198,53 @@ void test_cli_inventory_matches_table(const std::string &cli) {
 #else
     const int status = pclose(pipe);
 #endif
+    return {output, status};
+}
+
+std::string quoted(const std::string &path) {
+#ifdef _WIN32
+    return "\"" + path + "\"";
+#else
+    return "'" + path + "'";
+#endif
+}
+
+bool full_commit(std::string_view commit) {
+    return commit.size() == 40U && std::all_of(commit.begin(), commit.end(), [](char digit) {
+               return (digit >= '0' && digit <= '9') || (digit >= 'a' && digit <= 'f');
+           });
+}
+
+// Runs `<cli> options --format toml` and compares its output with the table. D-3 (campaign
+// 2026-10-04, BR-182; C5): like the reference inventory, it names the full commit of the
+// sources it was built from, the HEAD of `source` when that is a git checkout.
+void test_cli_inventory_matches_table(const std::string &cli, const std::string &source) {
+    const auto [output, status] = run_command(quoted(cli) + " options --format toml");
     expect(status == 0, "RF-1.8: `options --format toml` succeeds");
-    check_inventory_against_table(toml::parse(output), "CLI inventory");
+    if (status != 0)
+        return;
+    const auto parsed = toml::parse(output);
+    check_inventory_against_table(parsed, "CLI inventory");
+    const auto commit = parsed["commit"].value_or(std::string{});
+    expect(full_commit(commit),
+           message({"C5, RF-1.8: the CLI inventory names the full commit of its build, got \"",
+                    commit, "\""}));
+    if (source.empty())
+        return;
+    auto [head, git_status] = run_command("git -C " + quoted(source) + " rev-parse HEAD");
+    while (!head.empty() && (head.back() == '\n' || head.back() == '\r'))
+        head.pop_back();
+    if (git_status == 0 && full_commit(head))
+        expect(commit == head, message({"C5: the inventory commit ", commit,
+                                        " is the HEAD of the sources ", head}));
 }
 
 } // namespace
 
 int main(int argc, char **argv) {
-    if (argc != 2 && argc != 3) {
-        std::cerr << "usage: check_option_descriptors_test <reference-inventory.toml> [cli]\n";
+    if (argc < 2 || argc > 4) {
+        std::cerr << "usage: check_option_descriptors_test <reference-inventory.toml> [cli "
+                     "[source-directory]]\n";
         return 2;
     }
     try {
@@ -217,8 +254,8 @@ int main(int argc, char **argv) {
         test_limits(inventory);
         test_defaults_match_model();
         test_published_inventory_matches_table();
-        if (argc == 3)
-            test_cli_inventory_matches_table(argv[2]);
+        if (argc >= 3)
+            test_cli_inventory_matches_table(argv[2], argc == 4 ? argv[3] : std::string{});
     } catch (const toml::parse_error &error) {
         std::cerr << "FAIL: reference inventory unreadable: " << error.description() << '\n';
         return 1;

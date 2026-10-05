@@ -831,10 +831,14 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
             controller =
                 ri::InspectionController{frames, presentation->ready() && options.qa_last_take};
         }
-        if (!options.profile.empty() && !session->set_profile(options.profile))
-            return fail_session("audio_profile_unavailable");
-        if (!options.profile.empty())
+        // D-1 (RF-3.5): a profile only applies to a loaded pack. Without one the take replays
+        // as the original game with the same conditions; the preflight already checked that a
+        // loaded pack offers it.
+        if (!options.profile.empty() && session->has_pack()) {
+            if (!session->set_profile(options.profile))
+                return fail_session("audio_profile_unavailable");
             active_profile = options.profile;
+        }
         if (options.subsystems) {
             subsystem_mask = *options.subsystems;
             session->set_subsystems_enabled_mask(*options.subsystems);
@@ -948,10 +952,22 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
         const auto replay_language = ri::parse_replay_language(pending->language.value_or("es"));
         std::optional<ri::FrameRecord> current_record;
         std::string notice_text;
+        // RF-7.1, RF-7.6 (D-7): the phase the overlay shows is the phase of now, not the one of
+        // the moment the record of the frame was copied (playing, recovering).
+        const auto live_phase = [&] {
+            return std::string{phase_code(
+                controller.phase(), confirmed_linear && controller.position() == frames - 1U)};
+        };
         const auto push_debug = [&] {
             if (!presentation)
                 return;
+            if (current_record)
+                current_record->general.phase = live_phase();
             const bool visible = controller.debug_visible();
+            // BR-156 marks: what the overlay shows, for the inspection tests.
+            timing.mark("debug", visible ? 1 : 0,
+                        current_record ? current_record->general.phase : std::string{},
+                        current_record ? current_record->frame : 0U);
             presentation->set_debug(visible,
                                     visible && current_record
                                         ? ri::debug_lines(*current_record, clock, replay_language)
@@ -985,7 +1001,8 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
         bool cancelled{};
         bool traversal_failed{};
         bool interrupted_at_close{};
-        auto next_frame = std::chrono::steady_clock::now();
+        // Plan §5.7: the turn of each frame of continuous playback.
+        ri::PlaybackCadence cadence{frame_period, std::chrono::steady_clock::now()};
         const auto started = std::chrono::steady_clock::now();
         const auto now_ms = [&started] {
             return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
@@ -1388,7 +1405,7 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                                 std::chrono::steady_clock::now() - *pause_started)
                                 .count());
                     pause_started.reset();
-                    next_frame = std::chrono::steady_clock::now();
+                    cadence.restart(std::chrono::steady_clock::now());
                     after_resume = true;
                     break;
                 case ri::CommandKind::toggle_debug:
@@ -1554,6 +1571,9 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                     apply(controller.presentation_recovered());
             }
             report_state(false);
+            // D-7: a pause, the end of a recovery or any other change of phase redraws the overlay.
+            if (presentation && current_record && current_record->general.phase != live_phase())
+                push_debug();
             if (done)
                 break;
 
@@ -1567,19 +1587,19 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                 // on the next cadence slot, so that a pause in that wait stays on N−1. It costs at
                 // most one period per take boundary, outside the take time (frames only).
                 if (controller.take_end_pending()) {
-                    if (now < next_frame) {
+                    if (now < cadence.due()) {
                         const std::chrono::steady_clock::duration poll{
                             std::chrono::milliseconds{1}};
-                        const auto remaining = next_frame - now;
+                        const auto remaining = cadence.due() - now;
                         std::this_thread::sleep_for(remaining < poll ? remaining : poll);
                     } else {
                         apply(controller.take_slot_reached());
                     }
                     break;
                 }
-                if (!ri::start_frame_now(controller.phase(), now, next_frame)) {
+                if (!ri::start_frame_now(controller.phase(), now, cadence.due())) {
                     const std::chrono::steady_clock::duration poll{std::chrono::milliseconds{1}};
-                    const auto remaining = next_frame - now;
+                    const auto remaining = cadence.due() - now;
                     std::this_thread::sleep_for(remaining < poll ? remaining : poll);
                     break;
                 }
@@ -1607,13 +1627,12 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                     (void)checkpoints.capture(*session, frame);
                 apply(controller.frame_completed(frame));
                 if (controller.phase() == ri::InspectionPhase::playing) {
-                    next_frame += frame_period;
                     const auto completed = std::chrono::steady_clock::now();
-                    if (presentation && completed > next_frame + frame_period) {
+                    if (cadence.frame_completed(completed) && presentation) {
                         result.presentation.affect(frame);
                         if (result.presentation.code == "presented")
                             result.presentation.code = "cadence_degraded";
-                        next_frame = completed;
+                        cadence.restart(completed);
                     }
                 }
                 break;

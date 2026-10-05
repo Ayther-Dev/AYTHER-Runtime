@@ -17,15 +17,21 @@
 //          a pause does not change it.
 //   BR-147 (RF-7.4) the processing time is measured; without presentation there is no FPS.
 //   BR-151 (RNF-6) without inspection the take replays as before.
+//   D-7, D-8 (campaign 2026-10-04) with the visible presentation of SDL's offscreen driver, when
+//          the Vulkan driver offers it: a frame presented again after a step back counts once
+//          and the take ends with its terminal; the overlay shows the current phase and frame.
 // Arguments: runtime, core, ROM, fixture generator, work directory.
 #include "runtime_session_harness.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace qa = ayther::audio_qa;
 namespace hn = ayther::audio_qa::harness;
@@ -110,6 +116,50 @@ bool sounded(const hn::Session &session, const std::string &label, const hn::Ses
         }
     }
     return matched;
+}
+
+// The visible presentation without a desktop window: SDL's offscreen video driver, when the Vulkan
+// driver offers it. The Runtime writes its marks (BR-156) to `timing.log` of the scenario.
+hn::Session run_offscreen(const std::string &label, const std::string &script) {
+    auto options = base;
+    options.label = label;
+    options.script = script;
+    options.presentation = "visible";
+    options.last_take = true;
+    options.extra_environment.push_back({L"SDL_VIDEO_DRIVER", L"offscreen"});
+    options.extra_environment.push_back(
+        {L"AYTHER_QA_TIMING_LOG", (base.root / label / "timing.log").wstring()});
+    return hn::run(options);
+}
+
+// The marks of one kind in the timing log of a scenario, as their comma-separated fields.
+std::vector<std::vector<std::string>> marks(const std::string &label, std::string_view kind) {
+    std::vector<std::vector<std::string>> found;
+    std::ifstream input{base.root / label / "timing.log"};
+    std::string line;
+    while (std::getline(input, line)) {
+        std::vector<std::string> fields;
+        std::size_t begin{};
+        for (;;) {
+            const auto comma = line.find(',', begin);
+            fields.push_back(line.substr(begin, comma - begin));
+            if (comma == std::string::npos)
+                break;
+            begin = comma + 1U;
+        }
+        if (!fields.empty() && fields.front() == kind)
+            found.push_back(std::move(fields));
+    }
+    return found;
+}
+
+// What the overlay showed last before the window closed: visible flag, phase and frame.
+std::optional<std::vector<std::string>> last_overlay(const std::string &label) {
+    const auto debug = marks(label, "debug");
+    for (auto entry = debug.rbegin(); entry != debug.rend(); ++entry)
+        if (entry->size() == 4U && (*entry)[2] != "closing")
+            return *entry;
+    return std::nullopt;
 }
 
 } // namespace
@@ -274,6 +324,58 @@ int main(int argc, char **argv) {
     expect(lost_terminal && lost_terminal->playback == "failed" &&
                lost_terminal->traversal == "inspection" && !lost_terminal->succeeded,
            "RF-5.6: when the confirmed position cannot be restored either, the traversal fails");
+
+    // D-8 (campaign 2026-10-04, BR-185): a visible take where a frame is presented again after
+    // stepping back. Pause at 30, ← to 29, resume (30 is presented a second time), natural end
+    // paused at 119 and close. Every presentation of a frame (or every failed one) used to
+    // count, so the take reported more presented or affected frames than frames consumed; its
+    // terminal was malformed, the Runtime could not send it and ended 65 without it, and the
+    // supervisor reported `runtime_evidence_stream_invalid`. Each take frame counts once.
+    const auto revisited = run_offscreen(
+        "visible-revisit", "frame=30 focus on\nafter=0 key space down\nafter=0 key space up\n"
+                           "paused=30 key left down\nafter=0 key left up\n"
+                           "paused=29 key space down\nafter=0 key space up\n"
+                           "paused=119 key other up\nafter=300 close\n");
+    const auto *revisited_terminal = terminal(revisited);
+    expect(revisited.stream_valid && revisited_terminal != nullptr,
+           "D-8, RF-2.12: a visible take with a frame presented again ends with its terminal");
+    if (revisited_terminal != nullptr) {
+        const auto &shown = revisited_terminal->presentation;
+        expect(revisited_terminal->playback == "natural_end" &&
+                   revisited_terminal->inputs_consumed == frames &&
+                   shown.presented_frames <= revisited_terminal->inputs_consumed &&
+                   shown.affected_frames <= revisited_terminal->inputs_consumed &&
+                   (shown.affected_frames == 0U ||
+                    shown.first_affected_frame <= shown.last_affected_frame),
+               "D-8: each take frame counts once among the presented and the affected frames");
+    }
+
+    // D-7 (campaign 2026-10-04, BR-185; RF-7.1, RF-7.6): with the overlay visible, after a pause
+    // and after a step the overlay shows the current phase and frame, not the phase of the
+    // moment its record was copied (playing, recovering).
+    const auto paused_overlay =
+        run_offscreen("overlay-pause", "frame=0 focus on\nafter=0 key i down\nafter=0 key i up\n"
+                                       "frame=30 key space down\nafter=0 key space up\n"
+                                       "paused=30 key other up\nafter=400 close\n");
+    const auto stepped_overlay =
+        run_offscreen("overlay-step", "frame=0 focus on\nafter=0 key i down\nafter=0 key i up\n"
+                                      "frame=30 key space down\nafter=0 key space up\n"
+                                      "paused=30 key right down\nafter=0 key right up\n"
+                                      "paused=31 key other up\nafter=400 close\n");
+    const auto paused_last = last_overlay("overlay-pause");
+    const auto stepped_last = last_overlay("overlay-step");
+    if (marks("overlay-pause", "debug").empty()) {
+        std::cout << "overlay: no offscreen presentation; the overlay is not checked\n";
+    } else {
+        expect(paused_overlay.stream_valid && paused_last &&
+                   *paused_last == std::vector<std::string>{"debug", "1", "paused", "30"},
+               "D-7, RF-7.1: after a pause the overlay shows the phase paused at 30, got " +
+                   (paused_last ? (*paused_last)[2] + " " + (*paused_last)[3] : "nothing"));
+        expect(stepped_overlay.stream_valid && stepped_last &&
+                   *stepped_last == std::vector<std::string>{"debug", "1", "paused", "31"},
+               "D-7, RF-7.6: after a step the overlay shows the phase paused at 31, got " +
+                   (stepped_last ? (*stepped_last)[2] + " " + (*stepped_last)[3] : "nothing"));
+    }
 
     std::cout << "pcm_per_frame=" << pcm_per_frame
               << " linear_records=" << linear.render_frames.size()

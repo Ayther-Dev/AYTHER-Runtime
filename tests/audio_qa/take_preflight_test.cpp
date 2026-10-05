@@ -182,6 +182,47 @@ void game_identity() {
 
 } // namespace
 
+// A take whose 16-byte initial state is one zstd frame with one raw block: magic, a frame
+// header (single segment, one-byte content size), the block header and the bytes.
+std::vector<std::byte> take_with_state(std::uint8_t declared_size = 16U) {
+    std::vector<std::byte> frame{std::byte{0x28}, std::byte{0xb5}, std::byte{0x2f},
+                                 std::byte{0xfd}, std::byte{0x20}, std::byte{declared_size}};
+    constexpr std::uint32_t block = (16U << 3U) | 1U; // last block, raw, 16 bytes
+    frame.push_back(static_cast<std::byte>(block & 0xffU));
+    frame.push_back(static_cast<std::byte>((block >> 8U) & 0xffU));
+    frame.push_back(static_cast<std::byte>((block >> 16U) & 0xffU));
+    frame.insert(frame.end(), 16U, std::byte{0x5a});
+
+    std::vector<std::byte> bytes{std::byte{'A'}, std::byte{'R'}, std::byte{'P'}, std::byte{'1'}};
+    append_u32(bytes, 8U);
+    append_text(bytes, "crc32:cbf43926");
+    append_text(bytes, "synthetic take");
+    append_u32(bytes, 3U);
+    append_u32(bytes, 16U);
+    append_u32(bytes, static_cast<std::uint32_t>(frame.size()));
+    bytes.insert(bytes.end(), frame.begin(), frame.end());
+    bytes.insert(bytes.end(), 6U, std::byte{0});
+    return bytes;
+}
+
+// D-2 (campaign 2026-10-04, BR-181; RF-2.2): the initial state is decompressed whole before
+// admission, as the Runtime will before restoring it.
+void initial_state_is_checked() {
+    const auto valid = take_with_state();
+    expect(std::holds_alternative<qa::TakeFacts>(qa::inspect_take(valid)) &&
+               !qa::take_state_issue(valid),
+           "D-2: a take whose state decompresses to its declared size is valid");
+    auto damaged = valid;
+    const auto state_offset = valid.size() - 6U - 25U;
+    for (std::size_t index = state_offset; index < state_offset + 9U; ++index)
+        damaged[index] = ~damaged[index];
+    expect(std::holds_alternative<qa::TakeFacts>(qa::inspect_take(damaged)) &&
+               qa::take_state_issue(damaged) == std::string{"take_initial_state_invalid"},
+           "D-2: inverted bytes in the compressed state are found before admission");
+    expect(qa::take_state_issue(take_with_state(15U)) == std::string{"take_initial_state_invalid"},
+           "D-2: a frame that declares another size than the take is damaged");
+}
+
 int main() {
     frame_count_limits();
     header_versions();
@@ -189,6 +230,7 @@ int main() {
     crc32_names_the_rom();
     duration_limit();
     game_identity();
+    initial_state_is_checked();
     if (failures != 0)
         return 1;
     std::cout << "takes are validated before admission\n";

@@ -83,6 +83,7 @@ constexpr std::array field_texts{
     FieldText{"pack_mode", "Modo del pack", "Pack mode"},
     FieldText{"takes", "Tomas", "Takes"},
     FieldText{"profile", "Perfil", "Profile"},
+    FieldText{"profile_effective", "Perfil efectivo", "Effective profile"},
     FieldText{"subsystems", "Subsistemas", "Subsystems"},
     FieldText{"mute_buses", "Buses silenciados", "Muted buses"},
     FieldText{"video_output", "Salida de vídeo", "Video output"},

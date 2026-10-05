@@ -95,12 +95,19 @@ TraversalDocument traversal_of_take(std::uint64_t frames_total, std::uint64_t fr
     const auto first_event = events.front().frame_before;
     recorder.frame_played(0U);
     recorder.frame_played(std::min(first_event, last));
-    for (const auto &event : events)
-        recorder.inspection(event);
-    const auto resumed = events.back().frame_after + 1U;
-    if (resumed <= last) {
-        recorder.frame_played(resumed);
-        recorder.frame_played(last);
+    // D-5 (C2, RF-2.12): the frames played between an event and the next one are a stretch of
+    // their own, after every resume and not only after the last one. Playback continues from the
+    // frame after the event up to the frame where the next event happened, or up to the last
+    // frame consumed after the last event.
+    for (std::size_t index = 0; index < events.size(); ++index) {
+        recorder.inspection(events[index]);
+        const auto resumed = events[index].frame_after + 1U;
+        const auto until =
+            index + 1U < events.size() ? std::min(events[index + 1U].frame_before, last) : last;
+        if (resumed <= until) {
+            recorder.frame_played(resumed);
+            recorder.frame_played(until);
+        }
     }
     return recorder.document();
 }

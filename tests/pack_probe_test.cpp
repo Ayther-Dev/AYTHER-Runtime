@@ -104,13 +104,15 @@ void probe_line_states_the_reason() {
     usable.signature = "valid";
     usable.trust = "trusted";
     usable.catalog = ayther::runtime::PackCatalog{217U, 14U, {}};
+    usable.profiles = {"original", "full"};
     usable.game_id = "crc32:665d7df9";
     check(ayther::runtime::pack_probe_reason(usable).empty() &&
               ayther::runtime::format_pack_probe_line(usable) ==
                   "AYTHER_PACK_PROBE {\"schema\":\"1.0\",\"opened\":true,\"signature\":\"valid\","
                   "\"trust\":\"trusted\",\"catalog\":{\"poses\":217,\"audio_events\":14},"
-                  "\"unreadable_assets\":[],\"game_id\":\"crc32:665d7df9\",\"errors\":[]}\n",
-          "a usable pack has the contract line and no reason");
+                  "\"unreadable_assets\":[],\"profiles\":[\"original\",\"full\"],"
+                  "\"game_id\":\"crc32:665d7df9\",\"errors\":[]}\n",
+          "a usable pack has the contract line, with its profiles (D-1), and no reason");
 
     auto unverified = usable;
     unverified.signature = "unverified";

@@ -111,4 +111,28 @@ class InspectionController final {
 [[nodiscard]] bool start_frame_now(InspectionPhase phase, std::chrono::steady_clock::time_point now,
                                    std::chrono::steady_clock::time_point due) noexcept;
 
+// Plan §5.7 (RF-4.4, RF-4.6, RNF-2): the turn of each frame of continuous playback. The turn
+// starts at the first present after the preparation (D-6a), as it restarts at a resume. From
+// then on every completed frame moves the turn one period; a frame that completes more than one
+// period after its turn is late (`cadence_degraded`, spec-001 semantics), and the caller may
+// restart the turn there instead of catching up.
+class PlaybackCadence final {
+  public:
+    using Clock = std::chrono::steady_clock;
+
+    PlaybackCadence(Clock::duration period, Clock::time_point now) noexcept;
+
+    // When the next frame may start.
+    [[nodiscard]] Clock::time_point due() const noexcept { return next_; }
+    // RF-4.4: resuming restarts the turn at this instant; the pause is not caught up.
+    void restart(Clock::time_point now) noexcept;
+    // A frame of continuous playback completed at `completed`; true when it was late.
+    [[nodiscard]] bool frame_completed(Clock::time_point completed) noexcept;
+
+  private:
+    Clock::duration period_;
+    Clock::time_point next_;
+    bool anchored_{};
+};
+
 } // namespace ayther::replay_inspection

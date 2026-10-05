@@ -120,6 +120,31 @@ void pack_probe_output_is_read() {
            "RF-2.2: an unknown or incomplete probe line is not a probe");
 }
 
+// D-1 (campaign 2026-10-04; RF-2.2): the probe lists the profiles of the pack and a requested
+// profile the pack does not offer is rejected in --profile. A Runtime that does not list them
+// leaves nothing to compare.
+void requested_profile_is_offered() {
+    const auto listed = qa::parse_pack_probe(
+        "AYTHER_PACK_PROBE {\"schema\":\"1.0\",\"opened\":true,\"signature\":\"valid\","
+        "\"trust\":\"trusted\",\"catalog\":{\"poses\":1,\"audio_events\":1},"
+        "\"unreadable_assets\":[],\"profiles\":[\"original\",\"full\"],\"game_id\":\"g\","
+        "\"errors\":[]}\n");
+    expect(listed && listed->profiles == std::vector<std::string>{"original", "full"},
+           "D-1: the probe lists the profiles of the pack");
+    expect(listed && !qa::profile_issue(std::string{"full"}, *listed) &&
+               !qa::profile_issue(std::nullopt, *listed),
+           "D-1: an offered profile, or none, is no issue");
+    expect(listed && qa::profile_issue(std::string{"music"}, *listed) ==
+                         qa::FieldIssue{"--profile", "profile_not_in_pack"},
+           "D-1, RF-2.2: a profile the pack does not offer is rejected in --profile");
+    const auto unlisted = qa::parse_pack_probe(
+        "AYTHER_PACK_PROBE {\"schema\":\"1.0\",\"opened\":true,\"signature\":\"valid\","
+        "\"trust\":\"trusted\",\"catalog\":null,\"unreadable_assets\":[],\"game_id\":\"g\","
+        "\"errors\":[]}\n");
+    expect(unlisted && !unlisted->profiles && !qa::profile_issue(std::string{"music"}, *unlisted),
+           "D-1: without a list from the Runtime nothing is compared");
+}
+
 void real_pack_probes(const qa::RuntimeBinaryIdentity &runtime,
                       const std::filesystem::path &fixtures) {
     const auto registry = fixtures / "public-synthetic-trust.toml";
@@ -128,6 +153,8 @@ void real_pack_probes(const qa::RuntimeBinaryIdentity &runtime,
     expect(probe != nullptr && !qa::pack_issue(*probe) &&
                probe->game_id == "ayther-public-synthetic-v1" && probe->audio_events == 1U,
            "RF-2.2: the valid public pack can be used");
+    expect(probe != nullptr && probe->profiles && !probe->profiles->empty(),
+           "D-1: the Runtime lists the profiles of the pack");
     const auto without_registry =
         qa::probe_pack(runtime, fixtures / "public-synthetic.ay", std::nullopt, {});
     const auto *unverified = std::get_if<qa::PackProbe>(&without_registry);
@@ -210,6 +237,7 @@ int main(int argc, char **argv) {
     probe_output_is_read();
     core_is_compared_with_the_rom();
     pack_probe_output_is_read();
+    requested_profile_is_offered();
     if (argc == 6)
         real_probes(argv[1], argv[2], argv[3], argv[4], argv[5]);
     else if (argc != 1)

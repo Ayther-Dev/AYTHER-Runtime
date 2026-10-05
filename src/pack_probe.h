@@ -42,6 +42,8 @@ struct PackProbeReport {
     std::string trust{"unverified"};
     std::optional<PackCatalog> catalog;
     std::vector<std::string> unreadable_assets;
+    // Spec 002 (D-1, RF-2.2): the ids of the profiles the pack offers.
+    std::vector<std::string> profiles;
     std::string game_id;
     // Error codes of the Engine validation of the pack.
     std::vector<std::string> errors;

@@ -68,6 +68,9 @@ struct PackProbe {
     std::optional<std::uint64_t> poses;
     std::optional<std::uint64_t> audio_events;
     std::vector<std::string> unreadable_assets;
+    // D-1 (RF-2.2): the profiles the pack offers; nullopt from a Runtime that does not list
+    // them.
+    std::optional<std::vector<std::string>> profiles;
     std::string game_id;
     std::vector<std::string> errors;
     std::string reason;
@@ -81,6 +84,12 @@ struct PackProbe {
 // «Sin pack». A signed pack without a registry points at --trust-registry; the rest
 // at --pack.
 [[nodiscard]] std::optional<FieldIssue> pack_issue(const PackProbe &probe);
+
+// D-1 (RF-2.2): a requested profile that the pack does not offer is a mismatch of the
+// request, found before admission. Nothing to check without a requested profile or when the
+// Runtime did not list the profiles of the pack.
+[[nodiscard]] std::optional<FieldIssue> profile_issue(const std::optional<std::string> &profile,
+                                                      const PackProbe &probe);
 
 using PackProbeResult = std::variant<PackProbe, FieldIssue>;
 

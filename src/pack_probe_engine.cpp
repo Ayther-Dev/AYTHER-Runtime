@@ -106,6 +106,12 @@ PackProbeReport probe_pack(const std::string &pack, const std::string &trust_reg
         report.opened = false;
         return report;
     }
+    // D-1 (RF-2.2): the profiles it offers, so that a requested one is checked before admission.
+    const auto profile_count = ayther_pack_profile_count(archive.get());
+    for (std::uint32_t index = 0; index < profile_count; ++index)
+        if (const char *id = ayther_pack_profile_field(archive.get(), index, "id");
+            id != nullptr && *id != '\0')
+            report.profiles.emplace_back(id);
     const auto poses = catalog_text(archive.get(), "pose_substitutions.toml");
     const auto audio_events = catalog_text(archive.get(), "audio_events.toml");
     if (!poses || !audio_events)

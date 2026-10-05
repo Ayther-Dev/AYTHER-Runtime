@@ -161,7 +161,9 @@ runtime_replay_arguments(const EffectiveRequest &request, const std::string_view
     append_value_argument(arguments, L"--manifest", request.play_manifest);
     append_value_argument(arguments, L"--qa-presentation", request.presentation);
     const auto &conditions = request.conditions;
-    append_value_argument(arguments, L"--profile", conditions.profile);
+    // D-1: a profile only means something to a loaded pack; without one it is not sent.
+    if (request.pack && request.pack_mode == "hd")
+        append_value_argument(arguments, L"--profile", conditions.profile);
     append_value_argument(arguments, L"--subsystems", conditions.subsystems);
     append_value_argument(arguments, L"--mute-buses", conditions.mute_buses);
     append_value_argument(arguments, L"--output", conditions.video_output);

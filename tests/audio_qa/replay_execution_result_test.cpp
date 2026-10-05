@@ -112,6 +112,31 @@ int main() {
         require(qa::well_formed(visible), "incomplete_presentation_rejected");
         visible.presentation.last_affected_frame = 6U;
         require(!qa::well_formed(visible), "out_of_bounds_presentation_accepted");
+
+        // D-8 (campaign 2026-10-04): after stepping back, frames are presented again and may
+        // be affected again, in another order. Each take frame counts once and the range spans
+        // all of them, so the terminal stays well formed and can be sent.
+        auto revisited = expected;
+        revisited.presentation.mode = "visible";
+        revisited.presentation.code = "presented";
+        for (std::uint32_t frame = 0; frame < 6U; ++frame)
+            revisited.presentation.presented(frame);
+        revisited.presentation.presented(3U);
+        revisited.presentation.presented(4U);
+        require(revisited.presentation.presented_frames == 6U && qa::well_formed(revisited),
+                "revisited_frames_counted_twice");
+        revisited.presentation.affect(4U);
+        revisited.presentation.affect(3U);
+        revisited.presentation.affect(4U);
+        revisited.succeeded = false;
+        revisited.code = "presentation_incomplete";
+        require(revisited.presentation.affected_frames == 2U &&
+                    revisited.presentation.first_affected_frame == 3U &&
+                    revisited.presentation.last_affected_frame == 4U &&
+                    qa::well_formed(revisited) &&
+                    std::holds_alternative<std::vector<std::byte>>(
+                        qa::encode_replay_execution_result(revisited, 2U)),
+                "revisited_affected_frames_malformed");
         const auto encoded = qa::encode_replay_execution_result(expected, 2U);
         const auto *message = std::get_if<std::vector<std::byte>>(&encoded);
         require(message != nullptr, "valid_replay_result_not_encoded");

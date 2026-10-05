@@ -1,5 +1,7 @@
 #include "material_preflight.h"
 
+#include "recording_replay_preparation.h"
+
 #include "content_hash.h"
 #include "recording_header.h"
 #include "replay_duration_limit.h"
@@ -476,6 +478,24 @@ TakeInspection inspect_take(std::span<const std::byte> bytes) {
         return std::string{take_layout_code(decoded.error)};
     return TakeFacts{decoded.layout.header.version, decoded.layout.frame_count,
                      text_at(bytes, decoded.layout.game_id), text_at(bytes, decoded.layout.name)};
+}
+
+std::optional<std::string> take_state_issue(std::span<const std::byte> bytes) {
+    const auto decoded = decode_recording_layout(bytes);
+    if (decoded.error != RecordingLayoutError::none)
+        return std::nullopt;
+    std::vector<std::uint8_t> state;
+    switch (decompress_recording_state(bytes, decoded.layout, state)) {
+    case RecordingStateError::none:
+        return std::nullopt;
+    case RecordingStateError::allocation_failed:
+        return std::string{"take_initial_state_unreadable"};
+    case RecordingStateError::invalid_layout:
+    case RecordingStateError::truncated_compressed_state:
+    case RecordingStateError::decompression_failed:
+        break;
+    }
+    return std::string{"take_initial_state_invalid"};
 }
 
 std::optional<FieldIssue> take_duration_issue(std::uint32_t frame_count,

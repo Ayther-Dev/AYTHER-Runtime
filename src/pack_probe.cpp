@@ -227,6 +227,8 @@ std::string format_pack_probe_line(const PackProbeReport &report) {
     }
     json += R"(,"unreadable_assets":)";
     append_string_array(json, report.unreadable_assets);
+    json += R"(,"profiles":)";
+    append_string_array(json, report.profiles);
     append_field(json, "game_id", report.game_id);
     json += R"(,"errors":)";
     append_string_array(json, report.errors);

@@ -41,6 +41,20 @@ configure_file(
     "${AYTHER_RUNTIME_GENERATED_DIR}/ayther-runtime-package.json"
     @ONLY
 )
+# Spec 002, contracts.md C5 (RF-1.8): the commit of the sources, written at build time so that
+# the published option inventory names the revision it was built from. An archive without git
+# can pass it explicitly.
+set(AYTHER_RUNTIME_SOURCE_COMMIT "" CACHE STRING
+    "Commit of the sources (40 hex digits); empty: the HEAD of the git checkout at build time")
+add_custom_target(ayther_runtime_source_commit
+    COMMAND "${CMAKE_COMMAND}"
+        "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DOUTPUT=${AYTHER_RUNTIME_GENERATED_DIR}/ayther_runtime_commit.h"
+        "-DCOMMIT=${AYTHER_RUNTIME_SOURCE_COMMIT}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/AytherSourceCommit.cmake"
+    BYPRODUCTS "${AYTHER_RUNTIME_GENERATED_DIR}/ayther_runtime_commit.h"
+    COMMENT "Recording the source commit of the build"
+    VERBATIM)
 
 # Reject unsupported Windows frontends and Visual C++ toolsets before package
 # discovery can obscure the ABI mismatch with a secondary dependency error.

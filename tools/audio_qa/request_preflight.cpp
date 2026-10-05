@@ -167,6 +167,12 @@ RequestPreflight preflight_request(const EffectiveRequest &request) {
             add_issue(issues, {take_field(position), *code});
             continue;
         }
+        // D-2 (RF-2.2): a damaged initial state is found here, before admission, not when the
+        // Runtime restores it.
+        if (auto state = take_state_issue(pinned_take.bytes)) {
+            add_issue(issues, {take_field(position), std::move(*state)});
+            continue;
+        }
         takes.push_back(std::move(pinned_take.pin));
         take_facts.push_back(std::get<TakeFacts>(std::move(inspection)));
     }
@@ -228,6 +234,8 @@ RequestPreflight preflight_request(const EffectiveRequest &request) {
             pack_probe = std::get<PackProbe>(std::move(probed));
             if (auto unusable = pack_issue(*pack_probe))
                 add_issue(issues, std::move(*unusable));
+            else if (auto profile = profile_issue(request.conditions.profile, *pack_probe))
+                add_issue(issues, std::move(*profile));
         }
     }
 
