@@ -162,6 +162,10 @@ constexpr std::array issue_texts{
     IssueText{"recording_duration_too_long", "La toma dura más de 900 s.",
               "The take lasts more than 900 s."},
     // Request.
+    IssueText{"request_id_too_long", "El identificador de la solicitud supera 256 bytes.",
+              "The request identifier exceeds 256 bytes."},
+    IssueText{"request_id_invalid", "El identificador de la solicitud tiene caracteres de control.",
+              "The request identifier has control characters."},
     IssueText{"request_identity_conflict",
               "Ese identificador de solicitud ya se usó con otras selecciones.",
               "That request identifier was already used with other selections."},

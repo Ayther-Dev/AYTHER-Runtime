@@ -7,6 +7,7 @@
 #include "inspection_evidence.h"
 #include "inspection_facts.h"
 #include "integrated_evidence.h"
+#include "long_path.h"
 #include "play_launch_manifest.h"
 #include "reference_store.h"
 #include "request_ledger.h"
@@ -59,7 +60,8 @@ std::string digest(const ContentIdentity &identity) {
 class DestinationLock final {
   public:
     explicit DestinationLock(const std::filesystem::path &output) {
-        const auto path = output / ".ayther-qa-check.lock";
+        // D-12: through the extended form of the path, which has no MAX_PATH limit.
+        const auto path = long_path(output / ".ayther-qa-check.lock");
 #ifdef _WIN32
         handle_ = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_ALWAYS,
                               FILE_ATTRIBUTE_HIDDEN | FILE_FLAG_DELETE_ON_CLOSE, nullptr);
@@ -411,8 +413,8 @@ TakeRecord RequestRun::run_take(const EffectiveRequest &effective, const Preflig
                 read_traversal(run_directory / "traversal.toml"));
             parts.controls = std::holds_alternative<RunInspectionFacts>(
                 read_run_inspection_facts(run_directory));
-            parts.result =
-                std::filesystem::is_regular_file(run_directory / "replay-result.toml", ignored);
+            parts.result = std::filesystem::is_regular_file(
+                long_path(run_directory / "replay-result.toml"), ignored);
             parts.data_without_losses = evidence_complete && replay.trace.loss_free;
             parts.fragments_flushed = preserved != nullptr && preserved->fact_integrity_complete;
             const auto evaluated = evaluate_evidence(parts);
@@ -507,8 +509,8 @@ RequestOutcome RequestRun::run() {
 
     output_ = request_.output;
     std::error_code directory_error;
-    std::filesystem::create_directories(output_, directory_error);
-    if (directory_error || !std::filesystem::is_directory(output_)) {
+    std::filesystem::create_directories(long_path(output_), directory_error);
+    if (directory_error || !std::filesystem::is_directory(long_path(output_))) {
         error("output_root_unavailable");
         return finish(evidence_failure_exit_code, CheckMessage::output_root_unavailable);
     }

@@ -64,9 +64,14 @@ $runtime = 'C:\ruta\audio-qa\bin\ayther_runtime.exe'
   y entradas, su estado inicial se descomprime completo, como lo hará el Runtime antes de
   restaurarlo. Un estado dañado se rechaza con `take_initial_state_invalid: --take[i]`.
 - `--request-id` es opcional; una repetición intencional debe usar otra identidad.
+  Admite hasta 256 bytes de texto imprimible: una identidad más larga se rechaza antes de
+  crear el destino con `request_id_too_long: --request-id`, y una con caracteres de
+  control, con `request_id_invalid: --request-id`.
   `--trust-registry` sólo puede omitirse cuando la política efectiva permite abrir
   ese pack sin registro. La raíz `--output` mantiene el ledger y crea una ejecución
-  exclusiva sin reemplazar las anteriores.
+  exclusiva sin reemplazar las anteriores. La evidencia de cada toma se escribe y se
+  reabre por la forma extendida de su ruta (`\\?\`), así que una raíz larga no deja
+  fragmentos por encima de los 260 caracteres de `MAX_PATH` sin publicar.
 
 Antes de admitir la solicitud, cada valor efectivo se escribe con su origen:
 `audio_qa_effective: <clave>=<valor> source=explicit|play_manifest|reference|environment|default|generated`.

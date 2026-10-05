@@ -1,6 +1,7 @@
 #include "request_ledger.h"
 
 #include "durable_file.h"
+#include "long_path.h"
 #include "model_toml.h"
 
 #include <algorithm>
@@ -301,8 +302,10 @@ RequestLedgerOpenResult open_request_ledger(const std::filesystem::path &output_
             return RequestLedgerError::invalid_root;
         }
         const auto path = output_root / "request-ledger.toml";
+        // D-12: read through the extended form of the path, which has no MAX_PATH limit.
+        const auto native = long_path(path);
         std::error_code error;
-        const bool exists = std::filesystem::exists(path, error);
+        const bool exists = std::filesystem::exists(native, error);
         if (error) {
             return RequestLedgerError::io_error;
         }
@@ -310,19 +313,19 @@ RequestLedgerOpenResult open_request_ledger(const std::filesystem::path &output_
             return RequestLedgerFactory::create(path, 0, {});
         }
         error.clear();
-        const auto status = std::filesystem::symlink_status(path, error);
+        const auto status = std::filesystem::symlink_status(native, error);
         if (error || !std::filesystem::is_regular_file(status) ||
             std::filesystem::is_symlink(status)) {
             return RequestLedgerError::io_error;
         }
-        const auto size = std::filesystem::file_size(path, error);
+        const auto size = std::filesystem::file_size(native, error);
         if (error) {
             return RequestLedgerError::io_error;
         }
         if (size > max_request_ledger_bytes) {
             return RequestLedgerError::document_too_large;
         }
-        std::ifstream input(path, std::ios::binary);
+        std::ifstream input(native, std::ios::binary);
         if (!input) {
             return RequestLedgerError::io_error;
         }

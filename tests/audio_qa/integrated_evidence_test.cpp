@@ -1,7 +1,10 @@
+#include "durable_file.h"
 #include "incremental_evidence.h"
 #include "integrated_evidence.h"
+#include "long_path.h"
 #include "pcm_message.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdio>
@@ -9,6 +12,7 @@
 #include <optional>
 #include <span>
 #include <stdexcept>
+#include <string>
 #include <variant>
 #include <vector>
 
@@ -44,7 +48,8 @@ qa::AudioChunk audio_chunk() {
 
 void remove_tree(const std::filesystem::path &path) {
     std::error_code ignored;
-    std::filesystem::remove_all(path, ignored);
+    // D-12: the fixture holds paths longer than MAX_PATH.
+    std::filesystem::remove_all(qa::long_path(path), ignored);
 }
 
 } // namespace
@@ -201,6 +206,68 @@ int main() {
         const auto inner_gap = gap_writer->append_pcm(segment_chunk("run-segment-gap", 2U, 3U, 1U));
         require(inner_gap && *inner_gap == qa::IntegratedEvidenceError::pcm_continuity_failed,
                 "DI-14: a gap within a segment is a loss");
+
+        // D-12 (campaign 2026-10-05; RF-2.5, RF-2.13, RNF-5): the evidence of a take is kept
+        // whatever the length of its destination. Two shapes:
+        //  - the campaign one: the run directory fits in MAX_PATH (260) but its fragments do
+        //    not (`br190\failure-sequence-rejected-state`, 263 and 270 characters);
+        //  - a destination that is itself longer than MAX_PATH.
+        const auto padded_root = [&](const char *name, const std::size_t length) {
+            auto root = fixture / name;
+            std::size_t part{};
+            while (root.native().size() + 1U < length) {
+                const auto room = length - root.native().size() - 1U;
+                root /= std::string((std::min)(room, std::size_t{40U}), char('a' + part % 26U));
+                ++part;
+            }
+            return root;
+        };
+        const auto long_take = [&](const std::filesystem::path &root, const char *run) {
+            auto opened_long = qa::open_incremental_evidence(root, run);
+            auto *long_writer = std::get_if<qa::IncrementalEvidenceWriter>(&opened_long);
+            require(long_writer != nullptr, "D-12: the evidence directory of a take opens");
+            std::vector<qa::Fact> first_batch;
+            std::vector<qa::Fact> second_batch;
+            for (std::uint64_t sequence = 1U; sequence <= 4U; ++sequence) {
+                auto value = fact(sequence);
+                value.id.run_id = run;
+                (sequence <= 2U ? first_batch : second_batch).push_back(std::move(value));
+            }
+            // The first batch is written in place, the next ones in the background.
+            const auto first_error = long_writer->append_facts(first_batch);
+            const auto second_error = long_writer->append_facts(second_batch);
+            require(!first_error && !second_error,
+                    "D-12: the facts of a take are published under a long destination");
+            auto chunk = audio_chunk();
+            chunk.run_id = run;
+            require(!long_writer->append_pcm(chunk),
+                    "D-12: the PCM of a take is published under a long destination");
+            qa::ReplayTraceSummary long_trace;
+            long_trace.observed_fact_count = 4U;
+            long_trace.loss_free = true;
+            const auto long_finish = long_writer->finish(long_trace, false);
+            const auto *long_summary = std::get_if<qa::IntegratedEvidenceSummary>(&long_finish);
+            require(long_summary != nullptr && long_summary->facts == 4U &&
+                        long_summary->pcm_blocks == 1U && long_summary->fact_integrity_complete,
+                    "D-12: the evidence of a take under a long destination is reopened whole");
+            const auto run_directory = root / "runs" / run;
+            const std::string result_text{"code = 'replay_evidence_streamed'\n"};
+            const auto published = qa::publish_durable_file(
+                run_directory / "replay-result.toml",
+                std::as_bytes(std::span{result_text.data(), result_text.size()}));
+            require(std::holds_alternative<qa::DurablePublishedFile>(published),
+                    "D-12: the result of a take is published under a long destination");
+            return (run_directory / "fragments" / "facts-00000000000000000001.aqf").native().size();
+        };
+        const char *const campaign_run = "run-5d5f960bf693f8de7c444b52a57e7fcc-take-2";
+        const auto campaign_root = padded_root("campaign", 180U);
+        std::filesystem::create_directories(campaign_root);
+        require(campaign_root.native().size() == 180U &&
+                    (campaign_root / "runs" / campaign_run).native().size() < 248U,
+                "D-12: the campaign destination is reproduced");
+        require(long_take(campaign_root, campaign_run) > 260U,
+                "D-12: the campaign fragment path passes MAX_PATH");
+        long_take(padded_root("beyond", 300U), "run-beyond-max-path");
 
         remove_tree(fixture);
         std::puts("integrated_evidence_test: passed");

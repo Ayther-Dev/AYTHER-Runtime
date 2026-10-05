@@ -1,5 +1,7 @@
 #include "request_summary_store.h"
 
+#include "long_path.h"
+
 #include <toml++/toml.hpp>
 
 #include <algorithm>
@@ -228,7 +230,9 @@ RequestSummaryReadResult parse_request_summary(std::string_view text) {
     }
 }
 
-RequestSummaryReadResult read_request_summary(const std::filesystem::path &path) {
+RequestSummaryReadResult read_request_summary(const std::filesystem::path &document_path) {
+    // D-12: read through the extended form of the path, which has no MAX_PATH limit.
+    const auto path = long_path(document_path);
     std::error_code error;
     if (!std::filesystem::exists(path, error))
         return error ? RequestSummaryReadError::unreadable : RequestSummaryReadError::missing;
@@ -248,7 +252,7 @@ DurablePublishResult write_request_summary(const std::filesystem::path &path,
                                            const RequestSummaryDocument &document,
                                            DurablePublicationLimits limits) {
     std::error_code error;
-    std::filesystem::create_directories(path.parent_path(), error);
+    std::filesystem::create_directories(long_path(path.parent_path()), error);
     if (error)
         return DurablePublishError::invalid_target;
     const auto text = format_request_summary(document);

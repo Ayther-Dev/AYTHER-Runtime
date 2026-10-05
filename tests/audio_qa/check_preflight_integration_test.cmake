@@ -190,6 +190,40 @@ rejected("profile-not-in-pack" "profile_not_in_pack: --profile"
 rejected("damaged-initial-state" "take_initial_state_invalid: --take\\[1\\]"
     --rom "${ROM_FILE}" --core "${CORE_DLL}" --take "${TAKE_FILE}" --take "${BROKEN_TAKE_FILE}")
 
+# 8. D-13 (campaign 2026-10-05, BR-191; RF-2.2, RNF-3, RNF-7): the request identity holds
+#    256 bytes. With 257 the request is rejected in the validation, in the field
+#    --request-id, with its message in es and en, and nothing is created.
+string(REPEAT "r" 256 ID_AT_LIMIT)
+string(REPEAT "r" 257 ID_BEYOND)
+check(0 "${TEST_ROOT}/request-id-256" --rom "${ROM_FILE}" --core "${CORE_DLL}"
+      --take "${TAKE_FILE}" --request-id "${ID_AT_LIMIT}")
+expect_in("${last_report}" "audio_qa_status: request_accepted: ${ID_AT_LIMIT}")
+foreach(language IN ITEMS es en)
+    set(destination "${TEST_ROOT}/rejected-request-id-257-${language}")
+    execute_process(
+        COMMAND "${CHECK_EXE}" check --runtime "${RUNTIME_EXE}" --output "${destination}"
+                --language ${language} --rom "${ROM_FILE}" --core "${CORE_DLL}"
+                --take "${TAKE_FILE}" --request-id "${ID_BEYOND}"
+        RESULT_VARIABLE code
+        OUTPUT_VARIABLE output
+        ERROR_VARIABLE errors
+        TIMEOUT 60)
+    if(NOT code EQUAL 3)
+        message(FATAL_ERROR "[request-id-257] check returned ${code}, expected 3:\n${output}${errors}")
+    endif()
+    if(language STREQUAL "es")
+        set(expected_text "--request-id: El identificador de la solicitud supera 256 bytes.")
+    else()
+        set(expected_text "--request-id: The request identifier exceeds 256 bytes.")
+    endif()
+    expect_in("${output}${errors}" "audio_qa_error: request_id_too_long: --request-id"
+              "audio_qa_message\\[${language}\\]: ${expected_text}")
+    if(EXISTS "${destination}")
+        message(FATAL_ERROR "[request-id-257] a rejected request created ${destination}")
+    endif()
+endforeach()
+message(STATUS "[preflight] request-id-257: request_id_too_long: --request-id (es, en)")
+
 # Nothing reached the user's Runtime data.
 if(EXISTS "${TEST_ROOT}/user-appdata/Ayther")
     message(FATAL_ERROR "The preflight touched the user's Runtime data")

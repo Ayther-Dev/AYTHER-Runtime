@@ -3,6 +3,7 @@
 #include "content_hash.h"
 #include "exclusive_file.h"
 #include "fact_batch.h"
+#include "long_path.h"
 #include "protocol_header.h"
 
 #include <algorithm>
@@ -57,7 +58,9 @@ std::filesystem::path fragment_path(const ExclusiveEvidenceDirectory &directory,
     return directory.path() / "fragments" / name.str();
 }
 
-bool ensure_fragment_directory(const std::filesystem::path &path) noexcept {
+bool ensure_fragment_directory(const std::filesystem::path &directory) noexcept {
+    // D-12: through the extended form of the path, which has no MAX_PATH limit.
+    const auto path = long_path(directory);
     std::error_code error;
     const auto status = std::filesystem::symlink_status(path, error);
     if (!error && std::filesystem::exists(status)) {
@@ -151,7 +154,9 @@ FactFragmentStoreResult write_fact_fragment(const ExclusiveEvidenceDirectory &di
 FactFragmentStoreResult read_fact_fragment(const std::filesystem::path &path) noexcept {
     try {
         std::error_code error;
-        const auto size = std::filesystem::file_size(path, error);
+        // D-12: read through the extended form of the path.
+        const auto native = long_path(path);
+        const auto size = std::filesystem::file_size(native, error);
         if (error) {
             return FactFragmentStoreError::io_error;
         }
@@ -162,7 +167,7 @@ FactFragmentStoreResult read_fact_fragment(const std::filesystem::path &path) no
             return FactFragmentStoreError::malformed_header;
         }
         std::vector<std::byte> document(static_cast<std::size_t>(size));
-        std::ifstream input(path, std::ios::binary);
+        std::ifstream input(native, std::ios::binary);
         if (!input ||
             !input.read(reinterpret_cast<char *>(document.data()),
                         static_cast<std::streamsize>(document.size())) ||

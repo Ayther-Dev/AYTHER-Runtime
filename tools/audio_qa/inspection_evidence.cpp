@@ -1,5 +1,7 @@
 #include "inspection_evidence.h"
 
+#include "long_path.h"
+
 #include <toml++/toml.hpp>
 
 #include <algorithm>
@@ -346,7 +348,9 @@ TraversalReadResult parse_traversal(std::string_view text) {
     }
 }
 
-TraversalReadResult read_traversal(const std::filesystem::path &path) {
+TraversalReadResult read_traversal(const std::filesystem::path &document_path) {
+    // D-12: read through the extended form of the path, which has no MAX_PATH limit.
+    const auto path = long_path(document_path);
     std::error_code error;
     if (!std::filesystem::exists(path, error))
         return error ? TraversalReadError::unreadable : TraversalReadError::missing;
@@ -364,7 +368,7 @@ DurablePublishResult write_traversal(const std::filesystem::path &path,
                                      const TraversalDocument &document,
                                      DurablePublicationLimits limits) {
     std::error_code error;
-    std::filesystem::create_directories(path.parent_path(), error);
+    std::filesystem::create_directories(long_path(path.parent_path()), error);
     if (error)
         return DurablePublishError::invalid_target;
     const auto text = format_traversal(document);

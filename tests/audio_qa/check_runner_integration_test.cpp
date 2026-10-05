@@ -6,6 +6,7 @@
 //   BR-069 (RF-2.3)  phases reach the observer in order.
 //   BR-060 (RF-2.11) a material changed between validation and its take stops it.
 #include "check_runner.h"
+#include "long_path.h"
 #include "recording_header.h"
 #include "request_ledger.h"
 
@@ -153,6 +154,46 @@ void failure_stops_the_request(const Paths &paths) {
            "RF-2.12: the joint result does not credit a linear reproduction");
 }
 
+// D-12 (campaign 2026-10-05; RF-2.5, RF-2.13, RNF-5): `br190\failure-sequence-rejected-state`
+// with the length of its destination, 180 characters. The fragments of each take then pass
+// MAX_PATH (263 and 270 characters) while their run directories do not; the finished take A
+// lost its facts (`fact_publication_failed`). Every finished take keeps its evidence.
+void long_destination_keeps_every_take(const Paths &paths) {
+    auto root = paths.root / "long";
+    for (char part = 'a'; root.native().size() + 1U < 180U; ++part)
+        root /= std::string((std::min)(std::size_t{40U}, 180U - root.native().size() - 1U), part);
+    std::filesystem::create_directories(root);
+    expect(root.native().size() == 180U, "D-12: the campaign destination length is reproduced");
+    Recorder observer;
+    qa::CancelToken cancel;
+    auto long_request = request(
+        paths, "", {paths.take.string(), paths.rejected_state.string(), paths.take.string()},
+        "failure-sequence-rejected-state");
+    long_request.output = root.string();
+    const auto outcome = qa::run_check(long_request, observer, cancel);
+    const auto *first = ran(outcome, 0);
+    const auto *second = ran(outcome, 1);
+    expect(first != nullptr && first->playback.kind == qa::PlaybackKind::natural_end &&
+               first->evidence.complete,
+           "D-12, RF-2.5: the finished take keeps its evidence under a long destination");
+    expect(!observer.reported("evidence_error=fact_publication_failed"),
+           "D-12: no take loses the publication of its facts");
+    expect(second != nullptr && second->playback.kind == qa::PlaybackKind::failed &&
+               second->playback.diagnostic == "game_state_restore_failed",
+           "D-12, RF-2.5: the failed take keeps its own diagnostic");
+    for (const auto &line : observer.lines) {
+        if (line.rfind("audio_qa_replay:", 0) != 0U)
+            continue;
+        std::string shown{"D-12 take"};
+        for (const auto *key : {" position=", " durable_facts=", " evidence_error=", " status="}) {
+            const auto at = line.find(key);
+            if (at != std::string::npos)
+                shown += line.substr(at, line.find(' ', at + 1U) - at);
+        }
+        std::cout << shown << std::endl;
+    }
+}
+
 // D-2 (campaign 2026-10-04; RF-2.2): a take whose compressed initial state is damaged is found
 // before admission, in its field, and nothing runs.
 void damaged_state_is_rejected_before_admission(const Paths &paths) {
@@ -281,10 +322,12 @@ int main(int argc, char **argv) {
     }
     const Paths paths{argv[1], argv[2], argv[3], argv[4], argv[5], argv[6], argv[7]};
     std::error_code ignored;
-    std::filesystem::remove_all(paths.root, ignored);
+    // D-12: the root holds paths longer than MAX_PATH.
+    std::filesystem::remove_all(qa::long_path(paths.root), ignored);
     std::filesystem::create_directories(paths.root);
     phases_in_order(paths);
     failure_stops_the_request(paths);
+    long_destination_keeps_every_take(paths);
     damaged_state_is_rejected_before_admission(paths);
     cancellation_reaches_the_runtime(paths);
     changed_material_stops_its_take(paths);
