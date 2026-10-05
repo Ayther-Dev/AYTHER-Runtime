@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -36,6 +37,85 @@ void emit(qa::ReplayTraceCollector &collector, const observation::FactId id,
                                      {},
                                      occurrence == 0U ? std::span<const observation::FieldView>{}
                                                       : std::span{&field, 1U}});
+}
+
+// Spec 002, DI-15 (D-11): a recovery produces silently and its Engine facts are not evidence
+// (plan D14). A gap the run declares as an exclusion is not a loss; a gap it does not declare
+// still is, and a cause that resolves to an excluded fact counts as excluded, not unresolved.
+int declared_exclusions(const std::vector<qa::Fact> &connected) {
+    int failures = 0;
+    const auto expect = [&failures](const bool condition, const std::string &what) {
+        if (!condition) {
+            ++failures;
+            std::fprintf(stderr, "FAIL: %s\n", what.c_str());
+        }
+    };
+    const auto fact = [](const std::uint64_t sequence, const std::vector<std::uint64_t> &causes) {
+        const std::vector<observation::Cause> engine_causes = [&causes] {
+            std::vector<observation::Cause> result;
+            for (const auto cause : causes)
+                result.emplace_back(observation::FactId{9, cause});
+            return result;
+        }();
+        const observation::FactView view{
+            {9, sequence}, "frame_observation", {}, engine_causes, {}, {}};
+        auto copied = qa::copy_replay_trace_fact("run-171", view);
+        if (!copied)
+            throw std::runtime_error{"exclusion_fixture_rejected"};
+        return *copied;
+    };
+    const auto exclusion = [](const std::uint64_t inspection_sequence, const std::uint64_t from,
+                              const std::uint64_t to, std::string cause = "silent_recovery") {
+        return qa::make_fact_exclusion_fact(
+            "run-171", inspection_sequence,
+            qa::FactExclusion{1U, "engine-9", from, to, std::move(cause)});
+    };
+    // Producer 9: 1 to 3 before the recovery, 4 to 7 produced silently (absent), 8 to 10 after
+    // the resume; 8 is caused by 5, a fact of the recovery.
+    auto trace = connected;
+    for (const std::uint64_t sequence : {1U, 2U, 3U})
+        trace.push_back(fact(sequence, {}));
+    trace.push_back(fact(8U, {5U}));
+    trace.push_back(fact(9U, {8U}));
+    trace.push_back(fact(10U, {}));
+    const auto summary = [](std::vector<qa::Fact> facts) {
+        return qa::summarize_replay_facts(facts, true);
+    };
+
+    expect(!summary(trace).loss_free, "DI-15: an undeclared gap of sequences is still a loss");
+    auto declared = trace;
+    declared.push_back(exclusion(1U, 4U, 7U));
+    const auto excluded = summary(declared);
+    expect(excluded.loss_free,
+           "DI-15: a gap declared as an exclusion of a silent recovery is not a loss");
+    expect(excluded.causally_connected,
+           "DI-15: the declared exclusion leaves the trace causally connected");
+    expect(excluded.observed_fact_count == declared.size(),
+           "DI-15: the declaration is counted as one more fact of the run");
+    auto declared_first = declared;
+    std::rotate(declared_first.begin(), declared_first.end() - 1, declared_first.end());
+    expect(summary(declared_first).loss_free,
+           "DI-15: a declaration read before the facts it explains still excludes them");
+
+    auto partial = trace;
+    partial.push_back(exclusion(1U, 4U, 6U));
+    expect(!summary(partial).loss_free, "DI-15: a gap only partly declared is still a loss");
+    auto covering = trace;
+    covering.push_back(exclusion(1U, 3U, 7U));
+    expect(!summary(covering).loss_free,
+           "DI-15: a declaration that covers a fact kept in the trace is not an exclusion");
+    auto unexplained_cause = declared;
+    unexplained_cause.push_back(fact(11U, {20U}));
+    expect(!summary(unexplained_cause).loss_free,
+           "DI-15: a cause that is neither kept nor declared is still unresolved");
+    auto other_cause = trace;
+    other_cause.push_back(exclusion(1U, 4U, 7U, "frame_dropped"));
+    expect(!summary(other_cause).loss_free,
+           "DI-15: only the cause silent_recovery declares an exclusion");
+    auto twice = declared;
+    twice.push_back(exclusion(2U, 6U, 7U));
+    expect(!summary(twice).loss_free, "DI-15: a sequence is excluded only once");
+    return failures;
 }
 
 } // namespace
@@ -185,6 +265,9 @@ int main() {
         require(long_trace.valid() && long_summary.causally_connected &&
                     long_summary.observed_fact_count == 5007U && long_summary.occurrence == 11U,
                 "trace_above_old_4096_limit_was_lost");
+
+        if (declared_exclusions(collector.facts()) != 0)
+            throw std::runtime_error{"declared_exclusions_failed"};
 
         qa::ReplayTraceCollector wrong_run{"run-171"};
         const observation::FactView fact{{3, 1}, "detector_input", {}, {}, {}, {}};

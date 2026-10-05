@@ -2,6 +2,7 @@
 
 #include "audio_integrity.h"
 #include "durable_file.h"
+#include "inspection_fact_builder.h"
 #include "request_outcome.h"
 #include "runtime_protocol_v11.h"
 
@@ -74,6 +75,9 @@ struct TraversalDocument {
     std::vector<TraversalInterruption> interruptions;
     // DI-14: absent in a traversal 1.1, whose audio segments are unknown.
     std::optional<std::vector<TraversalAudioSegment>> audio_segments;
+    // DI-15: the Engine facts each recovery excluded, per producer. Absent in a traversal 1.1
+    // or in an earlier 1.2: nothing was declared, and a gap in its facts stays a loss.
+    std::optional<std::vector<FactExclusion>> fact_exclusions;
     bool operator==(const TraversalDocument &) const = default;
 };
 

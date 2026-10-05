@@ -1109,6 +1109,8 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
         // after the natural end opens a post-end inspection on a session re-armed from the
         // checkpoints. Its production is silent and its facts belong to the new run.
         const auto rearm = [&]() -> bool {
+            // DI-15: what the frozen session excluded belongs to the confirmed run.
+            (void)gate.take_exclusions();
             ++post_end_runs;
             current_run_id = result.run_id + "-inspection-" + std::to_string(post_end_runs);
             if (protocol_v11)
@@ -1227,6 +1229,22 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                 return ri::RecoveryOutcome::failed_restored;
             }
             return ri::RecoveryOutcome::failed_unrecoverable;
+        };
+
+        // Spec 002, DI-15 (D-11): the Engine facts a recovery produced silently are not evidence
+        // (plan D14); the run declares them, per producer, as excluded by `silent_recovery`. A
+        // post-end inspection keeps no Engine fact at all: it declares nothing.
+        std::uint64_t recoveries{};
+        const auto declare_exclusions = [&] {
+            const auto excluded = gate.take_exclusions();
+            ++recoveries;
+            if (!protocol_v11 || post_end_runs != 0U)
+                return;
+            for (const auto &interval : excluded)
+                (void)writer.push_fact(qa::make_fact_exclusion_fact(
+                    current_run_id, ++inspection_sequence,
+                    {recoveries, "engine-" + std::to_string(interval.producer), interval.first,
+                     interval.last, std::string{qa::silent_recovery_cause}}));
         };
 
         // Spec 002 (plan §5.11, contracts.md C1-5): closes the production of the traversal and
@@ -1673,6 +1691,8 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                 push_debug();
                 const auto target = controller.target().value_or(0U);
                 const auto outcome = recover(target);
+                // The recovery drained: its producers are quiescent.
+                declare_exclusions();
                 if (outcome != ri::RecoveryOutcome::presented)
                     emit_event("recover_failed", target, controller.position().value_or(0U),
                                visits[controller.position().value_or(0U)]);

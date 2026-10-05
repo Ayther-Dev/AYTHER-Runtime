@@ -298,6 +298,9 @@ CheckExecutionResult execute_check_replay(const EffectiveRequest &effective, con
 
         CheckExecutionEvidence evidence;
         std::vector<InspectionEvent> inspection_events;
+        // DI-15: the Engine facts each recovery of the take excluded, as the Runtime declared
+        // them; traversal.toml records them next to the audio segments.
+        std::vector<FactExclusion> fact_exclusions;
         // DI-14: an inspection keeps its PCM per linear segment; a linear traversal (or a
         // Runtime that does not say) still needs one single interval.
         PcmContinuity pcm_continuity = PcmContinuity::single;
@@ -360,9 +363,12 @@ CheckExecutionResult execute_check_replay(const EffectiveRequest &effective, con
                 if (facts == nullptr)
                     return CheckExecutionError::evidence_stream_invalid;
                 // C2: inspection events build the traversal of the take (RF-5.8).
-                for (const auto &fact : *facts)
+                for (const auto &fact : *facts) {
                     if (auto event = read_inspection_event(fact))
                         inspection_events.push_back(std::move(*event));
+                    else if (auto exclusion = read_fact_exclusion(fact))
+                        fact_exclusions.push_back(std::move(*exclusion));
+                }
                 if (!evidence.preservation_error) {
                     if (const auto error = evidence_writer->append_facts(*facts))
                         evidence.preservation_error = *error;
@@ -425,6 +431,7 @@ CheckExecutionResult execute_check_replay(const EffectiveRequest &effective, con
                          !evidence.preservation_error)
                     // An inspection is complete only if its audio is that of its segments.
                     evidence.preservation_error = IntegratedEvidenceError::pcm_segment_mismatch;
+                traversal.fact_exclusions = fact_exclusions;
                 if (!std::holds_alternative<DurablePublishedFile>(
                         write_traversal(std::filesystem::path{effective.output} / "runs" / run_id /
                                             "traversal.toml",
@@ -463,13 +470,11 @@ CheckExecutionResult execute_check_replay(const EffectiveRequest &effective, con
             return CheckExecutionError::result_identity_mismatch;
         if (result.succeeded && result.inputs_consumed != result.recording_frames)
             return CheckExecutionError::result_input_mismatch;
-        // An inspection produced frames silently, and their facts are not evidence (plan D14):
-        // its reopened trace lacks them. That is reported as evidence with losses (`data_lost`),
-        // never as a Runtime that contradicts its own result.
-        const bool inspected = pcm_continuity == PcmContinuity::per_segment;
+        // DI-15 (D-11): the facts an inspection produced silently are declared exclusions, and
+        // its reopened trace is audited like any other: an undeclared gap is a loss.
         if (result.succeeded && evidence.preserved &&
-            ((!inspected && result.assignment_count > 0U && !result.trace.causally_connected) ||
-             (!inspected && !result.trace.loss_free) ||
+            ((result.assignment_count > 0U && !result.trace.causally_connected) ||
+             !result.trace.loss_free ||
              evidence.preserved->facts != result.trace.observed_fact_count ||
              evidence.preserved->pcm_blocks == 0U))
             return CheckExecutionError::result_evidence_mismatch;

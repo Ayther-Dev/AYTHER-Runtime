@@ -9,6 +9,7 @@
 #include "control_message.h"
 #include "fact_batch.h"
 #include "inherited_channel.h"
+#include "inspection_fact_builder.h"
 #include "inspection_facts.h"
 #include "pcm_message.h"
 #include "protocol_header.h"
@@ -91,6 +92,11 @@ struct Session {
     std::vector<std::pair<std::uint64_t, std::uint64_t>> pcm_segment_jumps;
     // DI-14: the segments of the PCM, in the order of their first chunk.
     std::vector<std::uint64_t> pcm_segments;
+    // D-11 (DI-15): every fact batch and PCM chunk of the take's own run, as received, so that
+    // a test can keep and audit them as the supervisor does.
+    std::vector<std::vector<Fact>> run_fact_batches;
+    std::vector<AudioChunk> run_pcm;
+    std::vector<FactExclusion> fact_exclusions;
     std::optional<AudioChunk> last_pcm;
     std::size_t statuses{};
     bool stream_valid{true};
@@ -250,7 +256,11 @@ inline Session run(const Options &options) {
                 session.stream_valid = false;
                 break;
             }
+            if (!facts->empty() && facts->front().id.run_id == run_id)
+                session.run_fact_batches.push_back(*facts);
             for (const auto &fact : *facts) {
+                if (auto exclusion = read_fact_exclusion(fact))
+                    session.fact_exclusions.push_back(std::move(*exclusion));
                 if (!fact_ids
                          .insert({fact.id.run_id, fact.id.producer_id, fact.id.producer_sequence})
                          .second)
@@ -270,6 +280,8 @@ inline Session run(const Options &options) {
             if (const auto *chunk = std::get_if<AudioChunk>(&decoded)) {
                 session.pcm_bytes += chunk->bytes.size();
                 ++session.pcm_chunks;
+                if (chunk->run_id == run_id)
+                    session.run_pcm.push_back(*chunk);
                 if (session.pcm_segments.empty() || session.pcm_segments.back() != chunk->segment)
                     session.pcm_segments.push_back(chunk->segment);
                 const bool new_segment =

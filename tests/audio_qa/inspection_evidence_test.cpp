@@ -220,6 +220,31 @@ void audio_per_segment() {
                !std::get<qa::TraversalDocument>(legacy).audio_segments &&
                std::get<qa::TraversalDocument>(legacy).visits == document.visits,
            "RF-2.6: a traversal 1.1 still reads, with its audio segments unknown");
+
+    // DI-15: the facts each recovery excluded, per producer, next to the audio segments. An
+    // earlier 1.2 document (D-9) declared none: it still reads, with nothing declared.
+    auto excluding = document;
+    excluding.fact_exclusions =
+        std::vector<qa::FactExclusion>{{1U, "engine-3", 17U, 32U, "silent_recovery"},
+                                       {1U, "engine-5", 4U, 4U, "silent_recovery"},
+                                       {2U, "engine-3", 40U, 5000000000U, "silent_recovery"}};
+    const auto excluding_text = qa::format_traversal(excluding);
+    expect(excluding_text.find("[[fact_exclusions]]") != std::string::npos &&
+               excluding_text.find("sequence_to = '5000000000'") != std::string::npos &&
+               excluding_text.find("cause = 'silent_recovery'") != std::string::npos,
+           "DI-15: traversal.toml 1.2 declares each exclusion with its cause");
+    const auto excluding_parsed = qa::parse_traversal(excluding_text);
+    expect(std::holds_alternative<qa::TraversalDocument>(excluding_parsed) &&
+               std::get<qa::TraversalDocument>(excluding_parsed) == excluding,
+           "DI-15: the exclusions read back unchanged");
+    const auto earlier = qa::parse_traversal(text);
+    expect(std::holds_alternative<qa::TraversalDocument>(earlier) &&
+               !std::get<qa::TraversalDocument>(earlier).fact_exclusions,
+           "DI-15: an earlier 1.2 traversal reads with no exclusion declared");
+    auto unknown_cause = excluding_text;
+    unknown_cause.replace(unknown_cause.find("silent_recovery"), 15, "frame_dropped__");
+    expect(std::holds_alternative<qa::TraversalReadError>(qa::parse_traversal(unknown_cause)),
+           "DI-15: an exclusion with another cause is not an exclusion");
 }
 
 std::string read_text(const std::filesystem::path &path) {

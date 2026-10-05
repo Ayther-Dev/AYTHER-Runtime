@@ -20,6 +20,9 @@ namespace {
 
 constexpr std::uint32_t unresolved_token = (std::numeric_limits<std::uint32_t>::max)();
 constexpr std::uint32_t missing_token = unresolved_token - 1U;
+// Spec 002, DI-15: a sequence a silent recovery excluded (declared, never kept). A cause on it
+// resolves without a chain: it counts as excluded, not as unresolved.
+constexpr std::uint32_t excluded_token = unresolved_token - 2U;
 constexpr std::size_t producer_slots = 64U;
 
 struct CompactId {
@@ -127,7 +130,8 @@ struct ReplayFactTraceAccumulator::Impl {
         if (id.sequence > producer.size() ||
             producer[static_cast<std::size_t>(id.sequence - 1U)] == missing_token)
             return unresolved_token;
-        return producer[static_cast<std::size_t>(id.sequence - 1U)];
+        const auto value = producer[static_cast<std::size_t>(id.sequence - 1U)];
+        return value == excluded_token ? 0U : value;
     }
 
     [[nodiscard]] std::uint32_t request_ancestor(std::uint32_t token_value) const noexcept {
@@ -148,7 +152,7 @@ struct ReplayFactTraceAccumulator::Impl {
 
     [[nodiscard]] std::uint32_t add_chain(const TraceStage stage, const CompactId id,
                                           const std::uint32_t parent, const std::uint64_t value) {
-        if (chains.size() >= missing_token)
+        if (chains.size() >= excluded_token)
             throw std::bad_alloc{};
         const auto index = static_cast<std::uint32_t>(chains.size());
         const auto request = stage == TraceStage::request ? index : request_ancestor(parent);
@@ -282,6 +286,61 @@ struct ReplayFactTraceAccumulator::Impl {
         waiting.erase(found);
     }
 
+    // Resolves every fact whose causes are all known, in order; the others wait.
+    void process(std::deque<PendingFact> &ready) {
+        while (!ready.empty() && valid) {
+            auto current = std::move(ready.front());
+            ready.pop_front();
+            if (!all_causes_resolved(current)) {
+                defer(std::move(current));
+                continue;
+            }
+            const auto value = resolve(current);
+            publish(current, value, ready);
+        }
+    }
+
+    // DI-15: the declared interval of one producer was produced silently and is not evidence.
+    // Each excluded sequence must be absent from the trace and excluded only once; the facts
+    // that waited on one of them resolve now.
+    void exclude(const FactExclusion &exclusion) {
+        const auto producer = producer_number(exclusion.producer);
+        if (!producer || exclusion.sequence_to > max_replay_trace_facts) {
+            valid = false;
+            return;
+        }
+        auto &slots = tokens[*producer - 1U];
+        if (slots.size() < exclusion.sequence_to)
+            slots.resize(static_cast<std::size_t>(exclusion.sequence_to), missing_token);
+        for (auto sequence = exclusion.sequence_from; sequence <= exclusion.sequence_to;
+             ++sequence) {
+            auto &slot = slots[static_cast<std::size_t>(sequence - 1U)];
+            if (slot != missing_token) {
+                valid = false;
+                return;
+            }
+            slot = excluded_token;
+        }
+        std::deque<PendingFact> ready;
+        for (auto entry = waiting.begin(); entry != waiting.end();) {
+            const auto id = entry->first;
+            if (id.producer != *producer || id.sequence < exclusion.sequence_from ||
+                id.sequence > exclusion.sequence_to) {
+                ++entry;
+                continue;
+            }
+            for (const auto dependent : entry->second) {
+                const auto pending = unresolved.find(dependent);
+                if (pending != unresolved.end()) {
+                    ready.push_back(std::move(pending->second));
+                    unresolved.erase(pending);
+                }
+            }
+            entry = waiting.erase(entry);
+        }
+        process(ready);
+    }
+
     void defer(PendingFact fact) {
         const auto id = fact.id;
         const auto inserted = unresolved.emplace(id, std::move(fact));
@@ -323,11 +382,21 @@ bool ReplayFactTraceAccumulator::consume(const Fact &fact) noexcept {
         return false;
     try {
         // Spec 002 (contracts.md C2): the Runtime's own inspection facts travel in the same
-        // batches, but they are not part of the audio trace.
+        // batches, but they are not part of the audio trace. A `fact_exclusion` (DI-15) declares
+        // the Engine facts of a silent recovery: their gap is an exclusion, not a loss.
         if (fact.id.producer_id == inspection_producer) {
-            if (fact.id.run_id != impl_->run_id || fact.id.producer_sequence == 0U ||
-                (fact.kind != "inspection_event" && fact.kind != "render_frame" &&
-                 fact.kind != "render_summary"))
+            if (fact.id.run_id != impl_->run_id || fact.id.producer_sequence == 0U)
+                return impl_->valid = false;
+            if (fact.kind == "fact_exclusion") {
+                const auto exclusion = read_fact_exclusion(fact);
+                if (!exclusion)
+                    return impl_->valid = false;
+                ++impl_->fact_count;
+                impl_->exclude(*exclusion);
+                return impl_->valid;
+            }
+            if (fact.kind != "inspection_event" && fact.kind != "render_frame" &&
+                fact.kind != "render_summary")
                 return impl_->valid = false;
             ++impl_->fact_count;
             return true;
@@ -364,16 +433,7 @@ bool ReplayFactTraceAccumulator::consume(const Fact &fact) noexcept {
         ++impl_->fact_count;
         std::deque<Impl::PendingFact> ready;
         ready.push_back(std::move(compact));
-        while (!ready.empty() && impl_->valid) {
-            auto current = std::move(ready.front());
-            ready.pop_front();
-            if (!impl_->all_causes_resolved(current)) {
-                impl_->defer(std::move(current));
-                continue;
-            }
-            const auto value = impl_->resolve(current);
-            impl_->publish(current, value, ready);
-        }
+        impl_->process(ready);
         return impl_->valid;
     } catch (...) {
         impl_->valid = false;
@@ -388,6 +448,7 @@ ReplayFactTraceAccumulator::summarize(const bool transport_loss_free) const noex
         return result;
     result = impl_->complete;
     result.observed_fact_count = impl_->fact_count;
+    // DI-15: a declared exclusion is not a gap; any other absent sequence is a loss.
     bool sequences_complete = true;
     for (const auto &producer : impl_->tokens)
         for (const auto token : producer)

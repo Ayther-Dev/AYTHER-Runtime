@@ -16,7 +16,8 @@ namespace ayther::audio_qa {
 namespace {
 
 constexpr std::int64_t traversal_schema_version = 1;
-// 1.2 (spec 002, DI-14) adds `audio_segments`; a 1.1 document reads without them.
+// 1.2 (spec 002, DI-14) adds `audio_segments` and (DI-15) `fact_exclusions`; a 1.1 document,
+// or an earlier 1.2 one, reads without them.
 constexpr std::int64_t traversal_schema_minor = 2;
 constexpr std::uintmax_t max_traversal_bytes = 64U * 1024U * 1024U;
 
@@ -217,6 +218,17 @@ std::string format_traversal(const TraversalDocument &document) {
                             {"pcm_blocks", static_cast<std::int64_t>(segment.pcm_blocks)}});
         table.insert("audio_segments", std::move(audio));
     }
+    if (document.fact_exclusions) {
+        toml::array exclusions;
+        for (const auto &exclusion : *document.fact_exclusions)
+            exclusions.push_back(
+                toml::table{{"recovery", static_cast<std::int64_t>(exclusion.recovery)},
+                            {"producer", exclusion.producer},
+                            {"sequence_from", std::to_string(exclusion.sequence_from)},
+                            {"sequence_to", std::to_string(exclusion.sequence_to)},
+                            {"cause", exclusion.cause}});
+        table.insert("fact_exclusions", std::move(exclusions));
+    }
     std::ostringstream output;
     output << table << '\n';
     return output.str();
@@ -306,6 +318,27 @@ TraversalReadResult parse_traversal(std::string_view text) {
                                           *blocks});
             }
             document.audio_segments = std::move(audio_segments);
+        }
+        // DI-15: absent in 1.1 and in an earlier 1.2; when present every entry is complete.
+        if (table.contains("fact_exclusions")) {
+            const auto *declared = tables(table, "fact_exclusions");
+            if (declared == nullptr)
+                return TraversalReadError::invalid;
+            std::vector<FactExclusion> exclusions;
+            for (const auto &node : *declared) {
+                const auto &entry = *node.as_table();
+                const auto recovery = unsigned_value(entry["recovery"]);
+                const auto producer = entry["producer"].value<std::string>();
+                const auto from = decimal_value(entry["sequence_from"]);
+                const auto to = decimal_value(entry["sequence_to"]);
+                const auto cause = entry["cause"].value<std::string>();
+                if (!recovery || *recovery == 0U || !producer ||
+                    !producer->starts_with("engine-") || !from || *from == 0U || !to ||
+                    *from > *to || !cause || *cause != silent_recovery_cause)
+                    return TraversalReadError::invalid;
+                exclusions.push_back({*recovery, *producer, *from, *to, *cause});
+            }
+            document.fact_exclusions = std::move(exclusions);
         }
         return document;
     } catch (const toml::parse_error &) {

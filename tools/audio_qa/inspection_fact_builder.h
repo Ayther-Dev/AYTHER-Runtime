@@ -45,4 +45,28 @@ struct RenderFrameRecord {
 [[nodiscard]] Fact make_render_frame_fact(std::string run_id, std::uint64_t producer_sequence,
                                           const RenderFrameRecord &record);
 
+// Spec 002, DI-15 (evidence 1.2): the Engine facts a recovery produced silently are not evidence
+// (plan D14); each recovery declares, per producer, the interval of sequences it excluded and
+// why. The audit takes a declared gap as an exclusion, never as a loss; an undeclared gap is
+// still a loss.
+inline constexpr std::string_view silent_recovery_cause = "silent_recovery";
+
+struct FactExclusion {
+    // Order of the recovery in the run, from 1.
+    std::uint64_t recovery{};
+    // The Engine producer, as in the fact ids (`engine-<n>`).
+    std::string producer;
+    // The excluded sequences, both ends included.
+    std::uint64_t sequence_from{};
+    std::uint64_t sequence_to{};
+    std::string cause{silent_recovery_cause};
+    bool operator==(const FactExclusion &) const = default;
+};
+
+[[nodiscard]] Fact make_fact_exclusion_fact(std::string run_id, std::uint64_t producer_sequence,
+                                            const FactExclusion &exclusion);
+// A `fact_exclusion` with every field, a recovery from 1, an `engine-` producer, a
+// non-empty interval from 1 and the cause `silent_recovery`; anything else is not one.
+[[nodiscard]] std::optional<FactExclusion> read_fact_exclusion(const Fact &fact);
+
 } // namespace ayther::audio_qa

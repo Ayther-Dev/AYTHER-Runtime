@@ -266,11 +266,11 @@ IncrementalEvidenceWriter::finish(const ReplayTraceSummary &transport_trace,
     if (impl_->pcm_artifacts.size() != impl_->pcm_blocks || reopened_pcm_bytes != impl_->pcm_bytes)
         return IntegratedEvidenceError::pcm_reopen_failed;
 
+    // DI-15 (D-11): the reopened fragments carry the exclusions each silent recovery declared;
+    // a declared gap is not a loss, an undeclared one is, for every traversal.
     impl_->final_trace = reopened_trace.summarize(transport_trace.loss_free);
-    // An inspection lacks the facts of its silent production (plan D14): its reopened trace is
-    // kept and reported with its losses (`relationships_reopened = false`), not refused here.
-    if (require_hd_relationships && continuity == PcmContinuity::single &&
-        transport_trace.loss_free && !impl_->final_trace.causally_connected)
+    if (require_hd_relationships && transport_trace.loss_free &&
+        !impl_->final_trace.causally_connected)
         return IntegratedEvidenceError::relationship_reopen_failed;
     return IntegratedEvidenceSummary{impl_->directory.path(),
                                      impl_->facts,

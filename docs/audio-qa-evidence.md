@@ -77,7 +77,7 @@ por `run_id`:
 
 ## Recorridos, visitas y resumen
 
-- **`traversal.toml`** (esquema 1.2, uno por recorrido; se siguen leyendo los 1.1, cuyos tramos de audio quedan como desconocidos) describe cómo se recorrió la toma, y se reescribe de forma duradera al confirmar el resultado:
+- **`traversal.toml`** (esquema 1.2, uno por recorrido; se siguen leyendo los 1.1, cuyos tramos de audio y exclusiones quedan como desconocidos) describe cómo se recorrió la toma, y se reescribe de forma duradera al confirmar el resultado:
   - el tipo: `linear`, `inspection` o `post_end_inspection`;
   - los tramos lineales;
   - las visitas a frames, cada una con su número de visita;
@@ -88,12 +88,18 @@ por `run_id`:
   - el control: `pause`, `resume`, `step_forward`, `step_back`, `recover_failed`, `overlay_toggle`, `interrupted`, `recovered` o `advance_take`;
   - el frame antes y después, la visita y el tiempo de toma.
 - **`render_frame`.** Cada visita a un frame, producido o recuperado, genera un hecho de esta clase con el frame, la visita, si se pudo componer o el motivo, el número de ocurrencias, y el tiempo de procesamiento y los FPS instantáneos cuando se midieron. Una visita repetida tiene otro número de visita. Un frame en pausa no genera registros nuevos.
-- **Producción silenciosa.** Los hechos y el PCM producidos en modo silencioso, al navegar o recuperar, no entran en la evidencia: el Runtime los descarta en su sumidero.
+- **Producción silenciosa.** Los hechos y el PCM producidos en modo silencioso, al navegar o recuperar, no entran en la evidencia: el Runtime los descarta en su sumidero y declara los hechos descartados (véase «Hechos excluidos»).
 - **Audio por tramos (evidencia 1.2).** El PCM de una toma se escribe por tramos lineales: el tramo 0 empieza con la toma y el Runtime abre el siguiente en cada reanudación. Cada bloque `.aqp` nombra su tramo y nunca abarca dos.
   - `traversal.toml` 1.2 añade `audio_segments`: por tramo, `segment`, los frames que se reprodujeron en él (`frame_from`, `frame_to`), la línea de tiempo y la tasa, el intervalo de muestras (`sample_begin`, `sample_end`, decimales) y los bloques que lo forman. Un conmutador del registro durante la reproducción parte el tramo del recorrido, pero no el de audio: ambos quedan en el mismo tramo de audio.
   - La continuidad del PCM se audita dentro de cada tramo. En un recorrido `inspection`, un salto entre dos tramos no es una pérdida: un paso adelante produce frames en silencio y la línea avanza; un paso atrás restaura un checkpoint y la línea retrocede.
   - Un recorrido lineal sigue exigiendo un único intervalo continuo, aunque una pausa lo divida en tramos.
   - Un tramo con frames y sin PCM, o PCM de un tramo sin frames, deja la evidencia incompleta (`pcm_segment_mismatch`). Con todos los tramos contiguos y completos, el audio de una inspección está completo, pero nunca se acredita como audio lineal.
+- **Hechos excluidos (evidencia 1.2).** Los hechos del Engine que una recuperación produce en silencio no son evidencia, y la secuencia de sus productores queda con un hueco. Cada recuperación lo declara:
+  - el Runtime emite, al terminar la recuperación, un hecho `fact_exclusion` del productor `inspection` por cada productor del Engine afectado, con `recovery` (orden de la recuperación en el run, desde 1), `producer` (`engine-<n>`), `sequence_from` y `sequence_to` (el intervalo excluido, ambos incluidos) y `cause` (`silent_recovery`). Viaja y se conserva con los demás hechos, en los fragmentos `.aqf`;
+  - `traversal.toml` 1.2 añade `fact_exclusions`, con los mismos campos (las secuencias como decimales), junto a `audio_segments`;
+  - la auditoría de la traza trata un hueco declarado como exclusión, no como pérdida. Un hueco no declarado sigue siendo pérdida, igual que una declaración que cubre un hecho conservado, que excluye dos veces la misma secuencia o que tiene otra causa. Una causa que apunta a un hecho excluido cuenta como excluida, no como sin resolver;
+  - así una inspección cuyos únicos huecos son exclusiones declaradas tiene la evidencia completa (`loss_free`), con `traversal = inspection` y sin acreditarse como reproducción lineal;
+  - una evidencia 1.0 o 1.1, o una 1.2 anterior sin `fact_exclusions`, se sigue leyendo; como no declara nada, sus huecos siguen siendo pérdidas y la evidencia queda incompleta.
 - **`request-summary.toml`** (esquema 1.1) es el resumen confirmado y duradero de la solicitud:
   - las selecciones con su origen y su SHA-256, y `conditions_id`;
   - el resultado de cada toma por posición, con `playback`, `traversal` y `evidence` por separado;

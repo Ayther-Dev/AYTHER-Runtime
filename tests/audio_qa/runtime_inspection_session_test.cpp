@@ -17,10 +17,14 @@
 //          a pause does not change it.
 //   BR-147 (RF-7.4) the processing time is measured; without presentation there is no FPS.
 //   BR-151 (RNF-6) without inspection the take replays as before.
+//   D-11 (DI-15) the Engine facts a recovery produced silently are declared as exclusions, and
+//          the evidence of an inspected take, kept and audited as the supervisor does, is
+//          complete (without losses).
 //   D-7, D-8 (campaign 2026-10-04) with the visible presentation of SDL's offscreen driver, when
 //          the Vulkan driver offers it: a frame presented again after a step back counts once
 //          and the take ends with its terminal; the overlay shows the current phase and frame.
 // Arguments: runtime, core, ROM, fixture generator, work directory.
+#include "incremental_evidence.h"
 #include "runtime_session_harness.h"
 
 #include <algorithm>
@@ -69,6 +73,50 @@ std::string digest(const qa::ContentIdentity &identity) {
     for (const auto byte : identity.sha256)
         text += std::to_string(byte) + ".";
     return text;
+}
+
+// D-11 (DI-15): the evidence of the take kept and audited as the supervisor does: every fact
+// batch and PCM chunk of its run in a new evidence directory, reopened and audited at the
+// terminal, per segment as for an inspection. Complete means kept without losses.
+struct AuditedEvidence {
+    bool preserved{};
+    bool loss_free{};
+    bool relationships{};
+    std::string error;
+};
+
+AuditedEvidence audit_evidence(const hn::Session &session, const std::string &label) {
+    const auto *result = terminal(session);
+    if (result == nullptr)
+        return {false, false, false, "no_terminal"};
+    const auto root = base.root / (label + "-evidence");
+    std::error_code ignored;
+    fs::remove_all(root, ignored);
+    auto opened = qa::open_incremental_evidence(root, result->run_id);
+    auto *writer = std::get_if<qa::IncrementalEvidenceWriter>(&opened);
+    if (writer == nullptr)
+        return {false, false, false, "evidence_unavailable"};
+    for (const auto &batch : session.run_fact_batches)
+        if (const auto error = writer->append_facts(batch))
+            return {false, false, false, std::string{qa::integrated_evidence_error_code(*error)}};
+    for (const auto &chunk : session.run_pcm)
+        if (const auto error = writer->append_pcm(chunk))
+            return {false, false, false, std::string{qa::integrated_evidence_error_code(*error)}};
+    const auto finished = writer->finish(result->trace, result->assignment_count > 0U,
+                                         qa::PcmContinuity::per_segment);
+    if (const auto *error = std::get_if<qa::IntegratedEvidenceError>(&finished))
+        return {false, false, false, std::string{qa::integrated_evidence_error_code(*error)}};
+    const auto &summary = std::get<qa::IntegratedEvidenceSummary>(finished);
+    return {true, summary.fact_integrity_complete, summary.relationships_reopened, {}};
+}
+
+bool declared_silent_recoveries(const hn::Session &session) {
+    return !session.fact_exclusions.empty() &&
+           std::all_of(session.fact_exclusions.begin(), session.fact_exclusions.end(),
+                       [](const qa::FactExclusion &exclusion) {
+                           return exclusion.cause == "silent_recovery" &&
+                                  exclusion.sequence_from <= exclusion.sequence_to;
+                       });
 }
 
 bool has_event(const hn::Session &session, std::string_view control, std::uint64_t before,
@@ -289,6 +337,14 @@ int main(int argc, char **argv) {
     expect(back.pcm_breaks.empty() && back.pcm_segments == std::vector<std::uint64_t>{0U, 1U},
            "D-9, DI-14: the PCM before and after the steps back are two contiguous segments, got " +
                std::to_string(back.pcm_breaks.size()) + " breaks within a segment");
+    // D-11, DI-15: the facts of the silent re-simulation are declared, and the evidence of the
+    // inspected take is complete: no undeclared gap, no unresolved cause.
+    expect(declared_silent_recoveries(back),
+           "D-11, DI-15: each step back declares the facts it produced silently");
+    const auto back_evidence = audit_evidence(back, "back");
+    expect(back_evidence.preserved && back_evidence.loss_free,
+           "D-11, DI-15: the evidence of an inspection with steps back is complete, got " +
+               (back_evidence.preserved ? std::string{"loss_free=false"} : back_evidence.error));
 
     // BR-140: going back across the checkpoint of frame 59 restores it mid-take.
     const auto across = run("across", "frame=91 key space down\nafter=0 key space up\n"
@@ -304,6 +360,13 @@ int main(int argc, char **argv) {
     expect(across.pcm_breaks.empty() && across.pcm_segments == std::vector<std::uint64_t>{0U, 1U},
            "D-9, DI-14: across a checkpoint the PCM is two contiguous segments, got " +
                std::to_string(across.pcm_breaks.size()) + " breaks within a segment");
+    expect(declared_silent_recoveries(across),
+           "D-11, DI-15: going back across a checkpoint declares the facts it produced silently");
+    const auto across_evidence = audit_evidence(across, "across");
+    expect(
+        across_evidence.preserved && across_evidence.loss_free,
+        "D-11, DI-15: the evidence of an inspection across a checkpoint is complete, got " +
+            (across_evidence.preserved ? std::string{"loss_free=false"} : across_evidence.error));
 
     // BR-142: → ten times in pause produces 12..21 silently; Space from 21 plays 22 with audio.
     std::string steps = "frame=11 key space down\nafter=0 key space up\n";
@@ -325,6 +388,11 @@ int main(int argc, char **argv) {
     expect(forward.pcm_breaks.empty() && forward.pcm_segments == std::vector<std::uint64_t>{0U, 1U},
            "D-9, DI-14: the frames produced silently leave two contiguous segments, got " +
                std::to_string(forward.pcm_breaks.size()) + " breaks within a segment");
+    const auto forward_evidence = audit_evidence(forward, "forward");
+    expect(declared_silent_recoveries(forward) && forward_evidence.preserved &&
+               forward_evidence.loss_free,
+           "D-11, DI-15: the frames produced silently by → are declared and the evidence is "
+           "complete");
 
     // BR-143: damaged checkpoints; the window stays at 71, resumes and ends naturally.
     const auto damaged = run("damaged", "frame=71 key space down\nafter=0 key space up\n"
