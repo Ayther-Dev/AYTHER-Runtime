@@ -8,12 +8,49 @@ once stable compatibility guarantees are defined.
 
 > [!WARNING]
 > AYTHER Runtime is in early development. The build reports product version
-> `0.1.0-beta.9`; this is an internal prerelease and is not supported for
+> `0.1.0-beta.10`; this is an internal prerelease and is not supported for
 > production use. The Runtime–Play process
 > protocol v1 is the exception: its documented wire fields, reason identifiers,
 > and exit codes are stable within v1.
 
 ## [Unreleased]
+
+## [0.1.0-beta.10] - 2026-10-04
+
+### Added
+
+- `--probe-pack` lists the profiles the pack offers (`profiles`), and the
+  checker preflight rejects a `--profile` the selected pack does not offer
+  (`profile_not_in_pack: --profile`) before admitting the request.
+- The checker preflight decompresses the initial state of every take whole, as
+  the Runtime does before restoring it, and rejects a damaged state before
+  admission (`take_initial_state_invalid: --take[i]`).
+- `ayther_audio_qa options --format toml` publishes the commit of the sources
+  of the build (`git` HEAD at build time, or `AYTHER_RUNTIME_SOURCE_COMMIT`).
+
+### Changed
+
+- `--profile` without a pack (or with `--pack-mode original`) is accepted with
+  the same conditions as the run with the pack: the request shows and records
+  the requested profile and `profile_effective=none`, and the Runtime only
+  applies a profile to a loaded pack.
+- The cadence of a visible take starts at the first present after its
+  preparation, as after a resume, so the preparation and prewarm of the first
+  frame no longer mark `cadence_degraded`. An isolated delay of more than one
+  period still does.
+
+### Fixed
+
+- A visible inspection that played frames again after a step back could end
+  with `runtime_evidence_stream_invalid` and no terminal: those frames were
+  counted again among the presented or affected frames, and the terminal was
+  rejected as malformed. Each take frame now counts once.
+- `traversal.toml` records every stretch played between two inspection events,
+  not only the one after the last event.
+- `--language`, `--presentation` and `--pack-mode` given explicitly keep the
+  `explicit` origin even when their value is the default.
+- After a pause or a step, the debug overlay shows the current phase instead of
+  the phase of the moment its frame was produced.
 
 ## [0.1.0-beta.9] - 2026-10-04
 
