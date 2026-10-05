@@ -19,6 +19,10 @@ once stable compatibility guarantees are defined.
 
 ### Changed
 
+- The reproducible Engine lock moves from `v0.1.0-rc.15` to `v0.1.0-rc.16`.
+- The QA Engine lock pins the published Windows `engine-vpx` artifact of
+  `v0.1.0-rc.16` by URL, SHA-256, release `CHECKSUMS.sha256` and SLSA
+  provenance.
 - A presentation interruption that recovers (minimized window, audio device
   removed) leaves the audiovisual observation of the take incomplete, as
   RF-2.6 requires: the take ends `presentation_incomplete` with the

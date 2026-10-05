@@ -30,7 +30,7 @@ assembly, typed pack/watcher APIs, bounded game telemetry, diagnostic decisions,
 and the real core-probe process contract. The
 standalone smoke bootstraps the pinned, attested Engine release and proves its
 CMake configuration and public-header contract without an Engine or monorepo
-checkout. The pinned `v0.1.0-rc.15` package configures successfully and Runtime
+checkout. The pinned `v0.1.0-rc.16` package configures successfully and Runtime
 sources compile and link against its installed public surface.
 
 A clean vcpkg manifest installation resolves the complete native dependency
@@ -50,17 +50,13 @@ local smoke log is retained at
 `014338932bb1f8c1cea012598f522d5adb538348286fd307f5302d77950a7ab0`).
 
 On 2026-10-05, the `0.1.0-beta.11` release candidate was validated against the
-same Engine lock `v0.1.0-rc.15`. The bootstrap verified the Windows x86-64
-`engine-vpx` archive against the locked and published SHA-256 values and its
-SLSA provenance. The `windows-ci` preset built the RelWithDebInfo configuration
-and CTest passed 217/217 tests. The QA variant (`windows-qa`, against the
-published QA lock) passed 239/239 tests, including the 144 `audio_qa` tests run
-by the `Windows / QA` check; of the GPU tests, only the visible inspection
-integration test was run locally. The overlay-order fix (F-1b) added afterwards
-requires Engine `v0.1.0-rc.16`: with it, the same suites passed locally
-(217/217, 239/239 and 144/144) against an unpublished `engine-vpx` package built
-from the rc.16 candidate. The locked validation is repeated once the Engine
-locks move to the published `v0.1.0-rc.16`.
+Engine lock `v0.1.0-rc.16`, which adds the overlay stack index the F-1b fix
+requires. The bootstrap verified the Windows x86-64 `engine-vpx` archive against
+the locked and published SHA-256 values and its SLSA provenance. The
+`windows-ci` preset built the RelWithDebInfo configuration and CTest passed
+217/217 tests. The QA variant (`windows-qa`, against the published QA lock)
+passed 239/239 tests, including the 144 `audio_qa` tests run by the
+`Windows / QA` check; the GPU tests were not run locally in this validation.
 
 On 2026-10-04, the `0.1.0-beta.10` release candidate was validated against the
 same Engine lock `v0.1.0-rc.15`. The bootstrap verified the Windows x86-64
