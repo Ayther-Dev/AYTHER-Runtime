@@ -1,5 +1,7 @@
 #include "exclusive_file.h"
 
+#include "long_path.h"
+
 #include <cstddef>
 #include <filesystem>
 #include <span>
@@ -18,8 +20,10 @@ namespace ayther::audio_qa {
 
 ExclusiveFileWriteResult write_exclusive_file(const std::filesystem::path &path,
                                               const std::span<const std::byte> bytes) noexcept {
+    // D-12: a fragment may pass MAX_PATH; the file is created through its extended form.
+    const auto native = long_path(path);
 #ifdef _WIN32
-    const auto handle = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+    const auto handle = CreateFileW(native.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
                                     FILE_ATTRIBUTE_NORMAL, nullptr);
     if (handle == INVALID_HANDLE_VALUE) {
         const auto error = GetLastError();
@@ -42,7 +46,7 @@ ExclusiveFileWriteResult write_exclusive_file(const std::filesystem::path &path,
         written = false;
     }
 #else
-    const int descriptor = ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
+    const int descriptor = ::open(native.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
     if (descriptor < 0) {
         return errno == EEXIST ? ExclusiveFileWriteResult::already_exists
                                : ExclusiveFileWriteResult::io_error;
@@ -63,7 +67,7 @@ ExclusiveFileWriteResult write_exclusive_file(const std::filesystem::path &path,
 #endif
     if (!written) {
         std::error_code ignored;
-        std::filesystem::remove(path, ignored);
+        std::filesystem::remove(native, ignored);
         return ExclusiveFileWriteResult::io_error;
     }
     return ExclusiveFileWriteResult::written;

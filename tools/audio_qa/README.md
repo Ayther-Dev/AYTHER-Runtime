@@ -66,7 +66,9 @@ $runtime = 'C:\ruta\audio-qa\bin\ayther_runtime.exe'
 - `--request-id` es opcional; una repetición intencional debe usar otra identidad.
   `--trust-registry` sólo puede omitirse cuando la política efectiva permite abrir
   ese pack sin registro. La raíz `--output` mantiene el ledger y crea una ejecución
-  exclusiva sin reemplazar las anteriores.
+  exclusiva sin reemplazar las anteriores. La evidencia de cada toma se escribe y se
+  reabre por la forma extendida de su ruta (`\\?\`), así que una raíz larga no deja
+  fragmentos por encima de los 260 caracteres de `MAX_PATH` sin publicar.
 
 Antes de admitir la solicitud, cada valor efectivo se escribe con su origen:
 `audio_qa_effective: <clave>=<valor> source=explicit|play_manifest|reference|environment|default|generated`.

@@ -1,6 +1,7 @@
 #include "inspection_facts.h"
 
 #include "fact_fragment_store.h"
+#include "long_path.h"
 
 #include <algorithm>
 #include <system_error>
@@ -92,7 +93,8 @@ std::optional<RenderSummaryFact> read_render_summary(const Fact &fact) {
 RunInspectionFactsResult read_run_inspection_facts(const std::filesystem::path &run_directory) {
     std::vector<std::filesystem::path> fragments;
     std::error_code error;
-    for (std::filesystem::directory_iterator entry{run_directory / "fragments", error}, end;
+    for (std::filesystem::directory_iterator entry{long_path(run_directory / "fragments"), error},
+         end;
          !error && entry != end; entry.increment(error))
         if (entry->path().extension() == ".aqf")
             fragments.push_back(entry->path());

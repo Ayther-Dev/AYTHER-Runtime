@@ -1,5 +1,6 @@
 #include "exclusive_evidence_directory.h"
 
+#include "long_path.h"
 #include "model_limits.h"
 
 #include <system_error>
@@ -58,19 +59,23 @@ create_exclusive_evidence_directory(const std::filesystem::path &evidence_root,
             return EvidenceDirectoryError::invalid_run_id;
         }
 
+        // D-12: the directories are created through their extended form; the evidence
+        // directory keeps the path the caller gave.
+        const auto native_root = long_path(evidence_root);
         std::error_code error;
-        std::filesystem::create_directories(evidence_root, error);
-        if (error || !std::filesystem::is_directory(evidence_root, error) || error) {
+        std::filesystem::create_directories(native_root, error);
+        if (error || !std::filesystem::is_directory(native_root, error) || error) {
             return EvidenceDirectoryError::io_error;
         }
 
         const auto execution_path = evidence_root / std::string{run_id};
-        if (std::filesystem::create_directory(execution_path, error)) {
+        const auto native_execution = native_root / std::string{run_id};
+        if (std::filesystem::create_directory(native_execution, error)) {
             return ExclusiveEvidenceDirectory{execution_path, std::string{run_id}};
         }
 
         std::error_code existence_error;
-        if (std::filesystem::exists(execution_path, existence_error) && !existence_error) {
+        if (std::filesystem::exists(native_execution, existence_error) && !existence_error) {
             auto result = collision(run_id);
             if (!well_formed(result.diagnostic)) {
                 return EvidenceDirectoryError::io_error;

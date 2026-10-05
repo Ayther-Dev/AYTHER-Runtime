@@ -2,6 +2,7 @@
 
 #include "content_hash.h"
 #include "exclusive_file.h"
+#include "long_path.h"
 #include "pcm_message.h"
 #include "protocol_header.h"
 
@@ -57,7 +58,9 @@ std::filesystem::path block_path(const ExclusiveEvidenceDirectory &directory,
     return directory.path() / "audio" / name.str();
 }
 
-bool ensure_audio_directory(const std::filesystem::path &path) noexcept {
+bool ensure_audio_directory(const std::filesystem::path &directory) noexcept {
+    // D-12: through the extended form of the path, which has no MAX_PATH limit.
+    const auto path = long_path(directory);
     std::error_code error;
     const auto status = std::filesystem::symlink_status(path, error);
     if (!error && std::filesystem::exists(status)) {
@@ -150,7 +153,9 @@ PcmBlockStoreResult write_pcm_block(const ExclusiveEvidenceDirectory &directory,
 PcmBlockStoreResult read_pcm_block(const std::filesystem::path &path) noexcept {
     try {
         std::error_code error;
-        const auto size = std::filesystem::file_size(path, error);
+        // D-12: read through the extended form of the path.
+        const auto native = long_path(path);
+        const auto size = std::filesystem::file_size(native, error);
         if (error) {
             return PcmBlockStoreError::io_error;
         }
@@ -161,7 +166,7 @@ PcmBlockStoreResult read_pcm_block(const std::filesystem::path &path) noexcept {
             return PcmBlockStoreError::malformed_header;
         }
         std::vector<std::byte> document(static_cast<std::size_t>(size));
-        std::ifstream input(path, std::ios::binary);
+        std::ifstream input(native, std::ios::binary);
         if (!input ||
             !input.read(reinterpret_cast<char *>(document.data()),
                         static_cast<std::streamsize>(document.size())) ||

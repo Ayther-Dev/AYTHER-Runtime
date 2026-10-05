@@ -1,6 +1,7 @@
 #include "durable_file.h"
 
 #include "content_hash.h"
+#include "long_path.h"
 
 #include <algorithm>
 #include <atomic>
@@ -240,14 +241,20 @@ DurablePublishResult publish_durable_file(const std::filesystem::path &target,
                                           const std::span<const std::byte> bytes,
                                           const DurablePublicationLimits limits) noexcept {
     try {
-        if (!valid_target(target)) {
+        // D-12: the document may pass MAX_PATH; it is written and published through the
+        // extended form of its path, and the caller keeps the path it gave.
+        const auto native = long_path(target);
+        if (!valid_target(native)) {
             return DurablePublishError::invalid_target;
         }
 #ifdef _WIN32
-        return publish_windows(target, bytes, limits);
+        auto published = publish_windows(native, bytes, limits);
 #else
-        return publish_posix(target, bytes, limits);
+        auto published = publish_posix(native, bytes, limits);
 #endif
+        if (const auto *file = std::get_if<DurablePublishedFile>(&published))
+            return DurableFileFactory::create(target, file->identity());
+        return published;
     } catch (...) {
         return DurablePublishError::write_failed;
     }
