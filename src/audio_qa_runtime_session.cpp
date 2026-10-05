@@ -47,6 +47,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -146,15 +147,30 @@ class StreamingObservationWriter final {
         }
     }
 
+    // Spec 002, DI-14 (evidence 1.2): the next linear segment begins with the PCM block number
+    // `forwarded` (from 0) of those the gate let through. The evidence observer receives them
+    // in order on one capture, and this sink consumes them in the same order.
+    void begin_segment(const std::uint64_t forwarded) {
+        const std::lock_guard lock{mutex_};
+        segment_starts_.push_back(forwarded);
+    }
+
     [[nodiscard]] bool consume_pcm(const qa::EnginePcmView &view) noexcept {
         const std::lock_guard lock{mutex_};
         if (!valid_)
             return false;
+        // DI-14: a block never spans two segments; the one that starts a segment says so.
+        while (!segment_starts_.empty() && consumed_pcm_ >= segment_starts_.front()) {
+            segment_starts_.pop_front();
+            ++segment_;
+        }
+        ++consumed_pcm_;
         auto chunk = qa::copy_replay_trace_pcm(run_id_, view);
         if (!chunk) {
             valid_ = false;
             return false;
         }
+        chunk->segment = segment_;
         const auto limit = pcm_limit_.load(std::memory_order_acquire);
         if (chunk->range.begin >= limit) {
             last_pcm_end_.store(chunk->range.end, std::memory_order_release);
@@ -184,6 +200,7 @@ class StreamingObservationWriter final {
                 pending_pcm_->range.timeline_id != chunk->range.timeline_id ||
                 pending_pcm_->range.sample_rate != chunk->range.sample_rate ||
                 pending_pcm_->range.end != chunk->range.begin ||
+                pending_pcm_->segment != chunk->segment ||
                 pending_pcm_->producer_sequence >= chunk->producer_sequence ||
                 pending_pcm_->bytes.size() > pcm_batch_bytes ||
                 pending_pcm_->discontinuities.size() + chunk->discontinuities.size() >
@@ -326,6 +343,9 @@ class StreamingObservationWriter final {
     std::string run_id_;
     std::vector<qa::Fact> facts_;
     std::optional<qa::AudioChunk> pending_pcm_;
+    std::deque<std::uint64_t> segment_starts_;
+    std::uint64_t consumed_pcm_{};
+    std::uint64_t segment_{};
     std::uint64_t sequence_{2U};
     std::uint64_t fact_count_{};
     std::uint64_t pcm_count_{};
@@ -1396,6 +1416,10 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                     pause_started = std::chrono::steady_clock::now();
                     break;
                 case ri::CommandKind::resume_audio:
+                    // DI-14 (D-9): the PCM after the resume is the next linear segment. Every
+                    // block of the previous one already reached the gate: the pause drained it
+                    // and a navigation since then was silent.
+                    writer.begin_segment(gate.forwarded_pcm());
                     // RF-4.4, RF-4.6: the cadence restarts now; the pause is user time.
                     set_audible(true);
                     session->resume_transport();

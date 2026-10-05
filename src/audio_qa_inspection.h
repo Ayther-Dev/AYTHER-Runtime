@@ -68,6 +68,11 @@ class SilentProductionGate final {
     [[nodiscard]] std::uint64_t excluded_pcm() const noexcept {
         return excluded_pcm_.load(std::memory_order_acquire);
     }
+    // Spec 002, DI-14: the PCM blocks that reached the evidence observer, in order. The sink
+    // consumes them in the same order, so this count marks where a segment begins.
+    [[nodiscard]] std::uint64_t forwarded_pcm() const noexcept {
+        return forwarded_pcm_.load(std::memory_order_acquire);
+    }
 
   private:
     static void receive_fact(void *context,
@@ -79,6 +84,7 @@ class SilentProductionGate final {
     std::atomic<bool> silent_{};
     std::atomic<std::uint64_t> excluded_facts_{};
     std::atomic<std::uint64_t> excluded_pcm_{};
+    std::atomic<std::uint64_t> forwarded_pcm_{};
 };
 
 // Spec 002, plan §4.4 and §5.6 (RF-3.6, RF-5.2, RF-5.6; P-12): the checkpoints of a take.

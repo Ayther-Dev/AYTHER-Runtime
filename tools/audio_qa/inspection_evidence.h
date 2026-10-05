@@ -1,5 +1,6 @@
 #pragma once
 
+#include "audio_integrity.h"
 #include "durable_file.h"
 #include "request_outcome.h"
 #include "runtime_protocol_v11.h"
@@ -47,6 +48,22 @@ struct TraversalInterruption {
     bool operator==(const TraversalInterruption &) const = default;
 };
 
+// Spec 002, DI-14 (evidence 1.2): the audio of one linear segment. The Runtime opens a PCM
+// segment at the start of the take and at every resume; its frames are the linear stretches
+// of the traversal played in it, and its samples the PCM kept for it, contiguous. Between two
+// segments the line may jump: a navigation produced its frames silently.
+struct TraversalAudioSegment {
+    std::uint64_t segment{};
+    std::uint64_t frame_from{};
+    std::uint64_t frame_to{};
+    std::string timeline;
+    std::uint32_t sample_rate{};
+    std::uint64_t sample_begin{};
+    std::uint64_t sample_end{};
+    std::uint64_t pcm_blocks{};
+    bool operator==(const TraversalAudioSegment &) const = default;
+};
+
 struct TraversalDocument {
     TraversalKind kind{TraversalKind::linear};
     bool linear_completed{};
@@ -55,6 +72,8 @@ struct TraversalDocument {
     std::vector<TraversalVisit> visits;
     std::vector<TraversalResume> resume_after;
     std::vector<TraversalInterruption> interruptions;
+    // DI-14: absent in a traversal 1.1, whose audio segments are unknown.
+    std::optional<std::vector<TraversalAudioSegment>> audio_segments;
     bool operator==(const TraversalDocument &) const = default;
 };
 
@@ -80,6 +99,17 @@ class TraversalRecorder final {
 [[nodiscard]] TraversalDocument traversal_of_take(std::uint64_t frames_total,
                                                   std::uint64_t frames_consumed,
                                                   std::span<const InspectionEvent> events);
+
+// DI-14: why the PCM kept does not match the linear segments of the traversal.
+enum class AudioSegmentsError { pcm_without_frames, frames_without_pcm };
+using AudioSegmentsResult = std::variant<std::vector<TraversalAudioSegment>, AudioSegmentsError>;
+
+// The audio segments of a take: segment 0 holds the linear stretch from the start, and the
+// stretches after the n-th `resume` belong to segment n. Each segment with frames needs its
+// PCM, and PCM needs frames.
+[[nodiscard]] AudioSegmentsResult audio_segments_of_take(const TraversalDocument &traversal,
+                                                         std::span<const InspectionEvent> events,
+                                                         std::span<const PcmSegmentInterval> pcm);
 
 [[nodiscard]] std::string format_traversal(const TraversalDocument &document);
 

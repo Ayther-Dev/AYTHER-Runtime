@@ -68,6 +68,7 @@ void SilentProductionGate::receive_pcm(void *context, const audio::PcmView &pcm)
         gate.excluded_pcm_.fetch_add(1, std::memory_order_acq_rel);
         return;
     }
+    gate.forwarded_pcm_.fetch_add(1, std::memory_order_acq_rel);
     gate.inner_.observe(pcm);
 }
 

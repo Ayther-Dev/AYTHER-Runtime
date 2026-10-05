@@ -77,7 +77,7 @@ por `run_id`:
 
 ## Recorridos, visitas y resumen
 
-- **`traversal.toml`** (esquema 1.1, uno por recorrido) describe cómo se recorrió la toma, y se reescribe de forma duradera al confirmar el resultado:
+- **`traversal.toml`** (esquema 1.2, uno por recorrido; se siguen leyendo los 1.1, cuyos tramos de audio quedan como desconocidos) describe cómo se recorrió la toma, y se reescribe de forma duradera al confirmar el resultado:
   - el tipo: `linear`, `inspection` o `post_end_inspection`;
   - los tramos lineales;
   - las visitas a frames, cada una con su número de visita;
@@ -89,6 +89,11 @@ por `run_id`:
   - el frame antes y después, la visita y el tiempo de toma.
 - **`render_frame`.** Cada visita a un frame, producido o recuperado, genera un hecho de esta clase con el frame, la visita, si se pudo componer o el motivo, el número de ocurrencias, y el tiempo de procesamiento y los FPS instantáneos cuando se midieron. Una visita repetida tiene otro número de visita. Un frame en pausa no genera registros nuevos.
 - **Producción silenciosa.** Los hechos y el PCM producidos en modo silencioso, al navegar o recuperar, no entran en la evidencia: el Runtime los descarta en su sumidero.
+- **Audio por tramos (evidencia 1.2).** El PCM de una toma se escribe por tramos lineales: el tramo 0 empieza con la toma y el Runtime abre el siguiente en cada reanudación. Cada bloque `.aqp` nombra su tramo y nunca abarca dos.
+  - `traversal.toml` 1.2 añade `audio_segments`: por tramo, `segment`, los frames que se reprodujeron en él (`frame_from`, `frame_to`), la línea de tiempo y la tasa, el intervalo de muestras (`sample_begin`, `sample_end`, decimales) y los bloques que lo forman. Un conmutador del registro durante la reproducción parte el tramo del recorrido, pero no el de audio: ambos quedan en el mismo tramo de audio.
+  - La continuidad del PCM se audita dentro de cada tramo. En un recorrido `inspection`, un salto entre dos tramos no es una pérdida: un paso adelante produce frames en silencio y la línea avanza; un paso atrás restaura un checkpoint y la línea retrocede.
+  - Un recorrido lineal sigue exigiendo un único intervalo continuo, aunque una pausa lo divida en tramos.
+  - Un tramo con frames y sin PCM, o PCM de un tramo sin frames, deja la evidencia incompleta (`pcm_segment_mismatch`). Con todos los tramos contiguos y completos, el audio de una inspección está completo, pero nunca se acredita como audio lineal.
 - **`request-summary.toml`** (esquema 1.1) es el resumen confirmado y duradero de la solicitud:
   - las selecciones con su origen y su SHA-256, y `conditions_id`;
   - el resultado de cada toma por posición, con `playback`, `traversal` y `evidence` por separado;
@@ -118,7 +123,11 @@ Cada `.aqp` comienza con `AYTPCM01`, versión 1.0 del contenedor, secuencia,
 tamaños y SHA-256. El cuerpo conserva metadatos y PCM intercalado S16LE, S24LE,
 S32LE o F32LE, hasta 192 kHz y ocho canales dentro de los límites negociados.
 El lector valida captura, formato, timeline, rangos, hash y bytes. No inventa
-silencio ni completa canciones; un WAV derivado deja intactos los `.aqp`.
+silencio ni completa canciones; un WAV derivado deja intactos los `.aqp`. Los
+metadatos 1.1 añaden las causas; los 1.2 añaden `segment`, el tramo del recorrido
+al que pertenece el bloque, y sólo se escriben para los tramos posteriores al 0.
+Un bloque 1.0 o 1.1 se lee como tramo 0, de modo que la evidencia anterior se sigue
+auditando como un único intervalo.
 
 ## Durabilidad y recuperación
 

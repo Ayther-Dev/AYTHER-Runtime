@@ -192,6 +192,10 @@ int main(int argc, char **argv) {
                linear_terminal->traversal == "linear" && linear_terminal->linear_completed &&
                linear.events.empty(),
            "RNF-6: without inspection the take ends naturally and linearly, without events");
+    // D-9, DI-14: the PCM of a linear take is one segment, contiguous.
+    expect(linear.pcm_breaks.empty() && linear.pcm_segment_jumps.empty() &&
+               linear.pcm_segments == std::vector<std::uint64_t>{0U},
+           "D-9, DI-14: a linear take keeps its PCM as one continuous segment");
     const auto pcm_per_frame = linear.pcm_bytes / frames;
     expect(pcm_per_frame > 0U, "the linear take captured PCM");
     const auto linear_final = linear_terminal ? digest(linear_terminal->final_game_state) : "";
@@ -232,6 +236,10 @@ int main(int argc, char **argv) {
            "RF-4.1, RF-4.2: the pause loses no audio and adds none");
     expect(paused_terminal && digest(paused_terminal->final_game_state) == linear_final,
            "a pause does not change the replay");
+    // D-9, DI-14: the resume opens the next segment; without navigation the line does not jump.
+    expect(paused.pcm_breaks.empty() && paused.pcm_segment_jumps.empty() &&
+               paused.pcm_segments == std::vector<std::uint64_t>{0U, 1U},
+           "D-9, DI-14: a pause splits the PCM in two segments with no jump between them");
 
     // BR-140, BR-138, BR-141: pause at 31, three steps back to 28, resume.
     const auto back = run("back", "frame=31 key space down\nafter=0 key space up\n"
@@ -276,6 +284,11 @@ int main(int argc, char **argv) {
     expect(silent_excluded, "RF-2.13, RNF-1: the silent re-simulation adds no engine fact");
     expect(records_of(back, 30U) == 3U && records_of(back, 28U) == 2U,
            "RF-7.5: every visit to a frame is a new record");
+    // D-9, DI-14: going back restores a checkpoint and the PCM line goes back; that happens
+    // between the segment before the pause and the one after the resume, never within one.
+    expect(back.pcm_breaks.empty() && back.pcm_segments == std::vector<std::uint64_t>{0U, 1U},
+           "D-9, DI-14: the PCM before and after the steps back are two contiguous segments, got " +
+               std::to_string(back.pcm_breaks.size()) + " breaks within a segment");
 
     // BR-140: going back across the checkpoint of frame 59 restores it mid-take.
     const auto across = run("across", "frame=91 key space down\nafter=0 key space up\n"
@@ -288,6 +301,9 @@ int main(int argc, char **argv) {
                has_event(across, "step_back", 90U, 89U) &&
                !has_event(across, "recover_failed", 90U, 91U),
            "RF-5.2: a checkpoint taken during the take restores and re-simulates to the target");
+    expect(across.pcm_breaks.empty() && across.pcm_segments == std::vector<std::uint64_t>{0U, 1U},
+           "D-9, DI-14: across a checkpoint the PCM is two contiguous segments, got " +
+               std::to_string(across.pcm_breaks.size()) + " breaks within a segment");
 
     // BR-142: → ten times in pause produces 12..21 silently; Space from 21 plays 22 with audio.
     std::string steps = "frame=11 key space down\nafter=0 key space up\n";
@@ -306,6 +322,9 @@ int main(int argc, char **argv) {
     expect(sounded(forward, "forward", linear,
                    [](std::uint64_t frame) { return frame >= 12U && frame <= 21U ? 0U : 1U; }),
            "RF-5.4, RF-5.7: frames 12 to 21 are silent and 22 follows without repeating 21");
+    expect(forward.pcm_breaks.empty() && forward.pcm_segments == std::vector<std::uint64_t>{0U, 1U},
+           "D-9, DI-14: the frames produced silently leave two contiguous segments, got " +
+               std::to_string(forward.pcm_breaks.size()) + " breaks within a segment");
 
     // BR-143: damaged checkpoints; the window stays at 71, resumes and ends naturally.
     const auto damaged = run("damaged", "frame=71 key space down\nafter=0 key space up\n"

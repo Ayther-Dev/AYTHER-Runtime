@@ -136,6 +136,92 @@ void pause_alone_stays_linear() {
            "RF-2.6: an interruption is recorded with its frame");
 }
 
+qa::PcmSegmentInterval pcm(std::uint64_t segment, std::uint64_t begin, std::uint64_t end,
+                           std::uint64_t blocks) {
+    return {segment, {"main-output", 48000U, begin, end}, blocks};
+}
+
+// Spec 002, DI-14 (D-9): the audio evidence of an inspection is written per linear segment, the
+// same segments as the traversal. The Runtime opens a PCM segment at every resume; each linear
+// stretch declares its frames and its samples.
+void audio_per_segment() {
+    // BR-184: pause at 1, ← and →, resume at 3; pause at 1500, ←, resume at 1499.
+    const std::vector<qa::InspectionEvent> arrows{
+        event(1, "pause", 1, 1),        event(2, "step_back", 1, 0),
+        event(3, "step_forward", 0, 1), event(4, "step_forward", 1, 2),
+        event(5, "step_forward", 2, 3), event(6, "resume", 3, 3),
+        event(7, "pause", 1500, 1500),  event(8, "step_back", 1500, 1499),
+        event(9, "resume", 1499, 1499)};
+    const auto inspected = qa::traversal_of_take(7892, 7892, arrows);
+    // Frames 2 and 3 were produced silently: the line jumps; going back restores it earlier.
+    const std::vector<qa::PcmSegmentInterval> kept{pcm(0, 0, 3200, 2), pcm(1, 6400, 2402400, 30),
+                                                   pcm(2, 2400000, 12627200, 90)};
+    const auto declared = qa::audio_segments_of_take(inspected, arrows, kept);
+    const auto *segments = std::get_if<std::vector<qa::TraversalAudioSegment>>(&declared);
+    expect(segments != nullptr &&
+               *segments ==
+                   std::vector<qa::TraversalAudioSegment>{
+                       {0, 0, 1, "main-output", 48000, 0, 3200, 2},
+                       {1, 4, 1500, "main-output", 48000, 6400, 2402400, 30},
+                       {2, 1500, 7891, "main-output", 48000, 2400000, 12627200, 90}},
+           "DI-14, RF-2.13: each linear segment declares its frames and its samples");
+
+    // The overlay toggled while playing splits the stretch of the traversal but not the audio:
+    // both stretches after the resume are one audio segment.
+    const std::vector<qa::InspectionEvent> toggled{
+        event(1, "pause", 10, 10), event(2, "step_back", 10, 9), event(3, "resume", 9, 9),
+        event(4, "overlay_toggle", 50, 50)};
+    const auto toggled_traversal = qa::traversal_of_take(120, 120, toggled);
+    const auto toggled_audio = qa::audio_segments_of_take(
+        toggled_traversal, toggled, std::vector{pcm(0, 0, 8820, 1), pcm(1, 7938, 95256, 3)});
+    const auto *toggled_segments =
+        std::get_if<std::vector<qa::TraversalAudioSegment>>(&toggled_audio);
+    expect(toggled_segments != nullptr &&
+               *toggled_segments ==
+                   std::vector<qa::TraversalAudioSegment>{
+                       {0, 0, 10, "main-output", 48000, 0, 8820, 1},
+                       {1, 10, 119, "main-output", 48000, 7938, 95256, 3}},
+           "DI-14: a stretch split by the overlay keeps one audio segment");
+
+    // PCM for a segment the traversal never played, or a segment played without PCM, is not
+    // evidence of that segment.
+    const auto orphan =
+        qa::audio_segments_of_take(inspected, arrows,
+                                   std::vector{pcm(0, 0, 3200, 2), pcm(1, 6400, 2402400, 30),
+                                               pcm(2, 2400000, 12627200, 90), pcm(3, 0, 10, 1)});
+    expect(std::holds_alternative<qa::AudioSegmentsError>(orphan) &&
+               std::get<qa::AudioSegmentsError>(orphan) ==
+                   qa::AudioSegmentsError::pcm_without_frames,
+           "DI-14: PCM of a segment without frames is rejected");
+    const auto missing = qa::audio_segments_of_take(
+        inspected, arrows, std::vector{pcm(0, 0, 3200, 2), pcm(2, 2400000, 12627200, 90)});
+    expect(std::holds_alternative<qa::AudioSegmentsError>(missing) &&
+               std::get<qa::AudioSegmentsError>(missing) ==
+                   qa::AudioSegmentsError::frames_without_pcm,
+           "DI-14: a segment played without PCM is a loss");
+
+    // traversal.toml 1.2 keeps them; a document 1.1 has none and reads as unknown.
+    auto document = inspected;
+    document.audio_segments = *segments;
+    const auto text = qa::format_traversal(document);
+    expect(text.find("schema_minor = 2") != std::string::npos &&
+               text.find("[[audio_segments]]") != std::string::npos,
+           "DI-14: traversal.toml 1.2 declares the audio segments");
+    const auto parsed = qa::parse_traversal(text);
+    expect(std::holds_alternative<qa::TraversalDocument>(parsed) &&
+               std::get<qa::TraversalDocument>(parsed) == document,
+           "DI-14: the audio segments read back unchanged");
+    auto without_audio = document;
+    without_audio.audio_segments.reset();
+    auto older = qa::format_traversal(without_audio);
+    older.replace(older.find("schema_minor = 2"), 16, "schema_minor = 1");
+    const auto legacy = qa::parse_traversal(older);
+    expect(std::holds_alternative<qa::TraversalDocument>(legacy) &&
+               !std::get<qa::TraversalDocument>(legacy).audio_segments &&
+               std::get<qa::TraversalDocument>(legacy).visits == document.visits,
+           "RF-2.6: a traversal 1.1 still reads, with its audio segments unknown");
+}
+
 std::string read_text(const std::filesystem::path &path) {
     std::ifstream input{path, std::ios::binary};
     return {std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
@@ -168,8 +254,8 @@ void durable_at_each_confirmation() {
            "RF-5.8: the rewritten traversal has the new visit");
     const auto text = read_text(path);
     expect(text.find("schema_version = 1") != std::string::npos &&
-               text.find("schema_minor = 1") != std::string::npos,
-           "C2: traversal.toml is schema 1.1");
+               text.find("schema_minor = 2") != std::string::npos,
+           "C2, DI-14: traversal.toml is schema 1.2");
     std::string future = text;
     future.replace(future.find("schema_version = 1"), 18, "schema_version = 2");
     {
@@ -189,6 +275,7 @@ int main() {
     rebuilt_from_terminal();
     every_resumed_stretch_is_kept();
     pause_alone_stays_linear();
+    audio_per_segment();
     durable_at_each_confirmation();
     if (failures != 0)
         return 1;

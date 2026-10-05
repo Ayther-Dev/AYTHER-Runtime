@@ -84,9 +84,13 @@ struct Session {
     std::uint64_t duplicate_fact_ids{};
     std::uint64_t pcm_bytes{};
     std::uint64_t pcm_chunks{};
-    // The PCM ranges as the supervisor checks them (contracts.md C2): every chunk begins where
-    // the previous one ended, on the same timeline. Each break keeps (previous end, begin).
+    // The PCM ranges as the supervisor checks them (contracts.md C2, DI-14): within a segment
+    // every chunk begins where the previous one ended, on the same timeline. Each break keeps
+    // (previous end, begin). A jump between two segments is kept apart: it is not a loss.
     std::vector<std::pair<std::uint64_t, std::uint64_t>> pcm_breaks;
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> pcm_segment_jumps;
+    // DI-14: the segments of the PCM, in the order of their first chunk.
+    std::vector<std::uint64_t> pcm_segments;
     std::optional<AudioChunk> last_pcm;
     std::size_t statuses{};
     bool stream_valid{true};
@@ -266,13 +270,21 @@ inline Session run(const Options &options) {
             if (const auto *chunk = std::get_if<AudioChunk>(&decoded)) {
                 session.pcm_bytes += chunk->bytes.size();
                 ++session.pcm_chunks;
+                if (session.pcm_segments.empty() || session.pcm_segments.back() != chunk->segment)
+                    session.pcm_segments.push_back(chunk->segment);
+                const bool new_segment =
+                    session.last_pcm && chunk->segment > session.last_pcm->segment;
                 if (session.last_pcm &&
                     (session.last_pcm->run_id != chunk->run_id ||
                      session.last_pcm->range.timeline_id != chunk->range.timeline_id ||
-                     session.last_pcm->range.end != chunk->range.begin ||
-                     session.last_pcm->producer_sequence >= chunk->producer_sequence))
+                     session.last_pcm->producer_sequence >= chunk->producer_sequence ||
+                     chunk->segment < session.last_pcm->segment ||
+                     (!new_segment && session.last_pcm->range.end != chunk->range.begin)))
                     session.pcm_breaks.emplace_back(session.last_pcm->range.end,
                                                     chunk->range.begin);
+                else if (new_segment && session.last_pcm->range.end != chunk->range.begin)
+                    session.pcm_segment_jumps.emplace_back(session.last_pcm->range.end,
+                                                           chunk->range.begin);
                 session.last_pcm = *chunk;
                 session.last_pcm->bytes.clear();
             } else {

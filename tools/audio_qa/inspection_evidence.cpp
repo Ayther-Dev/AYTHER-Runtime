@@ -3,8 +3,11 @@
 #include <toml++/toml.hpp>
 
 #include <algorithm>
+#include <charconv>
 #include <fstream>
 #include <iterator>
+#include <limits>
+#include <map>
 #include <span>
 #include <sstream>
 #include <system_error>
@@ -13,7 +16,8 @@ namespace ayther::audio_qa {
 namespace {
 
 constexpr std::int64_t traversal_schema_version = 1;
-constexpr std::int64_t traversal_schema_minor = 1;
+// 1.2 (spec 002, DI-14) adds `audio_segments`; a 1.1 document reads without them.
+constexpr std::int64_t traversal_schema_minor = 2;
 constexpr std::uintmax_t max_traversal_bytes = 64U * 1024U * 1024U;
 
 bool moves_position(std::string_view control) {
@@ -25,6 +29,18 @@ std::optional<std::uint64_t> unsigned_value(const toml::node_view<const toml::no
     if (!value || *value < 0)
         return std::nullopt;
     return static_cast<std::uint64_t>(*value);
+}
+
+// 64-bit sample positions are decimal strings (contracts.md C2).
+std::optional<std::uint64_t> decimal_value(const toml::node_view<const toml::node> node) {
+    const auto text = node.value<std::string>();
+    if (!text || text->empty() || text->front() == '+' || text->front() == '-')
+        return std::nullopt;
+    std::uint64_t value{};
+    const auto parsed = std::from_chars(text->data(), text->data() + text->size(), value);
+    if (parsed.ec != std::errc{} || parsed.ptr != text->data() + text->size())
+        return std::nullopt;
+    return value;
 }
 
 const toml::array *tables(const toml::table &document, std::string_view key) {
@@ -112,6 +128,50 @@ TraversalDocument traversal_of_take(std::uint64_t frames_total, std::uint64_t fr
     return recorder.document();
 }
 
+AudioSegmentsResult audio_segments_of_take(const TraversalDocument &traversal,
+                                           std::span<const InspectionEvent> events,
+                                           std::span<const PcmSegmentInterval> pcm) {
+    // The frames of each audio segment: the stretches of the traversal played in it.
+    std::map<std::uint64_t, std::pair<std::uint64_t, std::uint64_t>> frames;
+    const auto played = [&frames](std::uint64_t segment, std::uint64_t from, std::uint64_t to) {
+        const auto [entry, inserted] = frames.try_emplace(segment, from, to);
+        if (!inserted) {
+            entry->second.first = std::min(entry->second.first, from);
+            entry->second.second = std::max(entry->second.second, to);
+        }
+    };
+    for (const auto &segment : traversal.segments)
+        played(0U, segment.from, segment.to);
+    // The Runtime opens segment n at the n-th resume; a stretch continued after another
+    // control (the overlay toggled while playing) stays in the segment of the last resume.
+    std::vector<std::uint64_t> resumes;
+    for (const auto &event : events)
+        if (event.control == "resume")
+            resumes.push_back(event.seq);
+    std::sort(resumes.begin(), resumes.end());
+    for (const auto &resume : traversal.resume_after) {
+        const auto segment = static_cast<std::uint64_t>(
+            std::upper_bound(resumes.begin(), resumes.end(), resume.seq) - resumes.begin());
+        played(segment, resume.from_frame, resume.to);
+    }
+
+    std::vector<TraversalAudioSegment> segments;
+    for (const auto &kept : pcm) {
+        const auto found = frames.find(kept.segment);
+        if (found == frames.end())
+            return AudioSegmentsError::pcm_without_frames;
+        segments.push_back({kept.segment, found->second.first, found->second.second,
+                            kept.samples.timeline_id, kept.samples.sample_rate, kept.samples.begin,
+                            kept.samples.end, kept.blocks});
+    }
+    for (const auto &[segment, interval] : frames)
+        if (std::none_of(pcm.begin(), pcm.end(), [segment](const PcmSegmentInterval &kept) {
+                return kept.segment == segment;
+            }))
+            return AudioSegmentsError::frames_without_pcm;
+    return segments;
+}
+
 std::string format_traversal(const TraversalDocument &document) {
     toml::array segments;
     for (const auto &segment : document.segments)
@@ -134,15 +194,29 @@ std::string format_traversal(const TraversalDocument &document) {
         interruptions.push_back(
             toml::table{{"seq", static_cast<std::int64_t>(interruption.seq)},
                         {"frame", static_cast<std::int64_t>(interruption.frame)}});
-    const toml::table table{{"schema_version", traversal_schema_version},
-                            {"schema_minor", traversal_schema_minor},
-                            {"kind", std::string{traversal_kind_code(document.kind)}},
-                            {"linear_completed", document.linear_completed},
-                            {"frames_total", static_cast<std::int64_t>(document.frames_total)},
-                            {"segments", std::move(segments)},
-                            {"visits", std::move(visits)},
-                            {"resume_after", std::move(resumes)},
-                            {"interruptions", std::move(interruptions)}};
+    toml::table table{{"schema_version", traversal_schema_version},
+                      {"schema_minor", traversal_schema_minor},
+                      {"kind", std::string{traversal_kind_code(document.kind)}},
+                      {"linear_completed", document.linear_completed},
+                      {"frames_total", static_cast<std::int64_t>(document.frames_total)},
+                      {"segments", std::move(segments)},
+                      {"visits", std::move(visits)},
+                      {"resume_after", std::move(resumes)},
+                      {"interruptions", std::move(interruptions)}};
+    if (document.audio_segments) {
+        toml::array audio;
+        for (const auto &segment : *document.audio_segments)
+            audio.push_back(
+                toml::table{{"segment", static_cast<std::int64_t>(segment.segment)},
+                            {"frame_from", static_cast<std::int64_t>(segment.frame_from)},
+                            {"frame_to", static_cast<std::int64_t>(segment.frame_to)},
+                            {"timeline", segment.timeline},
+                            {"sample_rate", static_cast<std::int64_t>(segment.sample_rate)},
+                            {"sample_begin", std::to_string(segment.sample_begin)},
+                            {"sample_end", std::to_string(segment.sample_end)},
+                            {"pcm_blocks", static_cast<std::int64_t>(segment.pcm_blocks)}});
+        table.insert("audio_segments", std::move(audio));
+    }
     std::ostringstream output;
     output << table << '\n';
     return output.str();
@@ -206,6 +280,32 @@ TraversalReadResult parse_traversal(std::string_view text) {
             if (!seq || !frame)
                 return TraversalReadError::invalid;
             document.interruptions.push_back({*seq, *frame});
+        }
+        // DI-14: absent in 1.1; when present every entry is complete.
+        if (table.contains("audio_segments")) {
+            const auto *audio = tables(table, "audio_segments");
+            if (audio == nullptr)
+                return TraversalReadError::invalid;
+            std::vector<TraversalAudioSegment> audio_segments;
+            for (const auto &node : *audio) {
+                const auto &entry = *node.as_table();
+                const auto segment = unsigned_value(entry["segment"]);
+                const auto from = unsigned_value(entry["frame_from"]);
+                const auto to = unsigned_value(entry["frame_to"]);
+                const auto timeline = entry["timeline"].value<std::string>();
+                const auto rate = unsigned_value(entry["sample_rate"]);
+                const auto begin = decimal_value(entry["sample_begin"]);
+                const auto end = decimal_value(entry["sample_end"]);
+                const auto blocks = unsigned_value(entry["pcm_blocks"]);
+                if (!segment || !from || !to || !timeline || !rate ||
+                    *rate > std::numeric_limits<std::uint32_t>::max() || !begin || !end ||
+                    *begin > *end || !blocks)
+                    return TraversalReadError::invalid;
+                audio_segments.push_back({*segment, *from, *to, *timeline,
+                                          static_cast<std::uint32_t>(*rate), *begin, *end,
+                                          *blocks});
+            }
+            document.audio_segments = std::move(audio_segments);
         }
         return document;
     } catch (const toml::parse_error &) {

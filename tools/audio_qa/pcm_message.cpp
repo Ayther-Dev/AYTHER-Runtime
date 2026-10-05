@@ -237,9 +237,12 @@ toml::table metadata(const AudioChunk &chunk) {
     if (chunk.checkpoint_id.value) {
         checkpoint.insert("value", *chunk.checkpoint_id.value);
     }
-    return toml::table{
+    // Minor 1 adds the causes; minor 2 (spec 002, DI-14) adds the segment of the traversal.
+    // A chunk of segment 0 keeps the minor it had, so that a linear take reads as before.
+    const std::int64_t minor = chunk.segment != 0U ? 2 : (chunk.cause_ids.empty() ? 0 : 1);
+    auto table = toml::table{
         {"schema_version", 1},
-        {"schema_minor", chunk.cause_ids.empty() ? 0 : 1},
+        {"schema_minor", minor},
         {"run_id", chunk.run_id},
         {"capture_point", chunk.capture_point},
         {"producer_sequence", std::to_string(chunk.producer_sequence)},
@@ -254,6 +257,9 @@ toml::table metadata(const AudioChunk &chunk) {
         {"checkpoint", std::move(checkpoint)},
         {"causes", causes_table(chunk.cause_ids)},
         {"discontinuities", discontinuities_table(chunk)}};
+    if (chunk.segment != 0U)
+        table.insert("segment", std::to_string(chunk.segment));
+    return table;
 }
 
 AudioChunk parse_metadata(const std::string_view text) {
@@ -261,7 +267,7 @@ AudioChunk parse_metadata(const std::string_view text) {
         const auto table = toml::parse(text);
         const auto schema_minor = table["schema_minor"].value<std::int64_t>();
         if (table["schema_version"].value<std::int64_t>() != 1 || !schema_minor ||
-            (*schema_minor != 0 && *schema_minor != 1)) {
+            *schema_minor < 0 || *schema_minor > 2) {
             throw PcmMessageError::malformed_metadata;
         }
         AudioChunk chunk;
@@ -318,10 +324,18 @@ AudioChunk parse_metadata(const std::string_view text) {
         }
         chunk.discontinuities = parse_discontinuities(table["discontinuities"]);
         const auto *causes = table["causes"].as_array();
-        if (*schema_minor == 1 && causes == nullptr)
+        if (*schema_minor >= 1 && causes == nullptr)
             throw PcmMessageError::malformed_metadata;
         if (causes != nullptr)
             chunk.cause_ids = parse_causes(table["causes"]);
+        // DI-14: only minor 2 names a segment, and never segment 0.
+        if (*schema_minor == 2) {
+            chunk.segment = decimal(table["segment"]);
+            if (chunk.segment == 0U)
+                throw PcmMessageError::malformed_metadata;
+        } else if (table.contains("segment")) {
+            throw PcmMessageError::malformed_metadata;
+        }
         return chunk;
     } catch (const toml::parse_error &) {
         throw PcmMessageError::malformed_metadata;

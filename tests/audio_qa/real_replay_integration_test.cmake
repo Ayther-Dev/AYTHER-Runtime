@@ -270,7 +270,7 @@ if(NOT traversal_count EQUAL 1)
     message(FATAL_ERROR "The run has no traversal.toml: ${traversals}")
 endif()
 file(READ "${traversals}" traversal_text)
-foreach(expected IN ITEMS "schema_minor = 1" "kind = 'linear'" "linear_completed = true"
+foreach(expected IN ITEMS "schema_minor = 2" "kind = 'linear'" "linear_completed = true"
                           "frames_total = 6" "from = 0" "to = 5")
     string(FIND "${traversal_text}" "${expected}" found)
     if(found EQUAL -1)
@@ -278,6 +278,54 @@ foreach(expected IN ITEMS "schema_minor = 1" "kind = 'linear'" "linear_completed
 ${traversal_text}")
     endif()
 endforeach()
+
+# Spec 002, D-9 (DI-14): an inspection keeps its audio per linear segment. Pause at 3, step back
+# to 2 (a checkpoint is restored and the PCM line goes back), resume: the PCM before the pause
+# and the PCM after the resume are two contiguous segments, and the evidence is complete. The
+# traversal is an inspection, never accredited as linear audio. The facts of the frames produced
+# silently are not evidence either (plan D14), and the reopened trace still counts them as lost
+# (`data_lost`): that is the open finding after D-9, so the request ends incomplete (2).
+file(WRITE "${TEST_ROOT}/inspection.script"
+    "frame=3 key space down\nafter=0 key space up\npaused=3 key left down\nafter=0 key left up\n"
+    "paused=2 key space down\nafter=0 key space up\n")
+set(ENV{AYTHER_QA_INPUT_SCRIPT} "${TEST_ROOT}/inspection.script")
+spec002_check(2 "${TEST_ROOT}/spec002-inspection" --take "${TAKE_FILE}"
+              --request-id spec002-inspection)
+unset(ENV{AYTHER_QA_INPUT_SCRIPT})
+if(spec002_report MATCHES "evidence_error=" OR
+   NOT spec002_report MATCHES "durable_pcm_blocks=[1-9]" OR
+   NOT spec002_report MATCHES "playback=natural_end traversal=inspection")
+    message(FATAL_ERROR "D-9: an inspection did not keep complete audio evidence:\n${spec002_report}")
+endif()
+file(GLOB inspection_traversals "${TEST_ROOT}/spec002-inspection/runs/*/traversal.toml")
+file(READ "${inspection_traversals}" inspection_traversal)
+foreach(expected IN ITEMS "schema_minor = 2" "kind = 'inspection'" "linear_completed = false"
+                          "[[audio_segments]]" "segment = 1" "frame_from = 3" "frame_to = 5")
+    string(FIND "${inspection_traversal}" "${expected}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR "D-9: traversal.toml omitted ${expected}:\n${inspection_traversal}")
+    endif()
+endforeach()
+# The same with the pack: its relationships do not reopen across the silent production either,
+# and that is reported as evidence with losses, not as a PCM error.
+set(ENV{AYTHER_QA_INPUT_SCRIPT} "${TEST_ROOT}/inspection.script")
+spec002_check(2 "${TEST_ROOT}/spec002-inspection-pack" --take "${TAKE_FILE}"
+              --pack "${PACK_FILE}" --trust-registry "${TRUST_REGISTRY}"
+              --request-id spec002-inspection-pack)
+unset(ENV{AYTHER_QA_INPUT_SCRIPT})
+if(spec002_report MATCHES "evidence_error=" OR
+   NOT spec002_report MATCHES "assignments=1" OR
+   NOT spec002_report MATCHES "durable_pcm_blocks=[1-9]" OR
+   NOT spec002_report MATCHES "playback=natural_end traversal=inspection")
+    message(FATAL_ERROR "D-9: an inspection with pack lost its audio evidence:\n${spec002_report}")
+endif()
+file(GLOB inspection_summary "${TEST_ROOT}/spec002-inspection/requests/*/request-summary.toml")
+file(READ "${inspection_summary}" inspection_summary_text)
+if(NOT inspection_summary_text MATCHES "traversal = 'inspection'" OR
+   inspection_summary_text MATCHES "pcm_")
+    message(FATAL_ERROR "D-9: the inspection lost no PCM and is not linear audio:\n"
+                        "${inspection_summary_text}")
+endif()
 
 # RF-2.3: the same request returns its confirmed summary without starting the Runtime.
 spec002_check(0 "${TEST_ROOT}/spec002" --take "${TAKE_FILE}" --request-id spec002-nopack)

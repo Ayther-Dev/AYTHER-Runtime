@@ -64,13 +64,18 @@ void require_same(const qa::AudioChunk &expected, const qa::AudioChunk &actual) 
                 expected.range == actual.range && expected.bytes == actual.bytes &&
                 expected.sha256 == actual.sha256 && expected.durability == actual.durability &&
                 expected.checkpoint_id == actual.checkpoint_id &&
-                expected.cause_ids == actual.cause_ids &&
+                expected.cause_ids == actual.cause_ids && expected.segment == actual.segment &&
                 expected.discontinuities.size() == actual.discontinuities.size(),
             "pcm_round_trip_changed_chunk");
     for (std::size_t index = 0; index < expected.discontinuities.size(); ++index) {
         require(same_discontinuity(expected.discontinuities[index], actual.discontinuities[index]),
                 "pcm_round_trip_changed_discontinuity");
     }
+}
+
+bool contains(const std::vector<std::byte> &bytes, const std::string_view text) {
+    const std::string_view view{reinterpret_cast<const char *>(bytes.data()), bytes.size()};
+    return view.find(text) != std::string_view::npos;
 }
 
 } // namespace
@@ -115,6 +120,22 @@ int main() {
                 baseline = *bytes;
             }
         }
+
+        // Spec 002, DI-14: the segment of the traversal travels with the chunk (minor 2); a
+        // chunk of segment 0 keeps the minor it had, as evidence 1.1 wrote it.
+        auto segmented = sample_chunk(qa::PcmFormat::s16le, 44100, 2, 9);
+        segmented.segment = 3U;
+        const auto segmented_encoded = qa::encode_pcm_message(segmented, 50);
+        const auto *segmented_bytes = std::get_if<std::vector<std::byte>>(&segmented_encoded);
+        require(segmented_bytes != nullptr && contains(*segmented_bytes, "schema_minor = 2") &&
+                    contains(*segmented_bytes, "segment = '3'"),
+                "DI-14: a chunk of a later segment is pcm metadata 1.2 with its segment");
+        const auto segmented_decoded = qa::decode_pcm_message(*segmented_bytes, 50);
+        const auto *segmented_round_trip = std::get_if<qa::AudioChunk>(&segmented_decoded);
+        require(segmented_round_trip != nullptr, "DI-14: a segmented chunk was not decoded");
+        require_same(segmented, *segmented_round_trip);
+        require(contains(baseline, "schema_minor = 1") && !contains(baseline, "segment ="),
+                "DI-14: a chunk of segment 0 is written as before");
 
         auto inconsistent = baseline;
         const auto original_pcm_bytes = static_cast<std::uint32_t>(

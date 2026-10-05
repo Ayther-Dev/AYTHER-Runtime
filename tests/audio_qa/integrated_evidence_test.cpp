@@ -139,6 +139,69 @@ int main() {
                     streamed_trace.causally_connected,
                 "incremental_evidence_was_not_reopened");
 
+        // Spec 002, DI-14: the evidence of an inspection is written per linear segment. The
+        // writer audits continuity within each segment and declares each interval; a jump
+        // between segments is not a loss, but a linear traversal still needs one interval.
+        const auto segment_chunk = [](const char *run, const std::uint64_t sequence,
+                                      const std::uint64_t begin, const std::uint64_t segment) {
+            auto chunk = audio_chunk();
+            chunk.run_id = run;
+            chunk.producer_sequence = sequence;
+            chunk.range.begin = begin;
+            chunk.range.end = begin + 2U;
+            chunk.segment = segment;
+            return chunk;
+        };
+        const auto segment_fact = [](const char *run) {
+            qa::Fact value;
+            value.id = {run, "engine-9", 1U};
+            value.kind = "frame_observation";
+            return std::array{value};
+        };
+        qa::ReplayTraceSummary one_fact;
+        one_fact.observed_fact_count = 1U;
+        const auto stream_segments = [&](const char *run) {
+            auto writer_opened = qa::open_incremental_evidence(fixture / run, run);
+            auto *segmented = std::get_if<qa::IncrementalEvidenceWriter>(&writer_opened);
+            require(segmented != nullptr && !segmented->append_facts(segment_fact(run)),
+                    "segmented_evidence_was_not_opened");
+            // Segment 0 up to 4, a step back (1 restarts the line at 1), a step forward
+            // (2 starts at 10).
+            for (const auto &chunk :
+                 {segment_chunk(run, 1U, 0U, 0U), segment_chunk(run, 2U, 2U, 0U),
+                  segment_chunk(run, 3U, 1U, 1U), segment_chunk(run, 4U, 10U, 2U)})
+                require(!segmented->append_pcm(chunk),
+                        "DI-14: a jump between two segments was taken for a PCM loss");
+            return std::move(*segmented);
+        };
+        auto inspected = stream_segments("run-segments");
+        require(inspected.pcm_segments() ==
+                    std::vector<qa::PcmSegmentInterval>{
+                        {0U, {"engine-main-output", 44100U, 0U, 4U}, 2U},
+                        {1U, {"engine-main-output", 44100U, 1U, 3U}, 1U},
+                        {2U, {"engine-main-output", 44100U, 10U, 12U}, 1U}},
+                "DI-14: each segment declares its sample interval");
+        const auto inspected_finish =
+            inspected.finish(one_fact, false, qa::PcmContinuity::per_segment);
+        const auto *inspected_summary =
+            std::get_if<qa::IntegratedEvidenceSummary>(&inspected_finish);
+        require(inspected_summary != nullptr && inspected_summary->pcm_blocks == 4U,
+                "DI-14: contiguous and complete segments are complete evidence");
+        auto linear = stream_segments("run-segments-linear");
+        const auto linear_finish = linear.finish(one_fact, false, qa::PcmContinuity::single);
+        const auto *linear_error = std::get_if<qa::IntegratedEvidenceError>(&linear_finish);
+        require(linear_error != nullptr &&
+                    *linear_error == qa::IntegratedEvidenceError::pcm_continuity_failed,
+                "DI-14: a linear traversal still requires one continuous interval");
+        auto gap_opened = qa::open_incremental_evidence(fixture / "gap", "run-segment-gap");
+        auto *gap_writer = std::get_if<qa::IncrementalEvidenceWriter>(&gap_opened);
+        require(gap_writer != nullptr &&
+                    !gap_writer->append_pcm(segment_chunk("run-segment-gap", 1U, 0U, 1U)),
+                "segment_gap_evidence_was_not_opened");
+        const auto inner_gap = gap_writer->append_pcm(segment_chunk("run-segment-gap", 2U, 3U, 1U));
+        require(inner_gap && *inner_gap == qa::IntegratedEvidenceError::pcm_continuity_failed,
+                "DI-14: a gap within a segment is a loss");
+
         remove_tree(fixture);
         std::puts("integrated_evidence_test: passed");
         return 0;

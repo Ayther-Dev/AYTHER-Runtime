@@ -298,6 +298,9 @@ CheckExecutionResult execute_check_replay(const EffectiveRequest &effective, con
 
         CheckExecutionEvidence evidence;
         std::vector<InspectionEvent> inspection_events;
+        // DI-14: an inspection keeps its PCM per linear segment; a linear traversal (or a
+        // Runtime that does not say) still needs one single interval.
+        PcmContinuity pcm_continuity = PcmContinuity::single;
         std::uint64_t sequence = 2U;
         // RF-2.8: after the confirmed result of the last take the Runtime stays paused at N−1
         // with its window; the channel stays open until the window closes.
@@ -342,6 +345,8 @@ CheckExecutionResult execute_check_replay(const EffectiveRequest &effective, con
                                                    closed->inputs_consumed, post_events);
                 traversal.kind = TraversalKind::post_end_inspection;
                 traversal.linear_completed = false;
+                // RF-2.9: a post-end inspection is silent; it keeps no audio.
+                traversal.audio_segments.emplace();
                 if (!std::holds_alternative<DurablePublishedFile>(
                         publish_durable_file(directory / "replay-result.toml", payload)) ||
                     !std::holds_alternative<DurablePublishedFile>(
@@ -404,12 +409,26 @@ CheckExecutionResult execute_check_replay(const EffectiveRequest &effective, con
                                          payload);
                 if (!std::holds_alternative<DurablePublishedFile>(published))
                     return CheckExecutionError::evidence_stream_invalid;
-                // Spec 002 (RF-5.8, RF-2.13): the traversal is confirmed with the result.
-                if (!std::holds_alternative<DurablePublishedFile>(write_traversal(
-                        std::filesystem::path{effective.output} / "runs" / run_id /
-                            "traversal.toml",
-                        traversal_of_take(result->recording_frames, result->inputs_consumed,
-                                          inspection_events))))
+                // Spec 002 (RF-5.8, RF-2.13): the traversal is confirmed with the result. Every
+                // PCM chunk came before the terminal: the audio of each linear segment is
+                // known (DI-14, evidence 1.2).
+                auto traversal = traversal_of_take(result->recording_frames,
+                                                   result->inputs_consumed, inspection_events);
+                if (result->traversal == std::optional<std::string>{"inspection"})
+                    pcm_continuity = PcmContinuity::per_segment;
+                const auto pcm_segments = evidence_writer->pcm_segments();
+                const auto audio =
+                    audio_segments_of_take(traversal, inspection_events, pcm_segments);
+                if (const auto *segments = std::get_if<std::vector<TraversalAudioSegment>>(&audio))
+                    traversal.audio_segments = *segments;
+                else if (pcm_continuity == PcmContinuity::per_segment &&
+                         !evidence.preservation_error)
+                    // An inspection is complete only if its audio is that of its segments.
+                    evidence.preservation_error = IntegratedEvidenceError::pcm_segment_mismatch;
+                if (!std::holds_alternative<DurablePublishedFile>(
+                        write_traversal(std::filesystem::path{effective.output} / "runs" / run_id /
+                                            "traversal.toml",
+                                        traversal)))
                     return CheckExecutionError::evidence_stream_invalid;
                 if (!result->ended_paused || effective.presentation != "visible")
                     break;
@@ -423,7 +442,7 @@ CheckExecutionResult execute_check_replay(const EffectiveRequest &effective, con
 
         if (!evidence.preservation_error) {
             const auto publication =
-                evidence_writer->finish(result.trace, result.assignment_count > 0U);
+                evidence_writer->finish(result.trace, result.assignment_count > 0U, pcm_continuity);
             if (const auto *preserved = std::get_if<IntegratedEvidenceSummary>(&publication)) {
                 evidence.preserved = *preserved;
                 result.trace = evidence_writer->trace();
@@ -444,9 +463,13 @@ CheckExecutionResult execute_check_replay(const EffectiveRequest &effective, con
             return CheckExecutionError::result_identity_mismatch;
         if (result.succeeded && result.inputs_consumed != result.recording_frames)
             return CheckExecutionError::result_input_mismatch;
+        // An inspection produced frames silently, and their facts are not evidence (plan D14):
+        // its reopened trace lacks them. That is reported as evidence with losses (`data_lost`),
+        // never as a Runtime that contradicts its own result.
+        const bool inspected = pcm_continuity == PcmContinuity::per_segment;
         if (result.succeeded && evidence.preserved &&
-            ((result.assignment_count > 0U && !result.trace.causally_connected) ||
-             !result.trace.loss_free ||
+            ((!inspected && result.assignment_count > 0U && !result.trace.causally_connected) ||
+             (!inspected && !result.trace.loss_free) ||
              evidence.preserved->facts != result.trace.observed_fact_count ||
              evidence.preserved->pcm_blocks == 0U))
             return CheckExecutionError::result_evidence_mismatch;
