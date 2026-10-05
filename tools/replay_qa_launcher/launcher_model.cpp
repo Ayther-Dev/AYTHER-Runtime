@@ -42,7 +42,19 @@ bool issue_in_field(const audio_qa::FieldIssue &issue, std::string_view flag) {
            issue.field[flag.size()] == '[';
 }
 
+// D-10: a path pasted with Windows "Copy as path" comes between double quotes.
+std::string pasted_value(const audio_qa::CheckOptionDescriptor &descriptor, std::string value) {
+    return descriptor.kind == audio_qa::CheckOptionKind::path ? unquoted_path(std::move(value))
+                                                              : value;
+}
+
 } // namespace
+
+std::string unquoted_path(std::string value) {
+    if (value.size() >= 2U && value.front() == '"' && value.back() == '"')
+        return value.substr(1U, value.size() - 2U);
+    return value;
+}
 
 LauncherModel::LauncherModel() {
     for (const auto &descriptor : audio_qa::check_option_descriptors()) {
@@ -79,7 +91,7 @@ void LauncherModel::set(std::string_view flag, std::string value) {
     auto *field = find(flag);
     if (field == nullptr || field->descriptor->repeatable)
         return;
-    field->value = std::move(value);
+    field->value = pasted_value(*field->descriptor, std::move(value));
     dirty_ = true;
 }
 
@@ -88,7 +100,8 @@ void LauncherModel::remove_pack() { set("--pack", {}); }
 const std::vector<std::string> &LauncherModel::takes() const { return find("--take")->values; }
 
 void LauncherModel::add_take(std::string path) {
-    find("--take")->values.push_back(std::move(path));
+    auto *takes = find("--take");
+    takes->values.push_back(pasted_value(*takes->descriptor, std::move(path)));
     dirty_ = true;
 }
 
@@ -122,6 +135,8 @@ void LauncherModel::set_values(std::string_view flag, std::vector<std::string> v
     auto *field = find(flag);
     if (field == nullptr || !field->descriptor->repeatable)
         return;
+    for (auto &value : values)
+        value = pasted_value(*field->descriptor, std::move(value));
     field->values = std::move(values);
     dirty_ = true;
 }

@@ -14,6 +14,7 @@ Se instala con el componente `qa`, junto a `ayther_audio_qa`, y nunca con el com
    - **Tomas:** una o varias `.ayr`. Se pueden reordenar, repetir y quitar; cada repetición se ve como otra posición.
    - **Pack:** opcional. «Quitar» lo retira, y el resumen dice entonces «Sin pack».
    - **Runtime y core:** si hay un Runtime instalado junto al launcher y una configuración de AYTHER Play CE, salen de ahí. El resumen muestra su origen como «entorno», y la configuración de Play CE sólo se lee.
+   - **Rutas pegadas:** una ruta pegada entre comillas dobles, como la deja «Copiar como ruta de acceso» de Windows, se usa sin ese par de comillas en todos los campos de ruta. El resumen y la solicitud registran la ruta sin comillas.
 3. **Revisa las secciones.** Son entorno y condiciones, información auxiliar, destino e identidad, presentación e idioma. Un campo no válido muestra su error debajo, por ejemplo «Campo obligatorio» o el código de la validación previa, como `core_platform_mismatch`.
 4. **Comprueba el resumen de valores efectivos.** Cada fila muestra su origen: seleccionado, por defecto, entorno o manifiesto.
    - Cualquier cambio vuelve a validar la solicitud con el Runtime antes de poder iniciar.

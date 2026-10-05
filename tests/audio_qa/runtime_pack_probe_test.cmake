@@ -84,4 +84,29 @@ expect_field("corrupt asset" "${corrupt}" "bf4a1789ea6a189f925e9d211f8289f2"
              unreadable_assets 0)
 expect_field("corrupt asset" "${corrupt}" "pack_assets_unreadable" reason)
 
-message(STATUS "[pack probe] 4 packs verified")
+# D-10 (campaign 2026-10-04): a registry that cannot be used is a configuration error of the
+# registry (78, as for a launch), never a trust failure of the pack. A quoted path, as Windows
+# "Copy as path" pastes it, names no file.
+file(MAKE_DIRECTORY "${WORK}")
+probe("quoted registry" 78 quoted "${FIXTURES}/public-synthetic.ay"
+      --trust-registry "\"${REGISTRY}\"")
+expect_field("quoted registry" "${quoted}" "trust_registry_invalid" reason)
+expect_field("quoted registry" "${quoted}" "unknown" trust)
+probe("missing registry" 78 missing "${FIXTURES}/public-synthetic.ay"
+      --trust-registry "${WORK}/no-such-trust.toml")
+expect_field("missing registry" "${missing}" "trust_registry_invalid" reason)
+file(WRITE "${WORK}/malformed-trust.toml" "version = [\n")
+probe("malformed registry" 78 malformed "${FIXTURES}/public-synthetic.ay"
+      --trust-registry "${WORK}/malformed-trust.toml")
+expect_field("malformed registry" "${malformed}" "trust_registry_invalid" reason)
+# A valid registry whose key is revoked: the Engine refuses trust, and only then is it
+# pack_untrusted.
+file(READ "${REGISTRY}" registry_text)
+string(REPLACE "revoked = false" "revoked = true" revoked_text "${registry_text}")
+file(WRITE "${WORK}/revoked-trust.toml" "${revoked_text}")
+probe("revoked key" 66 revoked "${FIXTURES}/public-synthetic.ay"
+      --trust-registry "${WORK}/revoked-trust.toml")
+expect_field("revoked key" "${revoked}" "untrusted" trust)
+expect_field("revoked key" "${revoked}" "pack_untrusted" reason)
+
+message(STATUS "[pack probe] 4 packs and 4 registries verified")

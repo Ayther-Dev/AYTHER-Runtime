@@ -176,7 +176,9 @@ std::optional<PackProbe> parse_pack_probe(std::string_view output) {
 std::optional<FieldIssue> pack_issue(const PackProbe &probe) {
     if (probe.reason.empty())
         return std::nullopt;
-    if (probe.reason == "pack_trust_unverified")
+    // D-10: a registry that cannot be used (missing, unreadable, malformed) is an error of
+    // --trust-registry, not a trust failure of the pack.
+    if (probe.reason == "pack_trust_unverified" || probe.reason == "trust_registry_invalid")
         return FieldIssue{"--trust-registry", probe.reason};
     return FieldIssue{"--pack", probe.reason};
 }

@@ -124,6 +124,18 @@ rejected("corrupt-asset" "pack_assets_unreadable: --pack"
 rejected("missing-registry" "material_not_found: --trust-registry"
     --rom "${ROM_FILE}" --core "${CORE_DLL}" --take "${TAKE_FILE}"
     --pack "${FIXTURES}/public-synthetic.ay" --trust-registry "${TEST_ROOT}/missing.toml")
+# D-10: a registry that exists but is not a registry is an error of --trust-registry, not
+# pack_untrusted; a valid registry that revokes the key is pack_untrusted.
+file(WRITE "${TEST_ROOT}/malformed-trust.toml" "version = [\n")
+rejected("malformed-registry" "trust_registry_invalid: --trust-registry"
+    --rom "${ROM_FILE}" --core "${CORE_DLL}" --take "${TAKE_FILE}"
+    --pack "${FIXTURES}/public-synthetic.ay" --trust-registry "${TEST_ROOT}/malformed-trust.toml")
+file(READ "${REGISTRY}" registry_text)
+string(REPLACE "revoked = false" "revoked = true" revoked_text "${registry_text}")
+file(WRITE "${TEST_ROOT}/revoked-trust.toml" "${revoked_text}")
+rejected("revoked-registry" "pack_untrusted: --pack"
+    --rom "${ROM_FILE}" --core "${CORE_DLL}" --take "${TAKE_FILE}"
+    --pack "${FIXTURES}/public-synthetic.ay" --trust-registry "${TEST_ROOT}/revoked-trust.toml")
 rejected("second-take-missing" "material_not_found: --take\\[1\\]"
     --rom "${ROM_FILE}" --core "${CORE_DLL}" --take "${TAKE_FILE}"
     --take "${TEST_ROOT}/missing.arp")

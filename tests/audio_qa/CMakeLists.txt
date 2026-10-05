@@ -958,6 +958,7 @@ if(AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE AND WIN32)
         COMMAND ${CMAKE_COMMAND}
             "-DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>"
             "-DFIXTURES=${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+            "-DWORK=${CMAKE_CURRENT_BINARY_DIR}/pack-probe/$<CONFIG>"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/runtime_pack_probe_test.cmake")
     set_tests_properties(audio_qa_runtime_pack_probe PROPERTIES
         LABELS "audio_qa;runtime;contract;integration" TIMEOUT 60)

@@ -113,6 +113,15 @@ void pack_probe_output_is_read() {
                qa::pack_issue(*unverified) ==
                    qa::FieldIssue{"--trust-registry", "pack_trust_unverified"},
            "RF-2.2: a signed pack without a registry points at --trust-registry");
+    // D-10: a registry that cannot be used is an error of --trust-registry, not of the pack.
+    const auto registry =
+        qa::parse_pack_probe("AYTHER_PACK_PROBE {\"schema\":\"1.0\",\"opened\":false,\"signature\":"
+                             "\"unverified\",\"trust\":\"unknown\",\"catalog\":null,"
+                             "\"unreadable_assets\":[],\"game_id\":\"\",\"errors\":[],"
+                             "\"reason\":\"trust_registry_invalid\",\"message\":\"m\"}\n");
+    expect(registry && qa::pack_issue(*registry) ==
+                           qa::FieldIssue{"--trust-registry", "trust_registry_invalid"},
+           "D-10: an unusable trust registry points at --trust-registry");
     expect(!qa::parse_pack_probe("AYTHER_PACK_PROBE {\"schema\":\"2.0\",\"opened\":true,"
                                  "\"signature\":\"valid\",\"trust\":\"trusted\"}\n") &&
                !qa::parse_pack_probe("AYTHER_PACK_PROBE {\"schema\":\"1.0\"}\n") &&

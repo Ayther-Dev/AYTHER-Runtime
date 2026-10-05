@@ -626,6 +626,13 @@ se rechaza antes de admitir (`material_not_found: --trust-registry`) y un pack q
 se puede usar, con el motivo de `--probe-pack`. Un pack válido sin catálogo de audio
 ya no es un error: la toma se reproduce y registra `assignments=0` (RF-2.1, RF-2.2).
 
+`--probe-pack` comprueba primero el registro de confianza con las mismas reglas que un
+arranque: un registro que falta, no se puede leer o no es válido (también una ruta pegada
+entre comillas) termina con 78 y `trust_registry_invalid`, que el comprobador rechaza en
+`--trust-registry`. `pack_untrusted` queda sólo para el pack que el Engine rechaza por su
+firma o su política de confianza (clave desconocida o revocada, vigencia, ámbito); otro fallo
+al abrirlo es `pack_open_failed` (D-10).
+
 ## Cierre local de presupuestos B06, B10 y B13
 
 `audio_qa_fact_throughput` ejecuta la carga sostenida seguida por la ráfaga y

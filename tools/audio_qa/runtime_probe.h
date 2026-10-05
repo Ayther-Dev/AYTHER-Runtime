@@ -81,8 +81,8 @@ struct PackProbe {
 [[nodiscard]] std::optional<PackProbe> parse_pack_probe(std::string_view output);
 
 // A pack the Runtime cannot use stops the request with the probe reason, never as
-// «Sin pack». A signed pack without a registry points at --trust-registry; the rest
-// at --pack.
+// «Sin pack». A signed pack without a registry, or a registry that cannot be used (D-10),
+// points at --trust-registry; the rest at --pack.
 [[nodiscard]] std::optional<FieldIssue> pack_issue(const PackProbe &probe);
 
 // D-1 (RF-2.2): a requested profile that the pack does not offer is a mismatch of the

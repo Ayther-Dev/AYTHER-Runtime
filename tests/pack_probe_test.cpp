@@ -147,6 +147,42 @@ void probe_line_states_the_reason() {
     unreadable_catalog.catalog.reset();
     check(ayther::runtime::pack_probe_reason(unreadable_catalog) == "pack_catalog_invalid",
           "a catalog that cannot be read makes the pack unusable");
+    check(ayther::runtime::pack_probe_exit_code(usable) == 0 &&
+              ayther::runtime::pack_probe_exit_code(corrupt) == 66,
+          "a usable pack ends with 0 and an unusable one with 66");
+}
+
+// D-10 (campaign 2026-10-04): a registry that cannot be read is not a trust failure.
+void registry_errors_are_not_trust_failures() {
+    using ayther::runtime::pack_trust;
+    check(pack_trust(false, false, false) == "unverified" &&
+              pack_trust(true, true, true) == "trusted",
+          "D-10: without a registry trust is unverified; opened with it, trusted");
+    check(pack_trust(true, false, true) == "untrusted",
+          "D-10: refused by the Engine for trust with a usable registry: untrusted");
+    check(pack_trust(true, false, false) == "unknown",
+          "D-10: a pack that fails to open for another reason says nothing about trust");
+
+    ayther::runtime::PackProbeReport invalid;
+    invalid.signed_pack = true;
+    invalid.trust = "unknown";
+    invalid.trust_registry_error =
+        "--trust-registry '\"C:\\t.toml\"': file is missing, inaccessible, or not a regular file";
+    const auto line = ayther::runtime::format_pack_probe_line(invalid);
+    check(ayther::runtime::pack_probe_reason(invalid) == "trust_registry_invalid" &&
+              ayther::runtime::pack_probe_exit_code(invalid) == 78 &&
+              line.find("\"trust\":\"unknown\"") != std::string::npos &&
+              line.find("\"reason\":\"trust_registry_invalid\"") != std::string::npos &&
+              line.find("file is missing") != std::string::npos,
+          "D-10: a missing, unreadable or malformed registry is trust_registry_invalid (78)");
+
+    ayther::runtime::PackProbeReport unopened;
+    unopened.signed_pack = true;
+    unopened.signature = "unverified";
+    unopened.trust = "unknown";
+    check(ayther::runtime::pack_probe_reason(unopened) == "pack_open_failed" &&
+              ayther::runtime::pack_probe_exit_code(unopened) == 66,
+          "D-10: a pack that fails to open for another reason reports pack_open_failed");
 }
 
 } // namespace
@@ -156,6 +192,7 @@ int main() {
     catalogs_are_read_as_the_engine_reads_them();
     assets_must_decode();
     probe_line_states_the_reason();
+    registry_errors_are_not_trust_failures();
     std::printf("\n%d passed, %d failed\n", passed, failed);
     return failed == 0 ? 0 : 1;
 }

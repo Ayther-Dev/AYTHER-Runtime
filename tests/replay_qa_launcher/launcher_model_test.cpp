@@ -205,8 +205,51 @@ void results() {
 
 } // namespace
 
+// D-10 (campaign 2026-10-04): Windows "Copy as path" pastes the path between double quotes. A
+// path field keeps the path without that one surrounding pair, so the effective value shown and
+// the one recorded are the path itself (RF-1.6). Other fields keep what was typed.
+void pasted_paths_lose_their_quotes() {
+    const auto quoted = [](std::string_view path) { return "\"" + std::string{path} + "\""; };
+    auto model = ready();
+    std::size_t paths{};
+    for (const auto &descriptor : qa::check_option_descriptors()) {
+        if (descriptor.kind != qa::CheckOptionKind::path || descriptor.repeatable)
+            continue;
+        ++paths;
+        const std::string path = "C:/Users/qa/My Files/" + std::string{descriptor.flag.substr(2)};
+        model.set(descriptor.flag, quoted(path));
+        expect(model.value(descriptor.flag) == path,
+               "D-10: the pasted path of " + std::string{descriptor.flag} + " loses its quotes");
+    }
+    expect(paths >= 6U, "D-10: every path field is covered");
+    model.add_take(quoted("C:/takes/Toma 3.ayr"));
+    model.set_values("--take", {quoted("C:/takes/b.ayr"), quoted("C:/takes/Toma 3.ayr")});
+    expect(model.takes() == std::vector<std::string>{"C:/takes/b.ayr", "C:/takes/Toma 3.ayr"},
+           "D-10: a pasted take path loses its quotes");
+    const auto request = model.request();
+    expect(request.trust_registry == "C:/Users/qa/My Files/trust-registry" &&
+               request.pack == "C:/Users/qa/My Files/pack" &&
+               request.rom == "C:/Users/qa/My Files/rom",
+           "D-10, RF-1.6: the request records the unquoted paths");
+    model.revalidate(fake_preflight);
+    const auto summary = model.summary();
+    const auto pack = std::find_if(summary.begin(), summary.end(),
+                                   [](const la::SummaryLine &line) { return line.key == "pack"; });
+    expect(pack != summary.end() && pack->value == "C:/Users/qa/My Files/pack",
+           "D-10, RF-1.6: the effective value shown is the unquoted path");
+
+    model.set("--rom", "\"C:/roms/half.md");
+    expect(model.value("--rom") == "\"C:/roms/half.md",
+           "D-10: a single quote is not a surrounding pair and stays");
+    model.set("--rom", "\"\"C:/roms/twice.md\"\"");
+    expect(model.value("--rom") == "\"C:/roms/twice.md\"", "D-10: only one pair is removed");
+    model.set("--request-id", quoted("id"));
+    expect(model.value("--request-id") == quoted("id"), "D-10: a text field keeps its quotes");
+}
+
 int main() {
     fields_and_required();
+    pasted_paths_lose_their_quotes();
     effective_values();
     ordered_takes();
     incompatibilities();
