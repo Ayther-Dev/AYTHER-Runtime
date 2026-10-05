@@ -324,6 +324,30 @@ void runtime_command_line() {
     expect(!contains(arguments, L"--qa-last-take"), "an intermediate take is not the last one");
 }
 
+// D-13 (campaign 2026-10-05, BR-191; RF-2.2, RNF-3): the request identity holds 256 bytes of
+// printable text. Beyond that, or with a control character, the request is rejected in the
+// validation, in the field --request-id, before anything is created.
+void request_identity_limits() {
+    auto options = minimal_options();
+    options.request_id = std::string(256U, 'r');
+    const auto at_limit = qa::resolve_effective_request(options, {});
+    expect(std::holds_alternative<qa::EffectiveRequest>(at_limit),
+           "D-13, RNF-3: a request identity of 256 bytes is accepted");
+    options.request_id = std::string(257U, 'r');
+    const auto beyond = qa::resolve_effective_request(options, {});
+    const auto *too_long = std::get_if<std::vector<qa::EffectiveIssue>>(&beyond);
+    expect(too_long != nullptr && too_long->size() == 1U &&
+               too_long->front() == qa::EffectiveIssue{"--request-id", "request_id_too_long"},
+           "D-13, RF-2.2: a request identity of 257 bytes is rejected in --request-id");
+    options.request_id = std::string{"request"} + char{0x09} + "id";
+    const auto control = qa::resolve_effective_request(options, {});
+    const auto *invalid = std::get_if<std::vector<qa::EffectiveIssue>>(&control);
+    expect(invalid != nullptr && invalid->size() == 1U &&
+               invalid->front() == qa::EffectiveIssue{"--request-id", "request_id_invalid"},
+           "D-13, RF-2.2: a request identity with a control character is rejected in "
+           "--request-id");
+}
+
 } // namespace
 
 int main() {
@@ -335,6 +359,7 @@ int main() {
     rom_is_only_explicit();
     play_config_resolution();
     runtime_command_line();
+    request_identity_limits();
     if (failures != 0)
         return 1;
     std::cout << "effective values keep their origin\n";

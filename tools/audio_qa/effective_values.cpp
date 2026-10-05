@@ -1,5 +1,7 @@
 #include "effective_values.h"
 
+#include "model_limits.h"
+
 #include <toml++/toml.hpp>
 
 #include <algorithm>
@@ -177,6 +179,16 @@ EffectiveResult resolve_effective_request(const CheckOptions &options,
     request.request_id = options.request_id;
     if (!options.request_id.empty())
         builder.add("request_id", options.request_id, ValueSource::explicit_option);
+    // D-13 (RF-2.2, RNF-3): the request identity is what the ledger can keep, 256 bytes of
+    // printable text. Anything else is found here, in its field, before the destination is
+    // created; it never reaches the admission as an anonymous invalid request.
+    if (options.request_id.size() > max_identity_bytes)
+        builder.issues.push_back({"--request-id", "request_id_too_long"});
+    else if (std::any_of(options.request_id.begin(), options.request_id.end(),
+                         [](const unsigned char character) {
+                             return character < 0x20U || character == 0x7fU;
+                         }))
+        builder.issues.push_back({"--request-id", "request_id_invalid"});
     request.language = options.language;
     request.presentation = options.presentation;
     if (!options.play_manifest.empty()) {
