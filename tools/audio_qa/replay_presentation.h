@@ -25,6 +25,10 @@ struct ReplayPresentation {
     // terminal: a frame presented again after an inspection, or affected again, counts once.
     std::vector<bool> presented_seen;
     std::vector<bool> affected_seen;
+    // DI-25: the late frames recorded and whether any delay exceeded the tolerance. Not part
+    // of the terminal.
+    std::uint32_t late_frames_{};
+    bool intolerable_{};
 
     // A take frame presented in playback; each frame counts once, so the presented frames never
     // exceed the frames consumed.
@@ -51,11 +55,42 @@ struct ReplayPresentation {
     // the interruption is its reason; the first problem keeps naming it, as with a degraded
     // frame. The playback and the frames presented are not touched.
     void interrupted(const std::string &cause) {
+        if (!cause.empty())
+            intolerable_ = true;
         if (code == "presented" && !cause.empty())
             code = cause;
     }
+    // DI-25 (D-6b): a frame of continuous playback that completed `periods_late` periods past
+    // its deadline. It is recorded as a degraded cadence; while each such delay is at most 3
+    // periods and there is at most one per 1000 frames of the take (at least one), the
+    // observation stays complete.
+    void late(const std::uint32_t frame, const double periods_late,
+              const std::uint32_t take_frames) noexcept {
+        affect(frame);
+        if (code == "presented")
+            code = "cadence_degraded";
+        ++late_frames_;
+        const std::uint32_t budget = (std::max)(1U, take_frames / 1000U);
+        if (periods_late > 3.0 || late_frames_ > budget)
+            intolerable_ = true;
+    }
+    // DI-25: the tolerated late frames, part of the terminal (0 when a delay exceeded the
+    // tolerance); a supervisor restores them to check the result.
+    [[nodiscard]] std::uint32_t tolerated_late_frames() const noexcept {
+        return intolerable_ ? 0U : late_frames_;
+    }
+    void restore_tolerated_late_frames(const std::uint32_t count) noexcept {
+        late_frames_ = count;
+        intolerable_ = false;
+    }
     [[nodiscard]] bool complete() const noexcept {
-        return mode == "none" || (code == "presented" && affected_frames == 0U && !cancelled);
+        if (mode == "none")
+            return true;
+        if (cancelled)
+            return false;
+        if (code == "presented" && affected_frames == 0U)
+            return true;
+        return code == "cadence_degraded" && !intolerable_ && affected_frames <= late_frames_;
     }
     // The terminal fields; what was counted is not part of the value.
     bool operator==(const ReplayPresentation &other) const noexcept {
@@ -65,7 +100,8 @@ struct ReplayPresentation {
                first_affected_frame == other.first_affected_frame &&
                last_affected_frame == other.last_affected_frame && cancelled == other.cancelled &&
                initial_width == other.initial_width && initial_height == other.initial_height &&
-               hd_enabled == other.hd_enabled && shaders_enabled == other.shaders_enabled;
+               hd_enabled == other.hd_enabled && shaders_enabled == other.shaders_enabled &&
+               tolerated_late_frames() == other.tolerated_late_frames();
     }
 
   private:

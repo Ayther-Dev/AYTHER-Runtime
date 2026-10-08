@@ -6,6 +6,11 @@ include("${CMAKE_CURRENT_LIST_DIR}/real_replay_integration_test.cmake")
 # runs below close the window there through the scripted input of the QA tests.
 file(WRITE "${TEST_ROOT}/close-at-end.script" "paused=5 close\n")
 set(ENV{AYTHER_QA_INPUT_SCRIPT} "${TEST_ROOT}/close-at-end.script")
+# Spec 002 (R6, BR-091, P-13): the visible preparation prewarms the pack's catalog textures
+# before the first frame, so no texture is decoded in the middle of the replay (D-6b).
+set(visible_timing_log "${TEST_ROOT}/visible-timing.csv")
+file(REMOVE "${visible_timing_log}")
+set(ENV{AYTHER_QA_TIMING_LOG} "${visible_timing_log}")
 execute_process(
     COMMAND "${CHECK_EXE}" check
         --runtime "${RUNTIME_EXE}" --rom "${ROM_FILE}" --reference "${REFERENCE}"
@@ -16,8 +21,14 @@ execute_process(
     RESULT_VARIABLE visible_result OUTPUT_VARIABLE visible_out ERROR_VARIABLE visible_err
     TIMEOUT 30)
 set(visible_report "${visible_out}${visible_err}")
+unset(ENV{AYTHER_QA_TIMING_LOG})
 if(NOT visible_result EQUAL 0 AND NOT visible_result EQUAL 2)
     message(FATAL_ERROR "Visible replay failed: ${visible_report}")
+endif()
+file(READ "${visible_timing_log}" visible_timing)
+if(NOT visible_timing MATCHES "(^|\n)prewarm,[0-9]+,[0-9]+,[0-9]+,[0-9]+,[0-9.]+\n")
+    message(FATAL_ERROR "BR-091: the visible preparation did not prewarm the pack textures:\n"
+                        "${visible_timing}")
 endif()
 foreach(expected IN ITEMS "presentation=visible" "presented_frames=6" "inputs_consumed=6"
                           "relationships_reopened=true" "audible_restart_observed=not_evaluated"

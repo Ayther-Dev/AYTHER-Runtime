@@ -43,6 +43,12 @@ if(AYTHER_ENABLE_GPU_TESTS)
         COMMAND ayther_replay_qa --smoke-frames 30)
     set_tests_properties(replay_qa_launcher_window_smoke PROPERTIES
         LABELS "qa;gpu" TIMEOUT 60 PASS_REGULAR_EXPRESSION "smoke frames=30")
+    # Campaign 2026-10-07 (RNF-2): idle, the window waits for input instead of spinning.
+    add_test(NAME replay_qa_launcher_idle_cpu
+        COMMAND ${CMAKE_COMMAND} "-DLAUNCHER=$<TARGET_FILE:ayther_replay_qa>"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/idle_cpu_test.cmake")
+    set_tests_properties(replay_qa_launcher_idle_cpu PROPERTIES
+        LABELS "qa;gpu;launcher" TIMEOUT 90 RUN_SERIAL TRUE)
     # Spec 002, BR-172 (RF-1.1, RF-2.1): the launcher opens, shows the errors of the required
     # fields, starts a visible request with the synthetic core, cancels it and shows the result.
     if(TARGET ayther_runtime AND TARGET synthetic_libretro_core)

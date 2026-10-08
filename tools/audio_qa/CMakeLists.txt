@@ -121,7 +121,7 @@ if(AYTHER_CLANG_TIDY_COMMAND)
 endif()
 
 add_library(ayther_audio_qa_transport STATIC inherited_channel.cpp protocol_io.cpp
-    runtime_process.cpp separated_channel_drain.cpp)
+    runtime_process.cpp separated_channel_drain.cpp channel_pump.cpp)
 target_include_directories(ayther_audio_qa_transport PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_features(ayther_audio_qa_transport PUBLIC cxx_std_20)

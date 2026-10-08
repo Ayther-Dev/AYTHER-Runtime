@@ -110,7 +110,10 @@ bool CheckpointStore::capture(const AytherSession &session, const std::int64_t f
         checkpoint.audio_header.emulation_frame = checkpoint.visual.header.emulation_frame;
         checkpoint.audio_header.sections = audio::kAudioHdStateRequiredSections;
         checkpoint.detector_windows = session.audio_hd_detector_windows_state();
-        checkpoint.voices = session.audio_hd_voices_state();
+        // Spec 002 (D-6b): the mixer's PCM is shared, never copied. Copying a stage's music
+        // (~21 MB) every 60 frames delayed that frame past its turn.
+        std::vector<engine::audio_observation::AudioHdSharedPcmAsset> shared;
+        checkpoint.voices = session.audio_hd_voices_state(shared);
         checkpoint.requests = session.audio_hd_requests_pending_state();
 
         // The PCM of the assets is the same for every checkpoint of the take: it is kept once.
@@ -119,16 +122,18 @@ bool CheckpointStore::capture(const AytherSession &session, const std::int64_t f
                              bytes_of(checkpoint.detector_windows.windows) +
                              bytes_of(checkpoint.voices.voices) +
                              pending_bytes(checkpoint.requests);
-        for (auto &asset : checkpoint.voices.pcm_assets) {
-            const auto key = std::make_pair(asset.identity, asset.samples.size());
+        if (shared.size() != checkpoint.voices.pcm_assets.size())
+            return false;
+        for (auto &asset : shared) {
+            if (!asset.samples)
+                return false;
+            const auto key = std::make_pair(asset.identity, asset.samples->size());
             auto &pooled = pcm_pool_[key];
-            if (!pooled || *pooled != asset.samples) {
-                size += bytes_of(asset.samples);
-                pooled =
-                    std::make_shared<const std::vector<std::int16_t>>(std::move(asset.samples));
+            if (pooled != asset.samples) {
+                size += bytes_of(*asset.samples);
+                pooled = std::move(asset.samples);
             }
             checkpoint.shared_pcm.emplace_back(asset.identity, pooled);
-            asset.samples.clear();
         }
         if (frame == replay_inspection::initial_checkpoint_frame) {
             ring_.store_initial(size);

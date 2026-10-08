@@ -435,6 +435,56 @@ endif()
 add_test(NAME audio_qa_inspection_evidence COMMAND audio_qa_inspection_evidence_test)
 set_tests_properties(audio_qa_inspection_evidence PROPERTIES
     LABELS "audio_qa;evidence;unit" TIMEOUT 10)
+# Spec 002 (DI-25): isolated late frames are tolerated within a bound.
+add_executable(audio_qa_presentation_tolerance_test presentation_tolerance_test.cpp)
+target_link_libraries(audio_qa_presentation_tolerance_test PRIVATE ayther_audio_qa_cli)
+target_compile_features(audio_qa_presentation_tolerance_test PRIVATE cxx_std_20)
+set_target_properties(audio_qa_presentation_tolerance_test PROPERTIES CXX_EXTENSIONS OFF)
+if(MSVC)
+    target_compile_options(audio_qa_presentation_tolerance_test PRIVATE /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(audio_qa_presentation_tolerance_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(WIN32)
+    add_custom_command(TARGET audio_qa_presentation_tolerance_test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<IF:$<CONFIG:Debug>,${qa_descriptor_toml_dll_debug},${qa_descriptor_toml_dll_release}>"
+            "$<TARGET_FILE_DIR:audio_qa_presentation_tolerance_test>" VERBATIM)
+endif()
+add_test(NAME audio_qa_presentation_tolerance COMMAND audio_qa_presentation_tolerance_test)
+set_tests_properties(audio_qa_presentation_tolerance PROPERTIES LABELS "audio_qa;unit" TIMEOUT 10)
+# Spec 002 (D-6b): the supervisor reads the Runtime's channel ahead of durable persistence.
+add_executable(audio_qa_channel_pump_test channel_pump_test.cpp)
+target_link_libraries(audio_qa_channel_pump_test PRIVATE ayther_audio_qa_transport)
+target_compile_features(audio_qa_channel_pump_test PRIVATE cxx_std_20)
+set_target_properties(audio_qa_channel_pump_test PROPERTIES CXX_EXTENSIONS OFF)
+if(MSVC)
+    target_compile_options(audio_qa_channel_pump_test PRIVATE /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(audio_qa_channel_pump_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME audio_qa_channel_pump COMMAND audio_qa_channel_pump_test)
+set_tests_properties(audio_qa_channel_pump PROPERTIES LABELS "audio_qa;transport;unit" TIMEOUT 20)
+add_executable(audio_qa_inspection_visit_limit_test inspection_visit_limit_test.cpp)
+target_link_libraries(audio_qa_inspection_visit_limit_test PRIVATE ayther_audio_qa_cli)
+target_compile_features(audio_qa_inspection_visit_limit_test PRIVATE cxx_std_20)
+set_target_properties(audio_qa_inspection_visit_limit_test PROPERTIES CXX_EXTENSIONS OFF)
+if(MSVC)
+    target_compile_options(audio_qa_inspection_visit_limit_test PRIVATE
+        /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(audio_qa_inspection_visit_limit_test PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(WIN32)
+    add_custom_command(TARGET audio_qa_inspection_visit_limit_test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<IF:$<CONFIG:Debug>,${qa_descriptor_toml_dll_debug},${qa_descriptor_toml_dll_release}>"
+            "$<TARGET_FILE_DIR:audio_qa_inspection_visit_limit_test>" VERBATIM)
+endif()
+add_test(NAME audio_qa_inspection_visit_limit COMMAND audio_qa_inspection_visit_limit_test)
+set_tests_properties(audio_qa_inspection_visit_limit PROPERTIES
+    LABELS "audio_qa;evidence;limits;unit" TIMEOUT 10)
 add_executable(audio_qa_inspection_facts_test inspection_facts_test.cpp)
 target_link_libraries(audio_qa_inspection_facts_test PRIVATE ayther_audio_qa_cli
     ayther_audio_qa_evidence ayther_audio_qa_model_toml ayther_audio_qa_transport)
@@ -1000,7 +1050,7 @@ if(AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE AND WIN32)
                 "-DPACK_FILE=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic.ay"
                 "-DTRUST_REGISTRY=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic-trust.toml"
                 "-DTAKE_FILE=${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic.arp"
-                "-DBROKEN_TAKE_FILE=${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic-broken.arp"
+                "-DBROKEN_TAKE_FILE=${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic-rejected-state.arp"
                 "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/visible-replay/$<CONFIG>"
                 "-DFIXTURE_EXE=$<TARGET_FILE:audio_qa_public_recording_fixture>"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/visible_replay_integration_test.cmake")

@@ -460,8 +460,9 @@ void acknowledge_progress(void *, const qa::ReplayProgressEvent &) noexcept {}
 // Spec 002 (contracts.md C1-5): every terminal says separately how the playback ended,
 // the traversal and why the evidence is incomplete.
 [[nodiscard]] bool send_result(qa::OwnedChannelHandle &channel, qa::ReplayExecutionResult result,
-                               const std::uint64_t sequence = 2U, const bool cancelled = false) {
-    qa::describe_linear_terminal(result, cancelled);
+                               const std::uint64_t sequence = 2U, const bool cancelled = false,
+                               const bool inspected = false) {
+    qa::describe_terminal(result, cancelled, inspected);
     const auto encoded = qa::encode_replay_execution_result(result, sequence);
     const auto *message = std::get_if<std::vector<std::byte>>(&encoded);
     return message != nullptr && qa::write_channel(channel, *message);
@@ -754,8 +755,11 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
         const auto fail_session = [&](const std::string_view code) {
             stop_capture();
             result.code = code;
-            return send_result(*data, result, writer.next_sequence()) ? qa_execution_error
-                                                                      : qa_protocol_error;
+            // A navigation that fails (also while closing) is still an inspection.
+            return send_result(*data, result, writer.next_sequence(), false,
+                               controller.traversal_inspected())
+                       ? qa_execution_error
+                       : qa_protocol_error;
         };
         std::optional<ri::InputScript> script;
         if (load_input_script(script) == ScriptLoad::invalid)
@@ -961,6 +965,11 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
         TimingLog timing{environment_value("AYTHER_QA_TIMING_LOG")};
         if (presentation)
             timing.mark("device", presentation->device_name(), presentation->refresh_hz());
+        if (presentation) {
+            const auto &prewarm = presentation->prewarm();
+            timing.mark("prewarm", prewarm.assets, prewarm.resident, prewarm.over_budget,
+                        prewarm.failed, prewarm.decode_ms);
+        }
         std::optional<double> resume_key_ms;
         std::map<std::uint32_t, std::uint64_t> visits;
         std::uint64_t event_sequence{};
@@ -1309,8 +1318,13 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
             const auto close_started = std::chrono::steady_clock::now();
             qa::ProgressWatchdog close_watchdog{qa::WatchdogPhase::closing, 0U};
             const auto initial_output_end = writer.last_pcm_end();
-            (void)close_watchdog.observe_bytes_received(initial_output_end, 0U);
-            (void)close_watchdog.observe_bytes_durable(initial_output_end, 0U);
+            // The end of an inspection's PCM can move back while closing: the watchdog
+            // observes its monotonic progress.
+            qa::MonotonicProgress close_progress;
+            (void)close_watchdog.observe_bytes_received(close_progress.observe(initial_output_end),
+                                                        0U);
+            (void)close_watchdog.observe_bytes_durable(close_progress.observe(initial_output_end),
+                                                       0U);
             while (!closed.drain.output_complete) {
                 if (presentation)
                     (void)presentation->poll(false);
@@ -1326,9 +1340,13 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                                          .count();
                 const auto now = static_cast<std::uint64_t>(elapsed);
                 const auto current_output_end = writer.last_pcm_end();
-                if (!close_watchdog.observe_bytes_received(current_output_end, now) ||
-                    !close_watchdog.observe_bytes_durable(current_output_end, now) ||
+                const auto progressed = close_progress.observe(current_output_end);
+                if (!close_watchdog.observe_bytes_received(progressed, now) ||
+                    !close_watchdog.observe_bytes_durable(progressed, now) ||
                     close_watchdog.check(now).has_value()) {
+                    // Campaign 2026-10-07: which part of the close did not finish.
+                    timing.mark("close_stalled", now, initial_output_end, current_output_end,
+                                closed.drain.output_sample_limit);
                     return fail_session("pcm_capture_close_timeout");
                 }
             }
@@ -1340,21 +1358,25 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                 stop_capture();
             }
             writer.set_pcm_limit(closed.drain.output_sample_limit);
-            if (!writer.pcm_complete())
+            if (!writer.pcm_complete()) {
+                timing.mark("close_pcm_incomplete", writer.last_pcm_end(),
+                            closed.drain.output_sample_limit, writer.pcm_count());
                 return fail_session("pcm_capture_close_timeout");
+            }
+            timing.mark("close_drained",
+                        std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now() - close_started)
+                            .count(),
+                        closed.drain.output_sample_limit);
 
             // Spec 002 (contracts.md C1-5): how the playback ended, the traversal and the
             // pause.
             const auto describe = [&] {
-                qa::describe_linear_terminal(result, stopped_early && !traversal_failed);
+                qa::describe_terminal(result, stopped_early && !traversal_failed, inspected);
                 if (traversal_failed)
                     result.playback = "failed";
                 else if (stopped_early && interrupted_at_close)
                     result.playback = "interrupted";
-                if (inspected) {
-                    result.traversal = "inspection";
-                    result.linear_completed = false;
-                }
                 result.ended_paused = natural && paused_at_end;
                 result.user_pause_ms = user_pause_ms;
                 result.interruptions = health.incidents();
@@ -1650,12 +1672,23 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                 }
                 const auto frame = controller.next_frame();
                 set_audible(true);
+                const auto produce_started = std::chrono::steady_clock::now();
                 if (!produce(frame)) {
                     result.inputs_consumed = loop.frames_completed();
                     return fail_session("recording_replay_failed");
                 }
                 ++visits[frame];
+                const auto show_started = std::chrono::steady_clock::now();
                 show(frame, true);
+                // BR-156 (D-6b): which part of a frame longer than one period took the time.
+                if (const auto shown = std::chrono::steady_clock::now();
+                    shown - produce_started > frame_period) {
+                    const auto ms = [](auto duration) {
+                        return std::chrono::duration<double, std::milli>(duration).count();
+                    };
+                    timing.mark("slow_frame", frame, ms(show_started - produce_started),
+                                ms(shown - show_started));
+                }
                 if (after_resume && resume_key_ms) {
                     timing.mark("resumed_presented", clock_ms(), frame,
                                 stepper.view != nullptr ? stepper.view->frame_index : 0U);
@@ -1668,15 +1701,25 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                                                  : ri::FrameContext::continuous);
                 after_resume = false;
                 if (inspectable && checkpoints.should_capture(frame) &&
-                    frame + 1U == loop.frames_completed())
+                    frame + 1U == loop.frames_completed()) {
+                    const auto capture_started = std::chrono::steady_clock::now();
                     (void)checkpoints.capture(*session, frame);
+                    timing.mark("checkpoint", frame,
+                                std::chrono::duration<double, std::milli>(
+                                    std::chrono::steady_clock::now() - capture_started)
+                                    .count()); // BR-156, P-12: what a checkpoint costs
+                }
                 apply(controller.frame_completed(frame));
                 if (controller.phase() == ri::InspectionPhase::playing) {
                     const auto completed = std::chrono::steady_clock::now();
                     if (cadence.frame_completed(completed) && presentation) {
-                        result.presentation.affect(frame);
-                        if (result.presentation.code == "presented")
-                            result.presentation.code = "cadence_degraded";
+                        // DI-25: how far past its deadline (turn plus one period) it completed.
+                        const double periods_late =
+                            std::chrono::duration<double>(completed - cadence.due()).count() /
+                            std::chrono::duration<double>(frame_period).count();
+                        result.presentation.late(frame, periods_late,
+                                                 static_cast<std::uint32_t>(frames));
+                        timing.mark("late_frame", frame, periods_late);
                         cadence.restart(completed);
                     }
                 }

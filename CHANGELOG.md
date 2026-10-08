@@ -15,6 +15,44 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+### Added
+
+- Spec 002 (DI-23): `ayther_replay_qa --prefill <file>` opens the form with the
+  explicit fields of one acceptance attempt; an invalid line rejects the file.
+- Spec 002 (DI-25, D-6b): a continuous visible replay tolerates isolated late
+  frames (at most 3 periods late, at most one per 1000 frames of the take, at
+  least one); they stay recorded as `cadence_degraded` and the terminal carries
+  the optional `presentation.tolerated_late_frames`.
+
+### Fixed
+
+- Spec 002 (BR-091, P-13): the visible replay prewarms the pack's catalog
+  textures before the first frame; textures were decoded on first use and the
+  replay stalled (440 ms at Golden Axe's title).
+- Spec 002 (BR-156): `check` passes `AYTHER_QA_TIMING_LOG` to the Runtime.
+- Spec 002 (D-6b, P-12): a replay checkpoint shares the HD audio PCM instead of
+  copying it (9.5 ms median, 18 ms max → 1.9 ms median, 8.5 ms max), so the
+  frame that captures it is no longer late.
+- Spec 002 (P-14, RNF-3): a traversal keeps at most 100 000 inspection visits;
+  above it the evidence is `incomplete(limit)`.
+- Spec 002 (D-6b): `check` reads the Runtime's channel on its own thread into a
+  bounded queue; a slow durable flush filled the pipe and stalled the Runtime,
+  audio included (up to 890 ms).
+- Spec 002 (RNF-2, D-6b): `ayther_replay_qa` redraws with vsync and only on
+  input or every 100 ms; it redrew without waiting, using a whole core while
+  the Runtime presented the replay. `--idle-seconds N` reports its idle use.
+- Spec 002 (RF-2.8, contracts.md C1-5): a successful visible inspection is a
+  well-formed terminal; only a linear traversal must present every consumed
+  frame. The Runtime could not send it and the supervisor reported
+  `runtime_evidence_stream_invalid` for every visible navigation.
+- Spec 002 (contracts.md C1-5): a navigation that fails, also while closing the
+  audio capture, is reported as an inspection; it was reported as a completed
+  linear traversal. The timing log marks how the close of the capture ended
+  (`close_drained`, `close_stalled`, `close_pcm_incomplete`).
+- Spec 002 (D-6b): the close of a navigation's audio capture failed with
+  `pcm_capture_close_timeout` when the end of its PCM moved back while closing;
+  the close watchdog now observes a monotonic progress of that position.
+
 ## [0.1.0-beta.11] - 2026-10-05
 
 ### Changed

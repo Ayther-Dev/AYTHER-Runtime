@@ -195,16 +195,27 @@ void describe_linear_terminal(ReplayExecutionResult &result, const bool cancelle
     result.interruptions = 0U;
 }
 
+void describe_terminal(ReplayExecutionResult &result, const bool cancelled, const bool inspected) {
+    describe_linear_terminal(result, cancelled);
+    if (inspected) {
+        result.traversal = "inspection";
+        result.linear_completed = false;
+    }
+}
+
 bool well_formed(const ReplayExecutionResult &result) noexcept {
     const auto &p = result.presentation;
+    // An inspection reaches part of the take by moving to a position (RF-2.8): only a linear
+    // traversal (or a terminal that does not say) presents every consumed frame in playback.
+    const bool presents_every_frame = !result.traversal || *result.traversal == "linear";
     if ((p.mode != "none" && p.mode != "visible") || !identifier(p.code) ||
         p.output_profile.size() > max_identity_bytes ||
         p.audio_backend.size() > max_identity_bytes ||
         p.presented_frames > result.inputs_consumed || p.affected_frames > result.inputs_consumed ||
         (p.affected_frames != 0U && (p.first_affected_frame > p.last_affected_frame ||
                                      p.last_affected_frame >= result.inputs_consumed)) ||
-        (result.succeeded &&
-         (!p.complete() || (p.mode == "visible" && p.presented_frames != result.inputs_consumed))))
+        (result.succeeded && (!p.complete() || (p.mode == "visible" && presents_every_frame &&
+                                                p.presented_frames != result.inputs_consumed))))
         return false;
     if (!terminal_fields_well_formed(result))
         return false;
@@ -274,6 +285,10 @@ EncodedReplayExecutionResult encode_replay_execution_result(const ReplayExecutio
         {"ended_paused", result.ended_paused},
         {"user_pause_ms", std::to_string(result.user_pause_ms)},
         {"interruptions", static_cast<std::int64_t>(result.interruptions)}};
+    // DI-25: optional, absent when no late frame was tolerated (earlier terminals).
+    if (p.tolerated_late_frames() != 0U)
+        document["presentation"].as_table()->insert(
+            "tolerated_late_frames", static_cast<std::int64_t>(p.tolerated_late_frames()));
     std::ostringstream output;
     output << document;
     const std::string payload = output.str();
@@ -320,7 +335,8 @@ decode_replay_execution_result(const std::span<const std::byte> message,
             return ReplayExecutionResultError::invalid_payload;
         if (!legacy) {
             const auto *p = document["presentation"].as_table();
-            if (!p || p->size() != 14U ||
+            const bool tolerated_field = p && p->contains("tolerated_late_frames");
+            if (!p || p->size() != (tolerated_field ? 15U : 14U) ||
                 (*p)["physical_reference_equivalence"].value<std::string>() != "not_verified")
                 return ReplayExecutionResultError::invalid_payload;
             const auto mode = (*p)["mode"].value<std::string>();
@@ -343,6 +359,12 @@ decode_replay_execution_result(const std::span<const std::byte> message,
             result.presentation = {*mode,     *code,  *profile, *backend,   *shown,
                                    *affected, *first, *last,    *cancelled, *width,
                                    *height,   *hd,    *shaders, {},         {}};
+            if (tolerated_field) {
+                const auto tolerated = (*p)["tolerated_late_frames"].value<std::uint32_t>();
+                if (!tolerated || *tolerated == 0U)
+                    return ReplayExecutionResultError::invalid_payload;
+                result.presentation.restore_tolerated_late_frames(*tolerated);
+            }
         }
         const auto run_id = document["run_id"].value<std::string>();
         const auto take_id = document["take_id"].value<std::string>();

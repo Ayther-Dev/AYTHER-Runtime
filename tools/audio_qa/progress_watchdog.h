@@ -32,6 +32,18 @@ struct WatchdogTimeout {
     std::uint64_t elapsed_total_ms{};
 };
 
+// Campaign 2026-10-07: the progress of a position that may move back, such as the end of the
+// PCM captured by an inspection while it closes. Every change of the position adds its
+// distance, so the progress only grows and stops growing when the position stops moving.
+class MonotonicProgress final {
+  public:
+    [[nodiscard]] std::uint64_t observe(std::uint64_t position) noexcept;
+
+  private:
+    std::optional<std::uint64_t> last_;
+    std::uint64_t total_{};
+};
+
 class ProgressWatchdog final {
   public:
     ProgressWatchdog(WatchdogPhase phase, std::uint64_t started_ms) noexcept;

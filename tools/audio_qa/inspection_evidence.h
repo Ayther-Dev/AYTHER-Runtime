@@ -81,19 +81,25 @@ struct TraversalDocument {
     bool operator==(const TraversalDocument &) const = default;
 };
 
+// Plan §8 P-14 (RNF-3): the inspection visits one traversal keeps.
+inline constexpr std::uint64_t max_traversal_visits = 100'000U;
+
 // Builds the document from what the Runtime reports, in order. A pause without
 // navigation keeps the traversal linear; the first step that moves the position turns it
-// into an inspection for good (RF-5.8).
+// into an inspection for good (RF-5.8). Above `max_traversal_visits` a visit is not kept:
+// the traversal is marked as over its limit and the visits already kept stay as they were.
 class TraversalRecorder final {
   public:
     explicit TraversalRecorder(std::uint64_t frames_total) noexcept;
     void frame_played(std::uint64_t frame);
     void inspection(const InspectionEvent &event);
     [[nodiscard]] TraversalDocument document() const;
+    [[nodiscard]] bool visit_limit_exceeded() const noexcept;
 
   private:
     TraversalDocument document_;
     bool after_visit_{};
+    bool visit_limit_exceeded_{};
     std::optional<std::uint64_t> last_frame_;
 };
 
@@ -103,6 +109,9 @@ class TraversalRecorder final {
 [[nodiscard]] TraversalDocument traversal_of_take(std::uint64_t frames_total,
                                                   std::uint64_t frames_consumed,
                                                   std::span<const InspectionEvent> events);
+
+// P-14: whether the events hold more visits than one traversal keeps.
+[[nodiscard]] bool exceeds_visit_limit(std::span<const InspectionEvent> events) noexcept;
 
 // DI-14: why the PCM kept does not match the linear segments of the traversal.
 enum class AudioSegmentsError { pcm_without_frames, frames_without_pcm };

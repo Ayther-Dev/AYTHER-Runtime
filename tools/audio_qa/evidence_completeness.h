@@ -21,6 +21,9 @@ struct EvidenceParts {
     bool data_without_losses{};
     // Every fragment flushed durably at its confirmation point.
     bool fragments_flushed{};
+    // Plan §8 P-14 (RNF-3): the traversal stayed within its approved limits. Unlike the parts
+    // above it is kept unless a limit was exceeded.
+    bool within_limits{true};
 };
 
 // Complete only with every part; otherwise `incomplete` with one reason per missing part,
