@@ -24,17 +24,17 @@ int main() {
                                         std::to_string(linked.minor) + "." +
                                         std::to_string(linked.patch);
 
-    check(ayther::runtime::runtime_version == "0.1.0-beta.10",
+    check(ayther::runtime::runtime_version == "0.1.0-beta.11",
           "Runtime reports its product version and release channel");
     check(ayther::runtime::linked_engine_version() == expected_engine,
           "Engine version comes from the linked Engine API");
     check(ayther::runtime::version_report() ==
-              "AYTHER Runtime 0.1.0-beta.10; Engine " + expected_engine,
+              "AYTHER Runtime 0.1.0-beta.11; Engine " + expected_engine,
           "the startup log reports both component versions");
 
     const std::string title = ayther::runtime::window_title("Vulkan Passthrough");
     check(title ==
-              "AYTHER Runtime 0.1.0-beta.10 — Engine " + expected_engine + " — Vulkan Passthrough",
+              "AYTHER Runtime 0.1.0-beta.11 — Engine " + expected_engine + " — Vulkan Passthrough",
           "the window title reports Runtime and Engine versions");
 
     std::printf("\n%d passed, %d failed\n", 4 - failures, failures);
