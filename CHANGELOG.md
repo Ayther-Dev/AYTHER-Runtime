@@ -15,13 +15,24 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
-## [0.1.0-beta.11] - 2026-10-05
+## [0.1.0-beta.11] - 2026-10-08
+
+### Added
+
+- Spec 002 (DI-23): `ayther_replay_qa --prefill <file>` opens the form with the
+  explicit fields of one acceptance attempt; an invalid line rejects the file.
+- Spec 002 (DI-25, D-6b): a continuous visible replay tolerates isolated late
+  frames (at most 3 periods late, at most one per 1000 frames of the take, at
+  least one); they stay recorded as `cadence_degraded` and the terminal carries
+  the optional `presentation.tolerated_late_frames`.
 
 ### Changed
 
-- The reproducible Engine lock moves from `v0.1.0-rc.15` to `v0.1.0-rc.16`.
+- The reproducible Engine lock moves from `v0.1.0-rc.15` to `v0.1.0-rc.17`,
+  the Engine of the spec 002 final candidate accepted in campaign h (O1
+  residuals, raster band carry, D-6b audio stalls).
 - The QA Engine lock pins the published Windows `engine-vpx` artifact of
-  `v0.1.0-rc.16` by URL, SHA-256, release `CHECKSUMS.sha256` and SLSA
+  `v0.1.0-rc.17` by URL, SHA-256, release `CHECKSUMS.sha256` and SLSA
   provenance.
 - A presentation interruption that recovers (minimized window, audio device
   removed) leaves the audiovisual observation of the take incomplete, as
@@ -36,7 +47,7 @@ once stable compatibility guarantees are defined.
   with the default layers as in the Lab, instead of being appended on top of
   everything: an overlay authored behind the title (between plane B and plane
   A) is no longer drawn over it. Overlays of packs without an `index` still
-  go on top in pack order. Requires AYTHER Engine `v0.1.0-rc.16`
+  go on top in pack order. Requires AYTHER Engine `v0.1.0-rc.16` or later
   (`PackOverlay::index`).
 - A take whose evidence path reached 260 characters lost all its facts
   (`fact_publication_failed`, empty `fragments`) and ended incomplete,
@@ -46,6 +57,32 @@ once stable compatibility guarantees are defined.
   rejected before anything is created, in its field (`request_id_too_long` or
   `request_id_invalid: --request-id`), instead of an anonymous
   `invalid_request` after creating an empty destination.
+- Spec 002 (BR-091, P-13): the visible replay prewarms the pack's catalog
+  textures before the first frame; textures were decoded on first use and the
+  replay stalled (440 ms at Golden Axe's title).
+- Spec 002 (BR-156): `check` passes `AYTHER_QA_TIMING_LOG` to the Runtime.
+- Spec 002 (D-6b, P-12): a replay checkpoint shares the HD audio PCM instead of
+  copying it (9.5 ms median, 18 ms max → 1.9 ms median, 8.5 ms max), so the
+  frame that captures it is no longer late.
+- Spec 002 (P-14, RNF-3): a traversal keeps at most 100 000 inspection visits;
+  above it the evidence is `incomplete(limit)`.
+- Spec 002 (D-6b): `check` reads the Runtime's channel on its own thread into a
+  bounded queue; a slow durable flush filled the pipe and stalled the Runtime,
+  audio included (up to 890 ms).
+- Spec 002 (RNF-2, D-6b): `ayther_replay_qa` redraws with vsync and only on
+  input or every 100 ms; it redrew without waiting, using a whole core while
+  the Runtime presented the replay. `--idle-seconds N` reports its idle use.
+- Spec 002 (RF-2.8, contracts.md C1-5): a successful visible inspection is a
+  well-formed terminal; only a linear traversal must present every consumed
+  frame. The Runtime could not send it and the supervisor reported
+  `runtime_evidence_stream_invalid` for every visible navigation.
+- Spec 002 (contracts.md C1-5): a navigation that fails, also while closing the
+  audio capture, is reported as an inspection; it was reported as a completed
+  linear traversal. The timing log marks how the close of the capture ended
+  (`close_drained`, `close_stalled`, `close_pcm_incomplete`).
+- Spec 002 (D-6b): the close of a navigation's audio capture failed with
+  `pcm_capture_close_timeout` when the end of its PCM moved back while closing;
+  the close watchdog now observes a monotonic progress of that position.
 
 ## [0.1.0-beta.10] - 2026-10-04
 

@@ -417,6 +417,7 @@ TakeRecord RequestRun::run_take(const EffectiveRequest &effective, const Preflig
                 long_path(run_directory / "replay-result.toml"), ignored);
             parts.data_without_losses = evidence_complete && replay.trace.loss_free;
             parts.fragments_flushed = preserved != nullptr && preserved->fact_integrity_complete;
+            parts.within_limits = !evidence->visit_limit_exceeded;
             const auto evaluated = evaluate_evidence(parts);
             // The Runtime reasons first, then the parts that are missing.
             take.evidence.reasons = replay.evidence_reasons;

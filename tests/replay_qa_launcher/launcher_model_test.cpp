@@ -247,7 +247,45 @@ void pasted_paths_lose_their_quotes() {
     expect(model.value("--request-id") == quoted("id"), "D-10: a text field keeps its quotes");
 }
 
+// DI-23 (RF-1.1, RF-1.6, RF-1.8): the acceptance campaign opens the launcher with the fields
+// of one attempt already written. Every value is explicit, nothing else is selected, and an
+// unknown or malformed line rejects the whole prefill instead of applying part of it.
+void prefill() {
+    la::LauncherModel model;
+    const auto errors = la::apply_prefill(model, "--runtime=C:/qa/ayther_runtime.exe\n"
+                                                 "--rom=C:/roms/Golden Axe.md\n"
+                                                 "--core=C:/cores/core.dll\n"
+                                                 "--take=C:/takes/Toma 3.ayr\n"
+                                                 "--take=C:/takes/Toma 3.ayr\n"
+                                                 "--pack=\"C:/packs/Golden Axe.ay\"\n"
+                                                 "--profile=full\n"
+                                                 "--shaders=on\n"
+                                                 "--core-option=no_sprite_limit=enabled\n"
+                                                 "--output=C:/evidence/attempt\n"
+                                                 "--request-id=campaign-attempt-1\n");
+    expect(errors.empty(), "DI-23: a valid prefill applies without errors");
+    expect(model.value("--rom") == "C:/roms/Golden Axe.md" &&
+               model.value("--pack") == "C:/packs/Golden Axe.ay" &&
+               model.value("--profile") == "full" && model.value("--shaders") == "on" &&
+               model.value("--request-id") == "campaign-attempt-1",
+           "DI-23: every prefilled field holds its value, pasted quotes removed");
+    expect(model.takes().size() == 2U && model.takes()[1] == "C:/takes/Toma 3.ayr",
+           "DI-23: repeated takes keep their order and repetition (RF-1.4)");
+    model.revalidate(fake_preflight);
+    const auto source = model.source_of("rom");
+    expect(source && *source == qa::ValueSource::explicit_option,
+           "DI-23, RF-1.6: a prefilled value is explicit, never inferred");
+    expect(model.value("--video-output").empty() && model.value("--patch").empty(),
+           "DI-23, RF-1.8: a field absent from the prefill stays unselected");
+
+    la::LauncherModel rejected;
+    const auto bad = la::apply_prefill(rejected, "--rom=C:/roms/game.md\n--unknown=1\nnoise\n");
+    expect(bad.size() == 2U && rejected.value("--rom").empty(),
+           "DI-23: unknown or malformed lines reject the whole prefill");
+}
+
 int main() {
+    prefill();
     fields_and_required();
     pasted_paths_lose_their_quotes();
     effective_values();

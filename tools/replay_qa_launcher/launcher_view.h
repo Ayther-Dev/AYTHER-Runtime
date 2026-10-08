@@ -31,6 +31,11 @@ struct DialogSpec {
 
 [[nodiscard]] DialogSpec dialog_for(std::string_view flag);
 
+// Campaign 2026-10-07 (RNF-2, D-6b): how long the window waits for input before redrawing.
+// It stays open while the Runtime presents the replay, so it redraws only on input or a few
+// times per second (the progress of the request); the smoke tests (`automated`) do not wait.
+[[nodiscard]] int idle_wait_ms(bool automated) noexcept;
+
 // BR-167 (RF-1.5): one section per category, with every option of the table once.
 enum class FieldInput { text, path, choice, number, key_value };
 

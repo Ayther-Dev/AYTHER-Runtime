@@ -71,7 +71,7 @@ ctest --preset windows-qa -R "^replay_qa_launcher_" --output-on-failure
 Con GPU y escritorio (`windows-qa-gpu`):
 
 ```powershell
-ctest --preset windows-qa-gpu -R "^replay_qa_launcher_(window|interface)_smoke$" --output-on-failure
+ctest --preset windows-qa-gpu -R "^replay_qa_launcher_(window_smoke|interface_smoke|idle_cpu)$" --output-on-failure
 ```
 
 - **`replay_qa_launcher_window_smoke`:** `ayther_replay_qa --smoke-frames 30` abre la ventana y dibuja 30 fotogramas. `--smoke-capture <archivo.bmp>` guarda el último.
@@ -81,5 +81,14 @@ ctest --preset windows-qa-gpu -R "^replay_qa_launcher_(window|interface)_smoke$"
   - la cancela tras dos segundos de reproducción;
   - muestra la toma como «Cancelada» y el resultado conjunto.
   - Los materiales llegan con `--runtime`, `--core`, `--rom`, `--take` y `--output`.
+- **`replay_qa_launcher_idle_cpu`:** `ayther_replay_qa --idle-seconds 3` deja la ventana en reposo tres segundos e informa de los redibujos y de la CPU usada. En reposo la ventana espera la entrada (o redibuja cada 100 ms el progreso) con vsync, para no competir con el Runtime mientras presenta la reproducción; la prueba exige como mucho un redibujo por refresco y menos de un cuarto de núcleo.
 
-`--self-test`, `--smoke-frames` y `--smoke-capture` son modos de prueba del ejecutable QA; no forman parte del uso normal.
+`--self-test`, `--smoke-frames`, `--smoke-capture` e `--idle-seconds` son modos de prueba del ejecutable QA; no forman parte del uso normal.
+
+## Campos precargados (DI-23)
+
+`ayther_replay_qa --prefill <archivo>` abre el formulario con los campos del archivo: una
+línea `--campo=valor` por valor; `--take` y `--core-option` se repiten en orden. Todos los
+valores cuentan como explícitos y los campos ausentes quedan sin seleccionar. Una línea
+desconocida o mal formada rechaza el archivo entero (`prefill_rejected` en el log) y el
+formulario queda vacío. Lo usa la herramienta de campaña de la spec 002.

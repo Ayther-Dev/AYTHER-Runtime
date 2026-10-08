@@ -48,6 +48,8 @@ struct CheckExecutionEvidence {
     std::optional<IntegratedEvidenceSummary> preserved;
     std::optional<IntegratedEvidenceError> preservation_error;
     bool runtime_data_isolated{};
+    // Plan §8 P-14: a traversal of the run held more visits than it keeps.
+    bool visit_limit_exceeded{};
 };
 
 using CheckExecutionResult = std::variant<CheckExecutionEvidence, CheckExecutionError>;

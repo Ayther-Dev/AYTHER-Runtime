@@ -298,4 +298,54 @@ void LauncherModel::on_finished(const audio_qa::RequestOutcome &outcome) {
                  : std::optional<LauncherText>{LauncherText::joint_not_linear_complete};
 }
 
+std::vector<std::string> apply_prefill(LauncherModel &model, std::string_view text) {
+    struct Entry {
+        std::string flag;
+        std::string value;
+        bool repeatable{};
+    };
+    std::vector<Entry> entries;
+    std::vector<std::string> errors;
+    while (!text.empty()) {
+        const auto end = text.find('\n');
+        auto line = text.substr(0, end);
+        text = end == std::string_view::npos ? std::string_view{} : text.substr(end + 1);
+        if (!line.empty() && line.back() == '\r')
+            line.remove_suffix(1);
+        if (line.empty())
+            continue;
+        const auto equals = line.find('=');
+        const auto flag = line.substr(0, equals);
+        const auto field =
+            std::find_if(model.fields().begin(), model.fields().end(),
+                         [flag](const ModelField &f) { return f.descriptor->flag == flag; });
+        if (equals == std::string_view::npos || !flag.starts_with("--") ||
+            field == model.fields().end()) {
+            errors.emplace_back(line);
+            continue;
+        }
+        entries.push_back({std::string{flag}, std::string{line.substr(equals + 1)},
+                           field->descriptor->repeatable});
+    }
+    if (!errors.empty())
+        return errors;
+    std::vector<std::pair<std::string, std::vector<std::string>>> repeated;
+    for (auto &entry : entries) {
+        if (!entry.repeatable) {
+            model.set(entry.flag, std::move(entry.value));
+            continue;
+        }
+        const auto found =
+            std::find_if(repeated.begin(), repeated.end(),
+                         [&entry](const auto &group) { return group.first == entry.flag; });
+        if (found == repeated.end())
+            repeated.push_back({entry.flag, {std::move(entry.value)}});
+        else
+            found->second.push_back(std::move(entry.value));
+    }
+    for (auto &[flag, values] : repeated)
+        model.set_values(flag, std::move(values));
+    return errors;
+}
+
 } // namespace ayther::replay_qa_launcher

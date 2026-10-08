@@ -48,6 +48,14 @@ struct TakeResultRow {
 
 using Preflighter = std::function<audio_qa::PreflightResult(const audio_qa::ReplayRequest &)>;
 
+class LauncherModel;
+
+// DI-23 (RF-1.1, RF-1.6): applies `--flag=value` lines, one field each, as explicit values.
+// Takes and core options repeat in order. Empty lines are ignored. An unknown flag or a line
+// without `--flag=` rejects the whole text: the result lists each such line and nothing is
+// applied.
+[[nodiscard]] std::vector<std::string> apply_prefill(LauncherModel &model, std::string_view text);
+
 class LauncherModel final {
   public:
     LauncherModel();

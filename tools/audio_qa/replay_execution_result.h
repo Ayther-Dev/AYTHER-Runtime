@@ -72,6 +72,9 @@ inline constexpr std::size_t max_terminal_evidence_reasons = 64;
 // consumed without cancellation is a natural end, even when the evidence is incomplete.
 // Evidence reasons already present are kept and a failure adds its code.
 void describe_linear_terminal(ReplayExecutionResult &result, bool cancelled);
+// The same for a traversal that may have inspected the take: an inspection is never a
+// completed linear traversal, also when it fails while closing (campaign 2026-10-07).
+void describe_terminal(ReplayExecutionResult &result, bool cancelled, bool inspected);
 
 enum class ReplayExecutionResultError {
     invalid_model,

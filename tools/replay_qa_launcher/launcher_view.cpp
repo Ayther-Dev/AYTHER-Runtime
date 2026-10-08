@@ -43,6 +43,8 @@ std::string phase_text(LauncherLanguage language, audio_qa::RequestPhaseKind kin
 
 } // namespace
 
+int idle_wait_ms(const bool automated) noexcept { return automated ? 0 : 100; }
+
 DialogSpec dialog_for(std::string_view flag) {
     if (flag == "--rom")
         return {FileDialog::open_file,

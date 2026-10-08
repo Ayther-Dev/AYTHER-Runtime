@@ -49,6 +49,8 @@ class AudioQaPresentation final {
     // BR-153: a scripted action reaches the window as the SDL event a person would cause.
     void deliver(const replay_inspection::ScriptAction &action);
     [[nodiscard]] bool ready() const noexcept { return ready_; }
+    // BR-091: what the preparation prewarmed (empty without a pack or with HD off).
+    [[nodiscard]] const AytherRenderer::PrewarmReport &prewarm() const noexcept { return prewarm_; }
     // RF-6, RF-7: what the debug overlay draws over the next presented frames.
     void set_debug(bool visible, std::vector<replay_inspection::DebugLine> lines,
                    std::string notice);
@@ -82,6 +84,7 @@ class AudioQaPresentation final {
     bool video_initialized_{};
     PresentationController presentation_;
     AytherRenderer renderer_;
+    AytherRenderer::PrewarmReport prewarm_;
     AytherLayerStack layers_;
     const AytherLayerStack *active_layers_{};
     const OutputProfile *profile_ = &output_profile_default();
