@@ -15,6 +15,8 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+## [0.1.0-beta.11] - 2026-10-08
+
 ### Added
 
 - Spec 002 (DI-23): `ayther_replay_qa --prefill <file>` opens the form with the
@@ -24,8 +26,37 @@ once stable compatibility guarantees are defined.
   least one); they stay recorded as `cadence_degraded` and the terminal carries
   the optional `presentation.tolerated_late_frames`.
 
+### Changed
+
+- The reproducible Engine lock moves from `v0.1.0-rc.15` to `v0.1.0-rc.17`,
+  the Engine of the spec 002 final candidate accepted in campaign h (O1
+  residuals, raster band carry, D-6b audio stalls).
+- The QA Engine lock pins the published Windows `engine-vpx` artifact of
+  `v0.1.0-rc.17` by URL, SHA-256, release `CHECKSUMS.sha256` and SLSA
+  provenance.
+- A presentation interruption that recovers (minimized window, audio device
+  removed) leaves the audiovisual observation of the take incomplete, as
+  RF-2.6 requires: the take ends `presentation_incomplete` with the
+  interruption as its presentation code and incomplete evidence, and its
+  playback still ends naturally. It ended `evidence=complete` with exit 0.
+
 ### Fixed
 
+- Pack overlays keep their authored position in the layer stack (spec 002,
+  F-1b). Each overlay is inserted at its `index` from the pack, interleaved
+  with the default layers as in the Lab, instead of being appended on top of
+  everything: an overlay authored behind the title (between plane B and plane
+  A) is no longer drawn over it. Overlays of packs without an `index` still
+  go on top in pack order. Requires AYTHER Engine `v0.1.0-rc.16` or later
+  (`PackOverlay::index`).
+- A take whose evidence path reached 260 characters lost all its facts
+  (`fact_publication_failed`, empty `fragments`) and ended incomplete,
+  typically the second take of a request with a long destination. The checker
+  now writes and reopens the evidence through extended-length paths.
+- A `--request-id` longer than 256 bytes, or with a control character, is
+  rejected before anything is created, in its field (`request_id_too_long` or
+  `request_id_invalid: --request-id`), instead of an anonymous
+  `invalid_request` after creating an empty destination.
 - Spec 002 (BR-091, P-13): the visible replay prewarms the pack's catalog
   textures before the first frame; textures were decoded on first use and the
   replay stalled (440 ms at Golden Axe's title).
@@ -52,38 +83,6 @@ once stable compatibility guarantees are defined.
 - Spec 002 (D-6b): the close of a navigation's audio capture failed with
   `pcm_capture_close_timeout` when the end of its PCM moved back while closing;
   the close watchdog now observes a monotonic progress of that position.
-
-## [0.1.0-beta.11] - 2026-10-05
-
-### Changed
-
-- The reproducible Engine lock moves from `v0.1.0-rc.15` to `v0.1.0-rc.16`.
-- The QA Engine lock pins the published Windows `engine-vpx` artifact of
-  `v0.1.0-rc.16` by URL, SHA-256, release `CHECKSUMS.sha256` and SLSA
-  provenance.
-- A presentation interruption that recovers (minimized window, audio device
-  removed) leaves the audiovisual observation of the take incomplete, as
-  RF-2.6 requires: the take ends `presentation_incomplete` with the
-  interruption as its presentation code and incomplete evidence, and its
-  playback still ends naturally. It ended `evidence=complete` with exit 0.
-
-### Fixed
-
-- Pack overlays keep their authored position in the layer stack (spec 002,
-  F-1b). Each overlay is inserted at its `index` from the pack, interleaved
-  with the default layers as in the Lab, instead of being appended on top of
-  everything: an overlay authored behind the title (between plane B and plane
-  A) is no longer drawn over it. Overlays of packs without an `index` still
-  go on top in pack order. Requires AYTHER Engine `v0.1.0-rc.16`
-  (`PackOverlay::index`).
-- A take whose evidence path reached 260 characters lost all its facts
-  (`fact_publication_failed`, empty `fragments`) and ended incomplete,
-  typically the second take of a request with a long destination. The checker
-  now writes and reopens the evidence through extended-length paths.
-- A `--request-id` longer than 256 bytes, or with a control character, is
-  rejected before anything is created, in its field (`request_id_too_long` or
-  `request_id_invalid: --request-id`), instead of an anonymous
-  `invalid_request` after creating an empty destination.
 
 ## [0.1.0-beta.10] - 2026-10-04
 
