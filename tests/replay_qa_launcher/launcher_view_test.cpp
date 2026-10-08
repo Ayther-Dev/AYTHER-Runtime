@@ -173,9 +173,18 @@ void results() {
            "RF-2.3: the phase names the take in progress, from 1");
 }
 
+// Campaign 2026-10-07 (RNF-2, D-6b): the launcher stays open while the Runtime presents the
+// replay; redrawing without waiting took a whole core and delayed frames of the replay.
+void pacing() {
+    expect(la::idle_wait_ms(false) >= 50 && la::idle_wait_ms(false) <= 250,
+           "RNF-2: the window waits for input, redrawing at least a few times per second");
+    expect(la::idle_wait_ms(true) == 0, "BR-157/BR-172: the smoke tests draw without waiting");
+}
+
 } // namespace
 
 int main() {
+    pacing();
     dialogs();
     sections_and_validation();
     summary_and_errors();

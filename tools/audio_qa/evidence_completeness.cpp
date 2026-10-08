@@ -6,7 +6,7 @@
 namespace ayther::audio_qa {
 
 EvidenceOutcome evaluate_evidence(const EvidenceParts &parts) {
-    const std::array<std::pair<bool, const char *>, 7> checks{{
+    const std::array<std::pair<bool, const char *>, 8> checks{{
         {parts.identification, "identification_missing"},
         {parts.conditions, "conditions_missing"},
         {parts.positions, "positions_missing"},
@@ -14,6 +14,7 @@ EvidenceOutcome evaluate_evidence(const EvidenceParts &parts) {
         {parts.result, "result_missing"},
         {parts.data_without_losses, "data_lost"},
         {parts.fragments_flushed, "fragments_not_flushed"},
+        {parts.within_limits, "limit"},
     }};
     EvidenceOutcome evidence;
     for (const auto &[kept, reason] : checks)

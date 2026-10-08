@@ -78,21 +78,38 @@ void occurrences_and_replacements() {
            "RF-1.3: without pack the record says «Sin pack»");
 }
 
-void empty_frame_and_overflow() {
+ro::RenderObservation observation_with(std::size_t total) {
+    ro::RenderObservation observation;
+    observation.occurrences.reserve(total);
+    for (std::size_t index = 0; index < total; ++index)
+        observation.occurrences.push_back(occurrence(
+            static_cast<std::uint16_t>(index), static_cast<std::uint8_t>(index % 80U), index,
+            ro::OccurrenceStatus::original_unassigned, -1, not_applicable(), not_applicable()));
+    observation.occurrences_total = total;
+    return observation;
+}
+
+void empty_frame_and_row_limits() {
     ro::RenderObservation empty;
     const auto record = ri::make_frame_record(10, 1, general(), empty, {});
     expect(record.rows.empty() && !record.overflow,
            "RF-7.8: a frame without identities has an empty list, nothing of the previous one");
-    ro::RenderObservation crowded;
-    for (std::uint16_t index = 0; index < 257; ++index)
-        crowded.occurrences.push_back(occurrence(index, static_cast<std::uint8_t>(index % 80),
-                                                 index, ro::OccurrenceStatus::original_unassigned,
-                                                 -1, not_applicable(), not_applicable()));
-    crowded.occurrences_total = 300;
-    const auto over = ri::make_frame_record(11, 1, general(), crowded, {});
-    expect(over.rows.size() == ri::max_record_rows && over.overflow &&
-               over.overflow->rows_total == 300U && over.overflow->limit == 256U,
-           "P-11: above 256 rows the excess is stated with its total, never truncated silently");
+
+    const auto exact =
+        ri::make_frame_record(11, 1, general(), observation_with(ri::max_record_rows), {});
+    expect(exact.rows.size() == ri::max_record_rows && !exact.overflow,
+           "RNF-3/P-11: 256 rows remain complete and do not report overflow");
+
+    const auto one_over =
+        ri::make_frame_record(12, 1, general(), observation_with(ri::max_record_rows + 1U), {});
+    expect(one_over.rows.size() == ri::max_record_rows && one_over.overflow &&
+               one_over.overflow->rows_total == 257U && one_over.overflow->limit == 256U,
+           "RNF-3/P-11: 257 rows are bounded and report the real total 257");
+
+    const auto crowded = ri::make_frame_record(13, 1, general(), observation_with(300U), {});
+    expect(crowded.rows.size() == ri::max_record_rows && crowded.overflow &&
+               crowded.overflow->rows_total == 300U && crowded.overflow->limit == 256U,
+           "RNF-3/P-11: 300 rows are bounded and report the real total 300");
 }
 
 void measurements() {
@@ -123,7 +140,7 @@ void measurements() {
 
 int main() {
     occurrences_and_replacements();
-    empty_frame_and_overflow();
+    empty_frame_and_row_limits();
     measurements();
     if (failures != 0)
         return 1;

@@ -87,6 +87,12 @@ void AudioQaPresentation::initialize(AytherSession &session, const RuntimeOption
     }
     if (pack)
         pack.select_render_tier_for_height(static_cast<std::uint32_t>(canvas.h));
+    // Spec 002 (R6, BR-091, P-13): decode the pack's catalog textures before the first frame.
+    // Without it each texture is decoded synchronously on its first use (BR-092) and the
+    // replay stalls there, which the cadence reports as degraded (D-6b).
+    if (pack && hd_)
+        prewarm_ = renderer_.prewarm_textures(context.engine_view(), pack,
+                                              session.catalog_texture_assets());
     if (ayther_runtime::build_pack_overlay_stack(session.pack_overlays(), layers_) != 0U)
         active_layers_ = &layers_;
     auto &postprocess = presentation_.postprocess();

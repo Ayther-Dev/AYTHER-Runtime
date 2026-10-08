@@ -55,6 +55,28 @@ bool has(const std::vector<ri::DebugLine> &lines, std::string_view text) {
     });
 }
 
+bool has_label(const std::vector<ri::DebugLine> &lines, std::string_view label) {
+    return std::any_of(lines.begin(), lines.end(),
+                       [label](const ri::DebugLine &line) { return line.label == label; });
+}
+
+std::size_t occurrence_lines(const std::vector<ri::DebugLine> &lines) {
+    return static_cast<std::size_t>(
+        std::count_if(lines.begin(), lines.end(), [](const ri::DebugLine &line) {
+            return !line.label.empty() && line.label.front() == '#';
+        }));
+}
+
+ri::FrameRecord limit_record(std::size_t total) {
+    auto value = record();
+    value.rows.resize(std::min(total, ri::max_record_rows));
+    if (total > ri::max_record_rows)
+        value.overflow = ri::RowOverflow{total, ri::max_record_rows};
+    else
+        value.overflow.reset();
+    return value;
+}
+
 void lines() {
     const ri::TakeClock clock{7892, 60.0};
     const auto spanish = ri::debug_lines(record(), clock, ri::ReplayLanguage::spanish);
@@ -79,6 +101,26 @@ void lines() {
     const auto english = ri::debug_lines(record(), clock, ri::ReplayLanguage::english);
     expect(has(english, "No pack") && has(english, "Processing (ms) 3.25"),
            "RNF-7: the overlay speaks the language of the request");
+}
+
+void row_limits() {
+    const ri::TakeClock clock{7892, 60.0};
+    const auto exact =
+        ri::debug_lines(limit_record(ri::max_record_rows), clock, ri::ReplayLanguage::spanish);
+    expect(occurrence_lines(exact) == ri::max_record_rows && has(exact, "Ocurrencias 256") &&
+               !has_label(exact, "Filas no mostradas"),
+           "RNF-3/P-11: 256 consultable rows are all shown without overflow");
+
+    const auto one_over =
+        ri::debug_lines(limit_record(ri::max_record_rows + 1U), clock, ri::ReplayLanguage::spanish);
+    expect(occurrence_lines(one_over) == ri::max_record_rows && has(one_over, "Ocurrencias 256") &&
+               has(one_over, "Filas no mostradas 1 (257 > 256)"),
+           "RNF-3/P-11: the overlay reports one hidden row and total 257");
+
+    const auto crowded = ri::debug_lines(limit_record(300U), clock, ri::ReplayLanguage::english);
+    expect(occurrence_lines(crowded) == ri::max_record_rows && has(crowded, "Occurrences 256") &&
+               has(crowded, "Rows not shown 44 (300 > 256)"),
+           "RNF-3/P-11: the overlay reports 44 hidden rows and total 300");
 }
 
 void scroll() {
@@ -108,6 +150,7 @@ void scroll() {
 
 int main() {
     lines();
+    row_limits();
     scroll();
     if (failures != 0)
         return 1;

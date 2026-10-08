@@ -101,6 +101,22 @@ int main() {
         const auto visible_decoded = qa::decode_replay_execution_result(*visible_bytes, 2U);
         const auto *visible_result = std::get_if<qa::ReplayExecutionResult>(&visible_decoded);
         require(visible_result && *visible_result == visible, "visible_result_not_preserved");
+        // DI-25: a tolerated isolated late frame keeps the result successful, and the terminal
+        // carries the tolerated count so the supervisor can check it.
+        {
+            auto tolerated = visible;
+            tolerated.presentation.late(3U, 1.5, 6U);
+            require(qa::well_formed(tolerated), "DI-25: tolerated late frame rejected");
+            const auto encoded = qa::encode_replay_execution_result(tolerated, 2U);
+            const auto *bytes = std::get_if<std::vector<std::byte>>(&encoded);
+            require(bytes != nullptr, "DI-25: tolerated result not encoded");
+            const auto decoded = qa::decode_replay_execution_result(*bytes, 2U);
+            const auto *value = std::get_if<qa::ReplayExecutionResult>(&decoded);
+            require(value && *value == tolerated && value->succeeded &&
+                        value->presentation.code == "cadence_degraded" &&
+                        value->presentation.tolerated_late_frames() == 1U,
+                    "DI-25: tolerated late frame not preserved by the terminal");
+        }
         visible.presentation.affect(2U);
         visible.presentation.affect(2U);
         visible.presentation.affect(4U);
@@ -176,6 +192,31 @@ int main() {
         degraded_first.presentation.interrupted("window_minimized");
         require(degraded_first.presentation.code == "video_acquire_failed",
                 "D-14: the first problem of the presentation keeps naming it");
+        // Campaign 2026-10-07 (RF-2.8, RF-4.x; contracts.md C1-5): an inspection reaches part
+        // of the take by moving to a position, so not every consumed frame is presented in
+        // playback. A successful visible inspection is still a terminal the Runtime can send;
+        // a linear traversal still has to present every consumed frame.
+        {
+            auto inspected = expected;
+            inspected.presentation.mode = "visible";
+            inspected.presentation.code = "presented";
+            for (std::uint32_t frame = 0; frame < 3U; ++frame)
+                inspected.presentation.presented(frame);
+            inspected.traversal = "inspection";
+            inspected.linear_completed = false;
+            require(qa::well_formed(inspected),
+                    "a successful visible inspection with frames reached by moving is rejected");
+            const auto encoded_inspection = qa::encode_replay_execution_result(inspected, 2U);
+            const auto *bytes = std::get_if<std::vector<std::byte>>(&encoded_inspection);
+            require(bytes != nullptr, "a successful visible inspection is not encoded");
+            const auto decoded_inspection = qa::decode_replay_execution_result(*bytes, 2U);
+            const auto *value = std::get_if<qa::ReplayExecutionResult>(&decoded_inspection);
+            require(value && *value == inspected, "a visible inspection is not preserved");
+            auto linear = inspected;
+            linear.traversal = "linear";
+            require(!qa::well_formed(linear),
+                    "a successful linear traversal with frames not presented is accepted");
+        }
 
         const auto encoded = qa::encode_replay_execution_result(expected, 2U);
         const auto *message = std::get_if<std::vector<std::byte>>(&encoded);
@@ -236,6 +277,19 @@ int main() {
                     failed.evidence_reasons ==
                         std::vector<std::string>{"game_state_restore_failed"},
                 "failed_terminal_not_described");
+        // Campaign 2026-10-07 (contracts.md C1-5, RF-2.8): an inspection that fails while
+        // closing (every input consumed) is still an inspection; it never completed linearly.
+        auto failed_inspection = expected;
+        failed_inspection.succeeded = false;
+        failed_inspection.code = "pcm_capture_close_timeout";
+        qa::describe_terminal(failed_inspection, false, true);
+        require(failed_inspection.traversal == std::optional<std::string>{"inspection"} &&
+                    !failed_inspection.linear_completed &&
+                    failed_inspection.playback == std::optional<std::string>{"natural_end"} &&
+                    failed_inspection.evidence_reasons ==
+                        std::vector<std::string>{"pcm_capture_close_timeout"} &&
+                    qa::well_formed(failed_inspection),
+                "a failed inspection is described as a completed linear traversal");
         const auto wrong_sequence = qa::decode_replay_execution_result(*message, 3U);
         require(std::get_if<qa::ReplayExecutionResultError>(&wrong_sequence) != nullptr,
                 "sequence_mismatch_was_accepted");

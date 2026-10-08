@@ -83,6 +83,10 @@ void TraversalRecorder::inspection(const InspectionEvent &event) {
         document_.interruptions.push_back({event.seq, event.frame_before});
         return;
     }
+    if (visit_limit_exceeded_ || document_.visits.size() >= max_traversal_visits) {
+        visit_limit_exceeded_ = true;
+        return;
+    }
     document_.visits.push_back({event.seq, event.frame_after, event.control});
     after_visit_ = true;
     if (moves_position(event.control))
@@ -95,6 +99,15 @@ TraversalDocument TraversalRecorder::document() const {
                                 document.frames_total > 0U &&
                                 *last_frame_ + 1U == document.frames_total;
     return document;
+}
+
+bool TraversalRecorder::visit_limit_exceeded() const noexcept { return visit_limit_exceeded_; }
+
+bool exceeds_visit_limit(std::span<const InspectionEvent> events) noexcept {
+    const auto visits = std::count_if(events.begin(), events.end(), [](const auto &event) {
+        return event.control != "interrupted";
+    });
+    return static_cast<std::uint64_t>(visits) > max_traversal_visits;
 }
 
 TraversalDocument traversal_of_take(std::uint64_t frames_total, std::uint64_t frames_consumed,

@@ -290,9 +290,26 @@ file(WRITE "${TEST_ROOT}/inspection.script"
     "frame=3 key space down\nafter=0 key space up\npaused=3 key left down\nafter=0 key left up\n"
     "paused=2 key space down\nafter=0 key space up\n")
 set(ENV{AYTHER_QA_INPUT_SCRIPT} "${TEST_ROOT}/inspection.script")
+# BR-156 (plan §8) and the acceptance campaign (plan §9.1): the supervisor passes the timing log
+# to the Runtime, as it passes the scripted input.
+set(spec002_timing_log "${TEST_ROOT}/spec002-inspection-timing.csv")
+file(REMOVE "${spec002_timing_log}")
+set(ENV{AYTHER_QA_TIMING_LOG} "${spec002_timing_log}")
 spec002_check(0 "${TEST_ROOT}/spec002-inspection" --take "${TAKE_FILE}"
               --request-id spec002-inspection)
+unset(ENV{AYTHER_QA_TIMING_LOG})
 unset(ENV{AYTHER_QA_INPUT_SCRIPT})
+if(NOT EXISTS "${spec002_timing_log}")
+    message(FATAL_ERROR "BR-156: check did not pass AYTHER_QA_TIMING_LOG to the Runtime")
+endif()
+file(READ "${spec002_timing_log}" spec002_timing)
+if(NOT spec002_timing MATCHES "(^|\n)key,")
+    message(FATAL_ERROR "BR-156: the timing log lacks the scripted key marks:\n${spec002_timing}")
+endif()
+# Campaign 2026-10-07: the close of the audio capture leaves a diagnostic mark.
+if(NOT spec002_timing MATCHES "(^|\n)close_drained,")
+    message(FATAL_ERROR "the timing log lacks the close of the capture:\n${spec002_timing}")
+endif()
 if(spec002_report MATCHES "evidence_error=" OR
    NOT spec002_report MATCHES "durable_pcm_blocks=[1-9]" OR
    NOT spec002_report MATCHES "playback=natural_end traversal=inspection")

@@ -49,7 +49,14 @@ puede incluir cuadros no afectados; no representa una pérdida continua.
 
 Un fallo de ventana, vídeo, audio o cadencia produce un resultado incompleto,
 conservando el replay seguro y sus registros. El umbral de cadencia es un periodo
-del core adicional al vencimiento del cuadro. Ningún estado completo implica que
+del core adicional al vencimiento del cuadro. Excepción (DI-25): en la reproducción
+continua, los cuadros tardíos aislados se registran como `cadence_degraded` pero no
+dejan la observación incompleta si ninguno llega más de 3 periodos tarde y hay como
+mucho uno por cada 1 000 cuadros de la toma (mínimo uno). El terminal los cuenta en el
+campo opcional `presentation.tolerated_late_frames` (ausente vale 0). Una navegación
+(`traversal = inspection`) presenta en reproducción sólo los cuadros que reproduce; el
+resto lo alcanza moviéndose, así que no se exige que presente todos los consumidos, y
+un fallo al cerrarla sigue informándose como `inspection`. Ningún estado completo implica que
 se haya evaluado el fallo musical ni medido la sincronía física de los dispositivos.
 Los campos `audible_restart_observed` y `audible_overlap_observed` muestran
 `not_evaluated` cuando no existe evaluación, incluso si la ventana se presentó.

@@ -1,8 +1,10 @@
 #include "check_execution.h"
+#include <cstdio>
 
 #include "cancellation_message.h"
 #include "capability_gate.h"
 #include "capability_report.h"
+#include "channel_pump.h"
 #include "control_message.h"
 #include "durable_file.h"
 #include "fact_batch.h"
@@ -32,6 +34,15 @@
 #include <utility>
 #include <vector>
 
+namespace {
+// Which check rejected the Runtime's evidence stream, in the technical log (stderr), so an
+// intermittent rejection in a campaign can be traced to its step.
+ayther::audio_qa::CheckExecutionError evidence_stream_invalid(const int source_line) {
+    std::fprintf(stderr, "audio_qa_diagnostic: runtime_evidence_stream_invalid source_line=%d\n",
+                 source_line);
+    return ayther::audio_qa::CheckExecutionError::evidence_stream_invalid;
+}
+} // namespace
 namespace ayther::audio_qa {
 namespace {
 
@@ -215,9 +226,11 @@ CheckExecutionResult execute_check_replay(const EffectiveRequest &effective, con
                 if (const auto value = environment_path(key))
                     environment.emplace_back(wide(key), value->wstring());
         }
-        // BR-153: the scripted input of the QA tests reaches the Runtime in both modes.
-        if (const auto script = environment_path("AYTHER_QA_INPUT_SCRIPT"))
-            environment.emplace_back(L"AYTHER_QA_INPUT_SCRIPT", script->wstring());
+        // BR-153, BR-156: the scripted input and the timing log of the QA measurements reach the
+        // Runtime in both modes.
+        for (const auto key : {"AYTHER_QA_INPUT_SCRIPT", "AYTHER_QA_TIMING_LOG"})
+            if (const auto value = environment_path(key))
+                environment.emplace_back(wide(key), value->wstring());
         const auto capability_query = query_runtime_process(*runtime, {L"--qa-capabilities"},
                                                             environment, 64U * 1024U, 2000U);
         const auto *capability_output = std::get_if<RuntimeQueryOutput>(&capability_query);
@@ -294,7 +307,7 @@ CheckExecutionResult execute_check_replay(const EffectiveRequest &effective, con
         auto opened_evidence = open_incremental_evidence(effective.output, run_id);
         auto *evidence_writer = std::get_if<IncrementalEvidenceWriter>(&opened_evidence);
         if (evidence_writer == nullptr)
-            return CheckExecutionError::evidence_stream_invalid;
+            return evidence_stream_invalid(__LINE__);
 
         CheckExecutionEvidence evidence;
         std::vector<InspectionEvent> inspection_events;
@@ -312,26 +325,30 @@ CheckExecutionResult execute_check_replay(const EffectiveRequest &effective, con
         std::optional<IncrementalEvidenceWriter> post_writer;
         std::string post_run;
         std::vector<InspectionEvent> post_events;
+        // D-6b: the channel is read on its own thread, ahead of the durable persistence below,
+        // so a slow flush never fills the pipe and stalls the Runtime (or its audio thread).
+        ChannelPump pump{[&data] { return read_protocol_message(data->supervisor_read, 2U); },
+                         512U * 1024U * 1024U};
         for (;;) {
-            const auto received = read_protocol_message(data->supervisor_read, 2U);
+            const auto received = pump.pop();
             const auto *bytes = std::get_if<std::vector<std::byte>>(&received);
             if (ended_paused && (bytes == nullptr || bytes->size() < protocol_header_bytes))
                 break;
             if (bytes == nullptr || bytes->size() < protocol_header_bytes)
-                return CheckExecutionError::evidence_stream_invalid;
+                return evidence_stream_invalid(__LINE__);
             const auto header =
                 decode_protocol_header(std::span{*bytes}.first(protocol_header_bytes), 2U);
             if (header.error != HeaderError::none || header.header.channel_sequence != sequence)
-                return CheckExecutionError::evidence_stream_invalid;
+                return evidence_stream_invalid(__LINE__);
             if (ended_paused && header.header.type != MessageType::session_status &&
                 header.header.type != MessageType::fact_batch &&
                 header.header.type != MessageType::terminal)
-                return CheckExecutionError::evidence_stream_invalid;
+                return evidence_stream_invalid(__LINE__);
             if (ended_paused && header.header.type == MessageType::fact_batch) {
                 const auto decoded = decode_fact_batch(*bytes, sequence);
                 const auto *facts = std::get_if<std::vector<Fact>>(&decoded);
                 if (facts == nullptr || !post_writer)
-                    return CheckExecutionError::evidence_stream_invalid;
+                    return evidence_stream_invalid(__LINE__);
                 for (const auto &fact : *facts)
                     if (auto event = read_inspection_event(fact))
                         post_events.push_back(std::move(*event));
@@ -341,11 +358,13 @@ CheckExecutionResult execute_check_replay(const EffectiveRequest &effective, con
                 const auto *closed = std::get_if<ReplayExecutionResult>(&decoded);
                 if (closed == nullptr || !post_writer || closed->run_id != post_run ||
                     closed->traversal != std::optional<std::string>{"post_end_inspection"})
-                    return CheckExecutionError::evidence_stream_invalid;
+                    return evidence_stream_invalid(__LINE__);
                 const auto directory = std::filesystem::path{effective.output} / "runs" / post_run;
                 const auto payload = std::span{*bytes}.subspan(protocol_header_bytes);
                 auto traversal = traversal_of_take(closed->recording_frames,
                                                    closed->inputs_consumed, post_events);
+                evidence.visit_limit_exceeded =
+                    evidence.visit_limit_exceeded || exceeds_visit_limit(post_events);
                 traversal.kind = TraversalKind::post_end_inspection;
                 traversal.linear_completed = false;
                 // RF-2.9: a post-end inspection is silent; it keeps no audio.
@@ -354,14 +373,14 @@ CheckExecutionResult execute_check_replay(const EffectiveRequest &effective, con
                         publish_durable_file(directory / "replay-result.toml", payload)) ||
                     !std::holds_alternative<DurablePublishedFile>(
                         write_traversal(directory / "traversal.toml", traversal)))
-                    return CheckExecutionError::evidence_stream_invalid;
+                    return evidence_stream_invalid(__LINE__);
                 (void)post_writer->finish(closed->trace, false);
                 post_writer.reset();
             } else if (header.header.type == MessageType::fact_batch) {
                 const auto decoded = decode_fact_batch(*bytes, sequence);
                 const auto *facts = std::get_if<std::vector<Fact>>(&decoded);
                 if (facts == nullptr)
-                    return CheckExecutionError::evidence_stream_invalid;
+                    return evidence_stream_invalid(__LINE__);
                 // C2: inspection events build the traversal of the take (RF-5.8).
                 for (const auto &fact : *facts) {
                     if (auto event = read_inspection_event(fact))
@@ -377,7 +396,7 @@ CheckExecutionResult execute_check_replay(const EffectiveRequest &effective, con
                 const auto decoded = decode_pcm_message(*bytes, sequence);
                 const auto *chunk = std::get_if<AudioChunk>(&decoded);
                 if (chunk == nullptr)
-                    return CheckExecutionError::evidence_stream_invalid;
+                    return evidence_stream_invalid(__LINE__);
                 if (!evidence.preservation_error) {
                     if (const auto error = evidence_writer->append_pcm(*chunk))
                         evidence.preservation_error = *error;
@@ -386,15 +405,15 @@ CheckExecutionResult execute_check_replay(const EffectiveRequest &effective, con
                 // Protocol 1.1 (contracts.md C1-3, C1-6): live state and post-end runs.
                 const auto status = decode_session_status(*bytes, sequence);
                 if (std::holds_alternative<ProtocolV11Error>(status))
-                    return CheckExecutionError::evidence_stream_invalid;
+                    return evidence_stream_invalid(__LINE__);
                 if (const auto *opened = std::get_if<RunOpened>(&status)) {
                     // C1-6: only after the confirmed result of the last take.
                     if (!ended_paused || post_writer)
-                        return CheckExecutionError::evidence_stream_invalid;
+                        return evidence_stream_invalid(__LINE__);
                     auto opened_post = open_incremental_evidence(effective.output, opened->run_id);
                     auto *writer = std::get_if<IncrementalEvidenceWriter>(&opened_post);
                     if (writer == nullptr)
-                        return CheckExecutionError::evidence_stream_invalid;
+                        return evidence_stream_invalid(__LINE__);
                     post_writer.emplace(std::move(*writer));
                     post_run = opened->run_id;
                     post_events.clear();
@@ -414,12 +433,14 @@ CheckExecutionResult execute_check_replay(const EffectiveRequest &effective, con
                                              "replay-result.toml",
                                          payload);
                 if (!std::holds_alternative<DurablePublishedFile>(published))
-                    return CheckExecutionError::evidence_stream_invalid;
+                    return evidence_stream_invalid(__LINE__);
                 // Spec 002 (RF-5.8, RF-2.13): the traversal is confirmed with the result. Every
                 // PCM chunk came before the terminal: the audio of each linear segment is
                 // known (DI-14, evidence 1.2).
                 auto traversal = traversal_of_take(result->recording_frames,
                                                    result->inputs_consumed, inspection_events);
+                evidence.visit_limit_exceeded =
+                    evidence.visit_limit_exceeded || exceeds_visit_limit(inspection_events);
                 if (result->traversal == std::optional<std::string>{"inspection"})
                     pcm_continuity = PcmContinuity::per_segment;
                 const auto pcm_segments = evidence_writer->pcm_segments();
@@ -436,12 +457,12 @@ CheckExecutionResult execute_check_replay(const EffectiveRequest &effective, con
                         write_traversal(std::filesystem::path{effective.output} / "runs" / run_id /
                                             "traversal.toml",
                                         traversal)))
-                    return CheckExecutionError::evidence_stream_invalid;
+                    return evidence_stream_invalid(__LINE__);
                 if (!result->ended_paused || effective.presentation != "visible")
                     break;
                 ended_paused = true;
             } else {
-                return CheckExecutionError::evidence_stream_invalid;
+                return evidence_stream_invalid(__LINE__);
             }
             ++sequence;
         }

@@ -43,6 +43,13 @@ bool ProgressWatchdog::observe_completed_frame(const std::uint32_t frame,
     return true;
 }
 
+std::uint64_t MonotonicProgress::observe(const std::uint64_t position) noexcept {
+    if (last_)
+        total_ += position >= *last_ ? position - *last_ : *last_ - position;
+    last_ = position;
+    return total_;
+}
+
 bool ProgressWatchdog::observe_bytes_received(const std::uint64_t bytes,
                                               const std::uint64_t now_ms) noexcept {
     if (phase_ != WatchdogPhase::closing || !valid_time(now_ms) || bytes < bytes_received_) {

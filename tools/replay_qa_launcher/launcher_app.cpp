@@ -2,6 +2,7 @@
 // renderer. It only lays out what launcher_view derives from the model, opens the SDL3 file
 // dialogs and runs the request with LauncherRunner. `--smoke-frames N` draws N frames and
 // exits, for the GPU smoke tests; `--smoke-capture <file.bmp>` also keeps the last frame.
+// `--idle-seconds N` stays idle N seconds and reports the frames drawn and the CPU used (RNF-2).
 #include "effective_values.h"
 #include "environment_resolver.h"
 #include "launcher_messages.h"
@@ -18,9 +19,13 @@
 
 #include <charconv>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
+#include <ctime>
 #include <deque>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -31,6 +36,16 @@
 #include <utility>
 #include <variant>
 #include <vector>
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 namespace la = ayther::replay_qa_launcher;
 namespace qa = ayther::audio_qa;
@@ -50,6 +65,10 @@ struct Options {
     std::string rom;
     std::string take;
     std::string output;
+    // DI-23: the fields of one campaign attempt, as `--flag=value` lines.
+    std::string prefill;
+    // RNF-2: stays idle this many seconds and reports the frames drawn and the CPU used.
+    int idle_seconds{-1};
 };
 
 Options parse_options(int argc, char **argv) {
@@ -69,6 +88,8 @@ Options parse_options(int argc, char **argv) {
             options.take = argv[index + 1];
         else if (name == "--output")
             options.output = argv[index + 1];
+        else if (name == "--prefill")
+            options.prefill = argv[index + 1];
         if (std::string_view{argv[index]} == "--smoke-frames") {
             const std::string_view value{argv[index + 1]};
             int frames{};
@@ -77,6 +98,12 @@ Options parse_options(int argc, char **argv) {
                 options.smoke_frames = frames;
         } else if (std::string_view{argv[index]} == "--smoke-capture") {
             options.smoke_capture = argv[index + 1];
+        } else if (std::string_view{argv[index]} == "--idle-seconds") {
+            const std::string_view value{argv[index + 1]};
+            int seconds{};
+            const auto parsed = std::from_chars(value.data(), value.data() + value.size(), seconds);
+            if (parsed.ec == std::errc{} && seconds > 0)
+                options.idle_seconds = seconds;
         }
     }
     return options;
@@ -555,6 +582,21 @@ class SelfTest final {
     bool passed_{};
 };
 
+// The CPU time used by this process, user and kernel, in milliseconds.
+std::uint64_t process_cpu_ms() noexcept {
+#if defined(_WIN32)
+    FILETIME created{}, exited{}, kernel{}, user{};
+    if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user))
+        return 0U;
+    const auto ticks = [](const FILETIME &time) {
+        return (static_cast<std::uint64_t>(time.dwHighDateTime) << 32U) | time.dwLowDateTime;
+    };
+    return (ticks(kernel) + ticks(user)) / 10'000U;
+#else
+    return static_cast<std::uint64_t>(std::clock()) * 1000U / CLOCKS_PER_SEC;
+#endif
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -577,23 +619,45 @@ int main(int argc, char **argv) {
     ImGui::CreateContext();
     ImGui::GetIO().IniFilename = nullptr;
     load_font();
+    // RNF-2: at most one redraw per display refresh.
+    (void)SDL_SetRenderVSync(renderer, 1);
     ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
     ImGui_ImplSDLRenderer3_Init(renderer);
 
     int frames = 0;
+    std::uint64_t idle_frames = 0U;
     std::optional<bool> self_test_passed;
     {
         LauncherApp app{window};
+        // DI-23: a rejected prefill leaves the form empty; the person fills it as usual.
+        if (!options.prefill.empty()) {
+            std::ifstream input{std::filesystem::path{options.prefill}, std::ios::binary};
+            const std::string text{std::istreambuf_iterator<char>{input},
+                                   std::istreambuf_iterator<char>{}};
+            const auto rejected = input ? la::apply_prefill(app.model(), text)
+                                        : std::vector<std::string>{options.prefill};
+            for (const auto &line : rejected)
+                std::fprintf(stderr, "ayther_replay_qa: prefill_rejected: %s\n", line.c_str());
+            if (rejected.empty())
+                std::printf("ayther_replay_qa: prefill_applied\n");
+        }
         std::optional<SelfTest> self_test;
         if (options.self_test)
             self_test.emplace(options);
+        const int wait_ms = la::idle_wait_ms(options.smoke_frames > 0 || options.self_test);
+        const auto idle_started = std::chrono::steady_clock::now();
+        const auto idle_cpu_started = process_cpu_ms();
         bool running = true;
         while (running) {
             SDL_Event event;
-            while (SDL_PollEvent(&event)) {
+            // RNF-2: waits for input (or the next refresh of the progress) instead of spinning.
+            bool pending =
+                wait_ms > 0 ? SDL_WaitEventTimeout(&event, wait_ms) : SDL_PollEvent(&event);
+            while (pending) {
                 ImGui_ImplSDL3_ProcessEvent(&event);
                 if (event.type == SDL_EVENT_QUIT)
                     running = false;
+                pending = SDL_PollEvent(&event);
             }
             ImGui_ImplSDLRenderer3_NewFrame();
             ImGui_ImplSDL3_NewFrame();
@@ -609,8 +673,16 @@ int main(int argc, char **argv) {
             if (last && !options.smoke_capture.empty())
                 save_frame(renderer, options.smoke_capture);
             SDL_RenderPresent(renderer);
+            ++idle_frames;
             if (last)
                 running = false;
+            if (options.idle_seconds > 0 && std::chrono::steady_clock::now() - idle_started >=
+                                                std::chrono::seconds{options.idle_seconds}) {
+                std::printf("ayther_replay_qa: idle frames=%llu cpu_ms=%llu\n",
+                            static_cast<unsigned long long>(idle_frames),
+                            static_cast<unsigned long long>(process_cpu_ms() - idle_cpu_started));
+                running = false;
+            }
         }
         // Closing the window cancels the request in progress; the runner joins its thread.
         app.cancel();
