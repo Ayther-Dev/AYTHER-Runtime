@@ -17,6 +17,7 @@
 
 #include <SDL3/SDL.h>
 #include <algorithm>
+#include <cfloat>
 #include <cstring>
 #include <cstdint>
 #include <cstdio>
@@ -33,10 +34,13 @@ ImVec4 play_color(int r, int g, int b, int a = 255) {
     return ImVec4(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
 }
 
+// Text size of the pause-menu controls: checkbox labels and buttons share it.
+constexpr float kPauseControlTextSize = 24.0f;
+
 bool play_checkbox(const char* label, bool* value) {
     // Compact pause-menu row: 28px box, 12px gap, 24px label.
     // Keep ImGui's checkbox interaction, disabled state and keyboard/gamepad nav.
-    ImGui::PushFont(ImGui::GetIO().FontDefault, 24.0f);
+    ImGui::PushFont(ImGui::GetIO().FontDefault, kPauseControlTextSize);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 2));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(12, 0));
     constexpr ImGuiCol hidden_colors[] = {
@@ -96,6 +100,22 @@ bool play_checkbox(const char* label, bool* value) {
                   ImGui::GetColorU32(play_color(214, 214, 220)), label);
     ImGui::PopFont();
     return changed;
+}
+
+// A button whose label matches the checkbox labels instead of the 18px body.
+bool play_button(const char* label, const ImVec2& size) {
+    ImGui::PushFont(ImGui::GetIO().FontDefault, kPauseControlTextSize);
+    const bool pressed = ImGui::Button(label, size);
+    ImGui::PopFont();
+    return pressed;
+}
+
+// Text centred in the remaining width of the current window row.
+void centered_text(const ImVec4& color, const char* text) {
+    const float avail = ImGui::GetContentRegionAvail().x;
+    const float w = ImGui::CalcTextSize(text).x;
+    if (avail > w) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (avail - w) * 0.5f);
+    ImGui::TextColored(color, "%s", text);
 }
 
 ImFont* load_play_font(ImGuiIO& io, const char* filename, float size) {
@@ -544,9 +564,9 @@ void PlayerOverlay::render(VkContext&, const AcquiredFrame& frame,
 
     ImGui::Begin("##pause_overlay", nullptr, kWinFlags);
 
-    ImGui::TextColored(play_color(250, 204, 45), "AYTHER PLAY CE");
+    centered_text(play_color(250, 204, 45), "AYTHER PLAY CE");
     ImGui::PushFont(title_font_ ? title_font_ : ImGui::GetIO().FontDefault, 32.0f);
-    ImGui::TextColored(play_color(240, 240, 245), "EN PAUSA");
+    centered_text(play_color(240, 240, 245), "EN PAUSA");
     ImGui::PopFont();
     ImGui::Spacing();
     ImGui::Separator();
@@ -557,7 +577,7 @@ void PlayerOverlay::render(VkContext&, const AcquiredFrame& frame,
     ImGui::PushStyleColor(ImGuiCol_Button, play_color(250, 204, 45));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, play_color(252, 221, 111));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, play_color(201, 160, 6));
-    if (ImGui::Button("Continuar", ImVec2(-1, 40)))
+    if (play_button("Continuar", ImVec2(-1, 40)))
         paused_ = false;
     ImGui::PopStyleColor(4);
 
@@ -565,7 +585,7 @@ void PlayerOverlay::render(VkContext&, const AcquiredFrame& frame,
 
     // HD toggle
     const char* hd_label = hd_on ? "Modo HD: activado" : "Modo HD: desactivado";
-    if (ImGui::Button(hd_label, ImVec2(-1, 0))) {
+    if (play_button(hd_label, ImVec2(-1, 0))) {
         hd_on = !hd_on;
         std::fprintf(stdout, "[overlay] HD mode: %s\n", hd_on ? "ON" : "OFF");
     }
@@ -586,7 +606,7 @@ void PlayerOverlay::render(VkContext&, const AcquiredFrame& frame,
             ImGui::TextUnformatted(msg.c_str());
             ImGui::PopTextWrapPos();
             ImGui::PopStyleColor();
-            if (ImGui::Button("  Volver a intentar  ", ImVec2(-1, 0))) {
+            if (play_button("  Volver a intentar  ", ImVec2(-1, 0))) {
                 // El motor no reintenta solo: volver a probar lo mismo que ya
                 // falló doce veces es lo que la escalada existe para no hacer.
                 // Que lo pida el usuario es lo que lo hace una decisión.
@@ -620,7 +640,13 @@ void PlayerOverlay::render(VkContext&, const AcquiredFrame& frame,
             // perfil. Se dice, en vez de mostrar el último elegido: seguir
             // marcando «Mejorado» mentiría sobre lo que está viendo.
             const std::string shown = act.empty() ? std::string("personalizado") : act;
-            if (ImGui::BeginCombo("Perfil", shown.c_str())) {
+            // Label on the left, like the rest of the menu; the combo takes
+            // the remaining width.
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted("Perfil");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::BeginCombo("##perfil", shown.c_str())) {
                 for (uint32_t i = 0; i < np; ++i) {
                     const std::string id = session->profile_id(i);
                     const std::string nm = session->profile_name(i);
@@ -701,7 +727,7 @@ void PlayerOverlay::render(VkContext&, const AcquiredFrame& frame,
 
         // -- Restaurar ---------------------------------------------------------
         ImGui::Spacing();
-        if (ImGui::Button("  Restaurar valores del pack  ", ImVec2(-1, 0))) {
+        if (play_button("  Restaurar valores del pack  ", ImVec2(-1, 0))) {
             // «Predeterminado» es el del PACK, no el de fábrica: lo que el
             // autor eligió como su forma de mostrarse. Volver a «todo
             // encendido» sería restaurar algo que nadie decidió.
@@ -725,7 +751,7 @@ void PlayerOverlay::render(VkContext&, const AcquiredFrame& frame,
     ImGui::Spacing();
 
     // Returning to the library is a secondary navigation action.
-    if (ImGui::Button("Volver al launcher", ImVec2(-1, 40)))
+    if (play_button("Volver al launcher", ImVec2(-1, 40)))
         running = false;
 
     ImGui::Spacing();
