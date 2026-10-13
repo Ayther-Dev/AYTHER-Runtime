@@ -15,6 +15,13 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+### Changed
+
+- Pause menu layout: the title and «EN PAUSA» are centred, the buttons use the
+  same 24px text as the checkbox labels, and the «Perfil» label sits on the
+  left of its combo, which takes the remaining width, like the rest of the
+  menu.
+
 ## [0.1.0-beta.11] - 2026-10-08
 
 ### Added
