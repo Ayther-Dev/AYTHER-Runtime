@@ -339,6 +339,30 @@ add_test(
     COMMAND input_map_tests
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
+# resume_gate_tests — the press that closes the pause menu stays out of the game.
+# Pure folding over MappedInputState: no window, no SDL subsystem, no controller.
+# ------------------------------------------------------------------
+add_executable(resume_gate_tests
+    resume_gate_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/input_map.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/game_input.cpp
+)
+target_include_directories(resume_gate_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+target_link_libraries(resume_gate_tests PRIVATE
+    Ayther::engine
+    SDL3::SDL3
+    tomlplusplus::tomlplusplus
+)
+set_target_properties(resume_gate_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME    resume_gate
+    COMMAND resume_gate_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
 add_test(
     NAME    input_map_cli
     COMMAND ${CMAKE_COMMAND}

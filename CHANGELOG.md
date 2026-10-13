@@ -15,6 +15,13 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+### Fixed
+
+- The button that closes the pause menu (A on «Continuar», Guide, Escape) no
+  longer reaches the game as a new press: on a character-select screen it
+  picked the character behind the menu. Whatever is held when the menu closes
+  is masked until it is released once (`ResumeGate`).
+
 ### Changed
 
 - Pause menu layout: the title and «EN PAUSA» are centred, the buttons use the
