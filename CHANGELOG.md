@@ -17,6 +17,11 @@ once stable compatibility guarantees are defined.
 
 ### Fixed
 
+- Turning «Modo HD» off and on again from the pause menu now resumes the HD
+  music at the emulated-clock offset. The toggle used the explicit shutdown of
+  the live substitution, which discards every instance, so after switching HD
+  back on the original music kept playing until the sequence re-anchored;
+  short effects re-triggered on their own. It now uses the assets bypass.
 - The button that closes the pause menu (A on «Continuar», Guide, Escape) no
   longer reaches the game as a new press: on a character-select screen it
   picked the character behind the menu. Whatever is held when the menu closes
