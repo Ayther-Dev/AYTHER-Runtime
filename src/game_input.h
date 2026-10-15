@@ -34,40 +34,60 @@ struct MappedInputState {
     std::int16_t left_y{};
 };
 
-[[nodiscard]] engine::InputState
-compose_input_state(const InputMap& map,
-                    const MappedInputState& state) noexcept;
+[[nodiscard]] engine::InputState compose_input_state(const InputMap &map,
+                                                     const MappedInputState &state) noexcept;
+
+/// The buttons still held when the pause menu closes must not reach the game
+/// as a new press: the A that activated «Continuar» would otherwise pick the
+/// character behind the menu. `arm` remembers what is held at that moment and
+/// `filter` masks each of those buttons until it has been released once; a
+/// button pressed after the resume passes straight through. Pure: no SDL.
+class ResumeGate {
+  public:
+    void arm(const MappedInputState &held) noexcept;
+    [[nodiscard]] MappedInputState filter(const MappedInputState &now) noexcept;
+    [[nodiscard]] bool active() const noexcept;
+
+  private:
+    MappedInputState held_{};
+};
 
 /// Owns the active SDL gamepad and maps live input to a RetroPad bit field.
 class GameInput {
-public:
+  public:
     /// Load the optional controller mapping database and adopt a connected pad.
     explicit GameInput(InputMap input_map = InputMap::defaults());
     ~GameInput();
 
-    GameInput(const GameInput&)            = delete;
-    GameInput& operator=(const GameInput&) = delete;
-    GameInput(GameInput&&)                 = delete;
-    GameInput& operator=(GameInput&&)      = delete;
+    GameInput(const GameInput &) = delete;
+    GameInput &operator=(const GameInput &) = delete;
+    GameInput(GameInput &&) = delete;
+    GameInput &operator=(GameInput &&) = delete;
 
     /// Process an SDL hot-plug event. Other event types are ignored.
-    void handle_event(const SDL_Event& event);
+    void handle_event(const SDL_Event &event);
 
     /// Poll keyboard and active-gamepad state for the current frame.
     /// @return The normalized joypad state consumed by AytherSession.
     engine::InputState poll() const;
+    /// Call when the pause menu closes: whatever is held right now stays out
+    /// of the game until it is released (see ResumeGate).
+    void arm_resume_gate();
 
     /// Return whether this object currently owns an open SDL gamepad handle.
-    [[nodiscard]] bool has_gamepad() const noexcept {
-        return gamepad_ != nullptr;
-    }
+    [[nodiscard]] bool has_gamepad() const noexcept { return gamepad_ != nullptr; }
     /// Return a borrowed SDL-owned name, or a stable fallback string.
-    [[nodiscard]] const char* gamepad_name() const noexcept;
+    [[nodiscard]] const char *gamepad_name() const noexcept;
 
-private:
+  private:
+    /// Live keyboard and gamepad levels, before the mapping and the gate.
+    [[nodiscard]] MappedInputState read_raw() const;
+
     InputMap input_map_;
-    SDL_Gamepad* gamepad_{nullptr};  ///< Owned active controller (player 1).
+    SDL_Gamepad *gamepad_{nullptr}; ///< Owned active controller (player 1).
     SDL_JoystickID gamepad_id_{};
+    /// Updated by poll(): the gate clears each mask when its button is released.
+    mutable ResumeGate resume_gate_{};
 };
 
-}  // namespace ayther
+} // namespace ayther

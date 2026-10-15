@@ -952,6 +952,7 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
     };
 
     bool running = true;
+    bool was_paused = false;
     while (running) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
@@ -1104,6 +1105,12 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
         //   Backspace → rewind   (R6, walk back through the savestate ring)
         //   Tab held  → fast-forward (R6, run extra frames per displayed frame)
         // M4: skip stepping while the pause overlay is open.
+        // Leaving the menu: the button that closed it (A on «Continuar», Guide,
+        // Escape) is still held and must not reach the game as a new press —
+        // on a character-select screen it picked the character.
+        if (was_paused && !overlay.is_paused())
+            input.arm_resume_gate();
+        was_paused = overlay.is_paused();
         if (!overlay.is_paused()) {
             const bool *keys = SDL_GetKeyboardState(nullptr);
             const bool rewinding = keys && keys[SDL_SCANCODE_BACKSPACE];
