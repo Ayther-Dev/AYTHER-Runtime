@@ -132,6 +132,11 @@ using TakeInspection = std::variant<TakeFacts, std::string>;
 // (`decompress_recording_state`). `take_initial_state_invalid` otherwise.
 [[nodiscard]] std::optional<std::string> take_state_issue(std::span<const std::byte> bytes);
 
+// .arp v9: the FM register shadow at the end of a take whose layout is valid is read whole, as
+// the Runtime will read it before seeding the detector (`decode_recording_fm_registers`).
+// `take_fm_registers_invalid` otherwise; a take older than v9 carries none and passes.
+[[nodiscard]] std::optional<std::string> take_fm_registers_issue(std::span<const std::byte> bytes);
+
 // RF-2.2, RNF-3 (contracts.md C5, «Sondeo del core con la ROM»): N / timing_fps must not
 // exceed 900 s, with the timing the core reports for that ROM; at 59.92 fps 54 000 frames
 // already do. A missing or invalid timing is a problem of the core.

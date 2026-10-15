@@ -167,4 +167,135 @@ std::string_view recording_layout_error_code(const RecordingLayoutError error) n
     return "unknown_recording_layout_error";
 }
 
+namespace {
+
+// Forward reader over the whole take, mirroring the Engine loader's cursor.
+class TailCursor {
+  public:
+    TailCursor(const std::span<const std::byte> bytes, const std::uint64_t offset) noexcept
+        : bytes_(bytes), offset_(offset) {}
+
+    [[nodiscard]] bool read_u32(std::uint32_t &value) noexcept {
+        if (!has(sizeof(value)))
+            return false;
+        value = read_u32_le(bytes_, static_cast<std::size_t>(offset_));
+        offset_ += sizeof(value);
+        return true;
+    }
+    [[nodiscard]] bool skip(const std::uint64_t count) noexcept {
+        if (!has(count))
+            return false;
+        offset_ += count;
+        return true;
+    }
+    [[nodiscard]] bool has(const std::uint64_t count) const noexcept {
+        return has_bytes(offset_, count, bytes_.size());
+    }
+    [[nodiscard]] bool at_end() const noexcept { return offset_ == bytes_.size(); }
+    [[nodiscard]] std::size_t offset() const noexcept { return static_cast<std::size_t>(offset_); }
+
+  private:
+    std::span<const std::byte> bytes_;
+    std::uint64_t offset_;
+};
+
+// v3/v7 history: u32 total, total × u64 hashes, frame_count × u32 per-frame counts (CSR).
+[[nodiscard]] bool skip_hash_history(TailCursor &cursor, const std::uint32_t frames) noexcept {
+    std::uint32_t total{};
+    return cursor.read_u32(total) && cursor.skip(static_cast<std::uint64_t>(total) * 8U) &&
+           cursor.skip(static_cast<std::uint64_t>(frames) * 4U);
+}
+
+} // namespace
+
+RecordingFmRegistersResult decode_recording_fm_registers(const std::span<const std::byte> recording,
+                                                         const RecordingLayout &layout) {
+    RecordingFmRegistersResult result{};
+    if (layout.header.version < recording_fm_registers_version)
+        return result;
+    if (layout.inputs.offset > recording.size() ||
+        layout.inputs.size > recording.size() - layout.inputs.offset) {
+        result.error = RecordingFmRegistersError::invalid_layout;
+        return result;
+    }
+    const auto frames = layout.frame_count;
+    TailCursor cursor{recording, layout.inputs.offset + layout.inputs.size};
+    const auto truncated = [&result] {
+        result.error = RecordingFmRegistersError::truncated_content;
+        return result;
+    };
+
+    // v2: trim marks and the per-frame summary (v6+: six u16 per frame).
+    if (!cursor.skip(8U) || !cursor.skip(static_cast<std::uint64_t>(frames) * 12U))
+        return truncated();
+    // v3: sprite-hash history.
+    if (!skip_hash_history(cursor, frames))
+        return truncated();
+    // v4: baked keyframes.
+    std::uint32_t keyframe_count{};
+    if (!cursor.read_u32(keyframe_count))
+        return truncated();
+    if (keyframe_count > frames + 1U) {
+        result.error = RecordingFmRegistersError::invalid_section;
+        return result;
+    }
+    for (std::uint32_t index = 0; index < keyframe_count; ++index) {
+        std::uint32_t frame{}, raw_size{}, compressed_size{};
+        if (!cursor.read_u32(frame) || !cursor.read_u32(raw_size) ||
+            !cursor.read_u32(compressed_size))
+            return truncated();
+        if (frame > frames || raw_size == 0U) {
+            result.error = RecordingFmRegistersError::invalid_section;
+            return result;
+        }
+        if (!cursor.skip(compressed_size))
+            return truncated();
+    }
+    // v7: audio-hash history.
+    if (!skip_hash_history(cursor, frames))
+        return truncated();
+    // v8: sprite hash algorithm.
+    if (!cursor.skip(4U))
+        return truncated();
+    // v9: the shadow.
+    std::uint32_t size{};
+    if (!cursor.read_u32(size))
+        return truncated();
+    if (size != 0U && size != recording_fm_register_bytes) {
+        result.error = RecordingFmRegistersError::invalid_size;
+        return result;
+    }
+    if (!cursor.has(size))
+        return truncated();
+    const auto begin = cursor.offset();
+    if (!cursor.skip(size))
+        return truncated();
+    if (!cursor.at_end()) {
+        result.error = RecordingFmRegistersError::trailing_content;
+        return result;
+    }
+    result.registers.resize(size);
+    for (std::size_t index = 0; index < size; ++index)
+        result.registers[index] = std::to_integer<std::uint8_t>(recording[begin + index]);
+    return result;
+}
+
+std::string_view recording_fm_registers_error_code(const RecordingFmRegistersError error) noexcept {
+    switch (error) {
+    case RecordingFmRegistersError::none:
+        return "none";
+    case RecordingFmRegistersError::invalid_layout:
+        return "invalid_layout";
+    case RecordingFmRegistersError::truncated_content:
+        return "truncated_content";
+    case RecordingFmRegistersError::invalid_section:
+        return "invalid_section";
+    case RecordingFmRegistersError::invalid_size:
+        return "invalid_size";
+    case RecordingFmRegistersError::trailing_content:
+        return "trailing_content";
+    }
+    return "unknown_recording_fm_registers_error";
+}
+
 } // namespace ayther::audio_qa
