@@ -498,6 +498,16 @@ std::optional<std::string> take_state_issue(std::span<const std::byte> bytes) {
     return std::string{"take_initial_state_invalid"};
 }
 
+std::optional<std::string> take_fm_registers_issue(std::span<const std::byte> bytes) {
+    const auto decoded = decode_recording_layout(bytes);
+    if (decoded.error != RecordingLayoutError::none)
+        return std::nullopt;
+    if (decode_recording_fm_registers(bytes, decoded.layout).error ==
+        RecordingFmRegistersError::none)
+        return std::nullopt;
+    return std::string{"take_fm_registers_invalid"};
+}
+
 std::optional<FieldIssue> take_duration_issue(std::uint32_t frame_count,
                                               std::optional<double> timing_fps) {
     const auto duration = validate_replay_duration(frame_count, timing_fps.value_or(0.0));

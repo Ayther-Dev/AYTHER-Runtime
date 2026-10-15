@@ -1129,8 +1129,16 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
             // pide justamente que video y audio cambien SINCRONIZADOS.
             // Sólo si el pack trae eventos: sin asignaciones no hay nada que
             // sustituir y encenderlo sería levantar el detector al pedo.
+            // «Modo HD: desactivado» es un BYPASS de assets, no el apagado
+            // explícito: la sustitución sigue encendida (set_pack la activó),
+            // los streams HD callan, suena el original y el bookkeeping de
+            // instancias sigue el reloj emulado. Al volver a activarlo la
+            // música HD reanuda con su offset, sin esperar otro key-on. Con
+            // set_audio_runtime_substitution(false) se descartaban las
+            // instancias y al reactivar seguía sonando el original hasta el
+            // próximo anclaje de la Secuencia.
             if (sess->audio_event_assignment_count() > 0)
-                sess->set_audio_runtime_substitution(hd_on_);
+                sess->set_audio_live_bypass(!hd_on_);
 
             if (rewinding) {
                 if (const ayther::FrameView *rv = sess->rewind_step())

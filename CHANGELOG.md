@@ -15,8 +15,26 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+### Added
+
+- Replay QA accepts `.arp` takes of version 9. Such a take ends with the FM
+  register shadow the Engine detector held when the take began; the Runtime
+  reads it the way the Engine loader does and seeds the live detector with it
+  after the fresh HD boundary (`AytherSession::seed_audio_fm_registers`), also
+  when a post-end inspection re-arms the session. A take that begins with the
+  music already playing therefore identifies its instruments as the authoring
+  take did, and the authored sequences anchor. The supervisor checks the shadow
+  before admission (`take_fm_registers_invalid: --take[i]`), and the Runtime
+  fails a malformed one with `recording_fm_registers_invalid`. Requires an
+  Engine package that exports the seeding API (after v0.1.0-rc.17).
+
 ### Fixed
 
+- Turning «Modo HD» off and on again from the pause menu now resumes the HD
+  music at the emulated-clock offset. The toggle used the explicit shutdown of
+  the live substitution, which discards every instance, so after switching HD
+  back on the original music kept playing until the sequence re-anchored;
+  short effects re-triggered on their own. It now uses the assets bypass.
 - The button that closes the pause menu (A on «Continuar», Guide, Escape) no
   longer reaches the game as a new press: on a character-select screen it
   picked the character behind the menu. Whatever is held when the menu closes

@@ -173,6 +173,11 @@ RequestPreflight preflight_request(const EffectiveRequest &request) {
             add_issue(issues, {take_field(position), std::move(*state)});
             continue;
         }
+        // .arp v9: a damaged FM register shadow is found here too, not when the Runtime seeds.
+        if (auto registers = take_fm_registers_issue(pinned_take.bytes)) {
+            add_issue(issues, {take_field(position), std::move(*registers)});
+            continue;
+        }
         takes.push_back(std::move(pinned_take.pin));
         take_facts.push_back(std::get<TakeFacts>(std::move(inspection)));
     }

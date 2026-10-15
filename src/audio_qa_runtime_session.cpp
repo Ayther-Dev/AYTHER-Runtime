@@ -664,6 +664,16 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
         }
         result.recording_frames = layout.layout.frame_count;
         const auto frames = layout.layout.frame_count;
+        // .arp v9: the detector's FM register shadow at the start of the take. A take that
+        // began with the music already playing never shows the detector its patches; without
+        // the shadow every channel hashes to the same placeholder instrument and the authored
+        // signatures never match. Read like the Engine loader: a malformed tail fails the take.
+        const auto fm_registers = qa::decode_recording_fm_registers(recording, layout.layout);
+        if (fm_registers.error != qa::RecordingFmRegistersError::none) {
+            result.code = "recording_fm_registers_invalid";
+            (void)send_result(*data, result);
+            return qa_execution_error;
+        }
 
         auto bridge = std::make_unique<ObservationBridge>(result.run_id);
         StreamingObservationWriter writer{*data, result.run_id};
@@ -810,6 +820,10 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
             session.get(), digest_id(result.initial_game_state), nullptr);
         if (hd.initialization != qa::HdInitialization::fresh || hd.evidence_incomplete)
             return fail_session("fresh_hd_initialization_failed");
+        // After the fresh HD boundary: it resets the live detector, and the seed must survive.
+        if (!fm_registers.registers.empty() &&
+            !session->seed_audio_fm_registers(fm_registers.registers))
+            return fail_session("detector_seed_failed");
         // Spec 002 (RF-2.1, RF-2.2): a selected pack is loaded or the take fails, never
         // replayed as the original game. A valid pack without audio catalog replays and
         // records its number of assignments, zero included.
@@ -1145,6 +1159,9 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                 const auto fresh = qa::initialize_engine_hd_audio(
                     session.get(), digest_id(result.initial_game_state), nullptr);
                 if (fresh.initialization != qa::HdInitialization::fresh)
+                    return false;
+                if (!fm_registers.registers.empty() &&
+                    !session->seed_audio_fm_registers(fm_registers.registers))
                     return false;
                 stepper.session = session.get();
                 stepper.view = nullptr;
