@@ -9,6 +9,8 @@
 #include <array>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <system_error>
 #include <utility>
 
 #ifdef _WIN32
@@ -462,6 +464,12 @@ std::string_view material_pin_role_code(MaterialPinRole role) noexcept {
         return "runtime";
     case MaterialPinRole::trust_registry:
         return "trust_registry";
+    case MaterialPinRole::timeline:
+        return "timeline";
+    case MaterialPinRole::timeline_state:
+        return "timeline_state";
+    case MaterialPinRole::timeline_fm_sidecar:
+        return "timeline_fm_sidecar";
     }
     return "unknown";
 }
@@ -553,6 +561,70 @@ std::optional<std::string> pack_game_issue(std::string_view pack_game_id, std::u
     if (!pack_game_id.starts_with(crc32_prefix) || names_rom(pack_game_id, rom_crc32))
         return std::nullopt;
     return "pack_game_mismatch";
+}
+
+TimelineInspection inspect_timeline(std::span<const std::byte> bytes,
+                                    const std::filesystem::path &file) {
+    const std::string_view text{reinterpret_cast<const char *>(bytes.data()), bytes.size()};
+    auto parsed = parse_pad_timeline(text);
+    if (parsed.error != TimelineParseError::none)
+        return TimelineInspectionIssue{"timeline_syntax_invalid",
+                                       std::string{timeline_parse_error_code(parsed.error)},
+                                       parsed.line};
+    // The slowest timing makes the fewest frames of a step; the fastest, the most in total.
+    const auto slowest = compile_pad_timeline(parsed.timeline, timeline_preflight_fps_min);
+    if (slowest.error == TimelineCompileError::duration_rounds_to_zero)
+        return TimelineInspectionIssue{"timeline_syntax_invalid",
+                                       std::string{timeline_compile_error_code(slowest.error)},
+                                       slowest.line};
+    if (slowest.error == TimelineCompileError::no_frames)
+        return TimelineInspectionIssue{"timeline_empty", "no_frames", 0U};
+    const auto fastest = compile_pad_timeline(parsed.timeline, timeline_preflight_fps_max);
+    if (fastest.error == TimelineCompileError::too_many_frames)
+        return TimelineInspectionIssue{"timeline_too_long", "too_many_frames", fastest.line};
+    if (fastest.error != TimelineCompileError::none)
+        return TimelineInspectionIssue{"timeline_syntax_invalid",
+                                       std::string{timeline_compile_error_code(fastest.error)},
+                                       fastest.line};
+    TimelineFacts facts;
+    facts.steps = parsed.timeline.steps.size();
+    facts.start = parsed.timeline.start.kind;
+    if (facts.start == TimelineStartKind::state) {
+        facts.state_path = resolve_timeline_state_path(file, parsed.timeline.start.state_path);
+        const auto sidecar = timeline_fm_sidecar_path(facts.state_path);
+        std::error_code ignored;
+        if (std::filesystem::is_regular_file(sidecar, ignored))
+            facts.fm_sidecar = sidecar;
+    }
+    facts.timeline = std::move(parsed.timeline);
+    return facts;
+}
+
+std::optional<FieldIssue> timeline_duration_issue(const PadTimeline &timeline,
+                                                  std::optional<double> timing_fps) {
+    const auto compiled = compile_pad_timeline(timeline, timing_fps.value_or(0.0));
+    switch (compiled.error) {
+    case TimelineCompileError::none:
+        break;
+    case TimelineCompileError::invalid_fps:
+        return FieldIssue{"--core", "core_timing_unknown"};
+    case TimelineCompileError::too_many_frames:
+        return FieldIssue{"--timeline", "timeline_too_long"};
+    case TimelineCompileError::duration_rounds_to_zero:
+    case TimelineCompileError::no_frames:
+        return FieldIssue{"--timeline", "timeline_empty"};
+    }
+    const auto duration = validate_replay_duration(compiled.compiled.frames, *timing_fps);
+    switch (duration.error) {
+    case ReplayDurationError::none:
+        return std::nullopt;
+    case ReplayDurationError::frame_count_out_of_range:
+    case ReplayDurationError::duration_too_long:
+        return FieldIssue{"--timeline", "timeline_too_long"};
+    case ReplayDurationError::invalid_declared_fps:
+        return FieldIssue{"--core", "core_timing_unknown"};
+    }
+    return FieldIssue{"--timeline", "timeline_too_long"};
 }
 
 } // namespace ayther::audio_qa

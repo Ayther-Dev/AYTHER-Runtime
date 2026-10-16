@@ -110,6 +110,24 @@ CheckOptionsParseResult parse_check_options(std::span<const std::string_view> ar
                                                       descriptor.flag, arguments.size())};
     }
 
+    // Spec 006 (RF-1.1): a required group needs one of its members. The issue names the
+    // first member, the field the CLI and the launcher point at.
+    for (const auto &descriptor : descriptors) {
+        if (descriptor.required_group.empty())
+            continue;
+        const auto members = check_option_group(descriptor.required_group);
+        if (members.empty() || members.front() != &descriptor)
+            continue;
+        const bool any_given = std::any_of(members.begin(), members.end(), [&](const auto *member) {
+            return member->repeatable ? !(options.*(member->list_field)).empty()
+                                      : !(options.*(member->text_field)).empty();
+        });
+        if (!any_given)
+            return CheckOptionsParseResult{
+                make_error(CheckOptionErrorCode::missing_required_material, descriptor.flag,
+                           arguments.size())};
+    }
+
     for (const auto &descriptor : descriptors) {
         if (descriptor.kind != CheckOptionKind::choice)
             continue;
@@ -159,6 +177,8 @@ std::string_view check_option_error_code(CheckOptionErrorCode code) noexcept {
         return "too_many_takes";
     case CheckOptionErrorCode::missing_required_option:
         return "missing_required_option";
+    case CheckOptionErrorCode::missing_required_material:
+        return "missing_required_material";
     case CheckOptionErrorCode::unsupported_language:
         return "unsupported_language";
     case CheckOptionErrorCode::invalid_number:

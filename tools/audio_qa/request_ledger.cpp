@@ -57,7 +57,8 @@ std::optional<std::uint64_t> decimal(const std::string_view value) noexcept {
 
 bool same_content(const Request &left, const Request &right) noexcept {
     return left.request_id == right.request_id && left.session_id == right.session_id &&
-           left.conditions_id == right.conditions_id && left.take_ids == right.take_ids;
+           left.conditions_id == right.conditions_id && left.take_ids == right.take_ids &&
+           left.material_kind == right.material_kind;
 }
 
 bool valid_pair(const Request &request, const Run &run) noexcept {

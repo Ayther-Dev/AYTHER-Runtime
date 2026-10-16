@@ -43,6 +43,9 @@ struct CheckOptionDescriptor {
     std::string_view launcher_field;
     ReferenceCorrespondence correspondence{ReferenceCorrespondence::same};
     std::string_view requirements;
+    // Spec 006 (RF-1.1): options that share a group are required together: at least one
+    // of them must be given. Empty for the options that stand alone.
+    std::string_view required_group;
 };
 
 // Options of the subcommands that spec 002 does not change. They only feed the
@@ -58,6 +61,9 @@ struct FixedOptionDescriptor {
 [[nodiscard]] std::span<const CheckOptionDescriptor> check_option_descriptors() noexcept;
 [[nodiscard]] std::span<const FixedOptionDescriptor> fixed_option_descriptors() noexcept;
 [[nodiscard]] const CheckOptionDescriptor *find_check_option(std::string_view flag) noexcept;
+// The options of `group`, in table order.
+[[nodiscard]] std::vector<const CheckOptionDescriptor *>
+check_option_group(std::string_view group) noexcept;
 [[nodiscard]] std::string_view check_option_category_code(CheckOptionCategory category) noexcept;
 [[nodiscard]] std::string_view
 reference_correspondence_code(ReferenceCorrespondence correspondence) noexcept;

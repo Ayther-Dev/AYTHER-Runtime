@@ -17,6 +17,12 @@ namespace ayther::audio_qa {
 // natural end is never a visual evaluation (RF-2.7).
 enum class PlaybackKind { natural_end, cancelled, failed, interrupted };
 
+// Spec 006 (RF-1.1): what drives the game in a slot: a recorded take or a pad timeline.
+enum class MaterialKind { take, timeline };
+
+[[nodiscard]] std::string_view material_kind_code(MaterialKind kind) noexcept;
+[[nodiscard]] std::optional<MaterialKind> parse_material_kind(std::string_view code) noexcept;
+
 struct PlaybackOutcome {
     PlaybackKind kind{PlaybackKind::failed};
     // Empty for a natural end or a cancellation.
@@ -35,6 +41,7 @@ struct EvidenceOutcome {
 
 struct TakeOutcome {
     std::size_t position{};
+    // The path of the take or of the pad timeline (`kind`).
     std::string take;
     std::string run_id;
     PlaybackOutcome playback;
@@ -44,6 +51,7 @@ struct TakeOutcome {
     EvidenceOutcome evidence;
     // Every input consumed in a linear traversal that ended naturally.
     bool linear_completed{};
+    MaterialKind kind{MaterialKind::take};
     bool operator==(const TakeOutcome &) const = default;
 };
 
@@ -52,6 +60,7 @@ struct NotStartedTake {
     std::string take;
     // not_started_after_cancellation | not_started_after_failure
     std::string reason;
+    MaterialKind kind{MaterialKind::take};
     bool operator==(const NotStartedTake &) const = default;
 };
 

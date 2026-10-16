@@ -144,7 +144,10 @@ int main(int argc, char **argv) {
     // Spec 002 (D-2): `--rejected-state` writes a take whose initial state decompresses whole
     // but is one the core rejects. Only the Runtime finds it, when it restores (RF-2.5).
     const bool rejected_state = argc == 3 && std::string_view{argv[2]} == "--rejected-state";
-    if (argc == 3 && !broken && !rejected_state) {
+    // Spec 006 (RF-3.2): `--state` writes the raw serialized state at power-on, the shape of
+    // a Lab bookmark, for the pad timelines that start from a state.
+    const bool state_only = argc == 3 && std::string_view{argv[2]} == "--state";
+    if (argc == 3 && !broken && !rejected_state && !state_only) {
         if (std::string_view{argv[2]} != "--long")
             return 2;
         const auto cycle = known_inputs;
@@ -171,6 +174,18 @@ int main(int argc, char **argv) {
                     initial.version == synthetic_state_version && initial.frame == 0,
                 "synthetic_initial_state_invalid");
 
+        if (state_only) {
+            std::ofstream output_state(output, std::ios::binary | std::ios::trunc);
+            require(static_cast<bool>(output_state), "public_state_create_failed");
+            output_state.write(reinterpret_cast<const char *>(initial_state.data()),
+                               static_cast<std::streamsize>(initial_state.size()));
+            require(static_cast<bool>(output_state), "public_state_write_failed");
+            retro_unload_game();
+            retro_deinit();
+            std::printf("public_recording_fixture: state_bytes=%zu path=%s\n", initial_state.size(),
+                        output.string().c_str());
+            return 0;
+        }
         if (rejected_state) {
             auto rejected = initial_state;
             rejected[0] = static_cast<std::uint8_t>(~rejected[0]);

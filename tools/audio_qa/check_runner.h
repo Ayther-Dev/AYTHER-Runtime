@@ -29,6 +29,8 @@ using OptionDescriptor = CheckOptionDescriptor;
 struct PreflightResult {
     std::vector<EffectiveValue> effective;
     std::vector<FieldIssue> issues;
+    // Spec 006 (RF-2.3): the `audio_qa_diagnostic:` lines that explain an issue.
+    std::vector<std::string> diagnostics;
     [[nodiscard]] bool startable() const noexcept { return issues.empty(); }
 };
 

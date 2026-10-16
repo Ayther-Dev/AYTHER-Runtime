@@ -48,6 +48,8 @@ struct EffectiveRequest {
     std::string rom;
     std::string core;
     std::vector<std::string> takes;
+    // Spec 006 (RF-1.1, RF-1.2): pad timelines, after the takes.
+    std::vector<std::string> timelines;
     std::optional<std::string> pack; // nullopt: «Sin pack» (RF-1.3)
     std::string pack_mode;
     std::string trust_registry;

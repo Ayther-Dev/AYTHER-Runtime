@@ -81,10 +81,9 @@ bool test_minimal_request() {
            options->takes == std::vector<std::string>{"main.ayr"};
 }
 
-// RF-1.1, RF-1.2: runtime, ROM, output and at least one take are required; an empty
-// value is never accepted.
+// RF-1.1, RF-1.2: runtime, ROM and output are required; an empty value is never accepted.
 bool test_required_options() {
-    constexpr std::array required{"--runtime", "--rom", "--output", "--take"};
+    constexpr std::array required{"--runtime", "--rom", "--output"};
     for (const std::string_view missing : required) {
         if (!has_error(without(minimal_arguments(), missing),
                        qa::CheckOptionErrorCode::missing_required_option, missing))
@@ -107,6 +106,35 @@ bool test_required_options() {
             return false;
     }
     return true;
+}
+
+// Spec 006 (RF-1.1, RF-1.2): a take or a pad timeline is required; either suffices, both
+// are kept in their own order, and an empty value is never accepted.
+bool test_required_material() {
+    if (!has_error(without(minimal_arguments(), "--take"),
+                   qa::CheckOptionErrorCode::missing_required_material, "--take"))
+        return false;
+    auto empty_take = minimal_arguments();
+    *(std::find(empty_take.begin(), empty_take.end(), "--take") + 1) = "";
+    if (!has_error(empty_take, qa::CheckOptionErrorCode::empty_value, "--take"))
+        return false;
+    auto timeline_only = without(minimal_arguments(), "--take");
+    timeline_only.insert(timeline_only.end(), {"--timeline", "boot.timeline"});
+    auto storage = qa::parse_check_options({});
+    const auto *options = parsed(timeline_only, storage);
+    if (options == nullptr || !options->takes.empty() ||
+        options->timelines != std::vector<std::string>{"boot.timeline"})
+        return false;
+    auto both = minimal_arguments();
+    both.insert(both.end(), {"--timeline", "b.timeline", "--timeline", "a.timeline"});
+    const auto *mixed = parsed(both, storage);
+    if (mixed == nullptr || mixed->takes != std::vector<std::string>{"main.ayr"} ||
+        mixed->timelines != std::vector<std::string>{"b.timeline", "a.timeline"})
+        return false;
+    auto too_many = without(minimal_arguments(), "--take");
+    for (std::size_t index = 0; index <= qa::max_check_takes; ++index)
+        too_many.insert(too_many.end(), {"--timeline", "t.timeline"});
+    return has_error(too_many, qa::CheckOptionErrorCode::too_many_values, "--timeline");
 }
 
 // RF-1.4: repeated takes are kept in order.
@@ -214,8 +242,8 @@ bool test_presentation() {
 
 int main() {
     return test_valid() && test_minimal_request() && test_required_options() &&
-                   test_repeated_takes() && test_conditions() && test_malformed() &&
-                   test_original_audio_mode() && test_presentation()
+                   test_required_material() && test_repeated_takes() && test_conditions() &&
+                   test_malformed() && test_original_audio_mode() && test_presentation()
                ? 0
                : 1;
 }

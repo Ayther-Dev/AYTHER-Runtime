@@ -2,6 +2,7 @@
 #include "audio_qa_inspection.h"
 #include "audio_qa_presentation.h"
 #include "runtime_config.h"
+#include "save_state_store.h"
 
 #include "cancellation_message.h"
 #include "content_hash.h"
@@ -15,6 +16,7 @@
 #include "initial_state_publication.h"
 #include "inspection_fact_builder.h"
 #include "observation_bridge.h"
+#include "pad_timeline.h"
 #include "pcm_message.h"
 #include "progress_watchdog.h"
 #include "protocol_io.h"
@@ -46,6 +48,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <deque>
 #include <filesystem>
@@ -457,6 +460,71 @@ void acknowledge_progress(void *, const qa::ReplayProgressEvent &) noexcept {}
     return result;
 }
 
+// Spec 006 (RF-2, RF-3): the pad timeline of a request, its bookmark state and what it
+// compiled to with the timing of the core.
+struct TimelineMaterial {
+    qa::PadTimeline parsed;
+    qa::CompiledTimeline compiled;
+    std::vector<std::uint8_t> state_bytes;
+    // `state-<sha256>` of the bookmark; empty for power_on.
+    std::string state_id;
+    bool fm_sidecar_present{};
+};
+
+// Reads the timeline file and, when it starts from a bookmark, that state. Returns the
+// terminal code of the problem, or empty.
+[[nodiscard]] std::string read_timeline_material(const std::filesystem::path &path,
+                                                 TimelineMaterial &material) {
+    std::error_code error;
+    const auto size = std::filesystem::file_size(path, error);
+    if (error || size == 0U || size > qa::max_timeline_bytes)
+        return "timeline_unavailable";
+    std::ifstream input(path, std::ios::binary);
+    if (!input)
+        return "timeline_unavailable";
+    const std::string text{std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
+    if (input.bad())
+        return "timeline_unavailable";
+    auto parsed = qa::parse_pad_timeline(text);
+    if (parsed.error != qa::TimelineParseError::none)
+        return "timeline_syntax_invalid";
+    material.parsed = std::move(parsed.timeline);
+    if (material.parsed.start.kind == qa::TimelineStartKind::state) {
+        const auto state_path =
+            qa::resolve_timeline_state_path(path, material.parsed.start.state_path);
+        // A Lab bookmark is the raw serialized state; the Runtime's own `.bin` has a header.
+        auto loaded = SaveStateStore{}.load(state_path);
+        if (loaded.status == SaveStateStatus::missing || loaded.status == SaveStateStatus::io_error)
+            return "timeline_state_unavailable";
+        if (!loaded.loaded() || loaded.bytes.empty())
+            return "timeline_state_invalid";
+        material.state_bytes = std::move(loaded.bytes);
+        material.state_id = digest_id(state_identity(material.state_bytes));
+        std::error_code ignored;
+        material.fm_sidecar_present =
+            std::filesystem::is_regular_file(qa::timeline_fm_sidecar_path(state_path), ignored);
+    }
+    return {};
+}
+
+[[nodiscard]] qa::TimelineCompiledRecord
+timeline_compiled_record(const TimelineMaterial &material) {
+    qa::TimelineCompiledRecord record;
+    record.fps = material.compiled.fps;
+    record.frames = material.compiled.frames;
+    record.steps = material.parsed.steps.size();
+    const bool from_state = material.parsed.start.kind == qa::TimelineStartKind::state;
+    record.start = from_state ? "state" : "power_on";
+    record.state_id = material.state_id;
+    // The Engine of this Runtime does not take a register shadow yet: the sidecar is recorded,
+    // never applied, so the evidence says which detector history the run had.
+    record.fm_sidecar = !from_state                   ? "not_applicable"
+                        : material.fm_sidecar_present ? "present"
+                                                      : "absent";
+    record.fm_seeded = false;
+    return record;
+}
+
 // Spec 002 (contracts.md C1-5): every terminal says separately how the playback ended,
 // the traversal and why the evidence is incomplete.
 [[nodiscard]] bool send_result(qa::OwnedChannelHandle &channel, qa::ReplayExecutionResult result,
@@ -654,16 +722,31 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
         result.presentation.code = "not_started";
     result.run_id = options.qa_run_id;
     result.take_id = pending->take_ids.front();
-    result.code = "recording_unavailable";
+    // Spec 006 (RF-4.4): a pad timeline drives the game instead of a take.
+    const bool timeline_material = pending->material_kind == "timeline";
+    result.code = timeline_material ? "timeline_unavailable" : "recording_unavailable";
     try {
-        const auto recording = read_recording(result.take_id);
-        const auto layout = qa::decode_recording_layout(recording);
-        if (recording.empty() || layout.error != qa::RecordingLayoutError::none) {
-            (void)send_result(*data, result);
-            return qa_execution_error;
+        std::vector<std::byte> recording;
+        qa::RecordingLayoutResult layout;
+        TimelineMaterial timeline;
+        if (timeline_material) {
+            const auto read = read_timeline_material(result.take_id, timeline);
+            if (!read.empty()) {
+                result.code = read;
+                (void)send_result(*data, result);
+                return qa_execution_error;
+            }
+        } else {
+            recording = read_recording(result.take_id);
+            layout = qa::decode_recording_layout(recording);
+            if (recording.empty() || layout.error != qa::RecordingLayoutError::none) {
+                (void)send_result(*data, result);
+                return qa_execution_error;
+            }
+            result.recording_frames = layout.layout.frame_count;
         }
-        result.recording_frames = layout.layout.frame_count;
-        const auto frames = layout.layout.frame_count;
+        // A timeline knows its frames once it is compiled with the timing of the core.
+        std::uint32_t frames = timeline_material ? 0U : layout.layout.frame_count;
 
         auto bridge = std::make_unique<ObservationBridge>(result.run_id);
         StreamingObservationWriter writer{*data, result.run_id};
@@ -720,7 +803,9 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
             last_state_frame = frame;
             last_state_sent = now;
         };
-        report_state(true);
+        // A timeline reports its first state once its frames are known.
+        if (!timeline_material)
+            report_state(true);
 
         ObservationDrainContext<ObservationBridge> drain_context{bridge.get(), &writer};
         ayther::engine::audio_observation::ObservationConsumerWorker observation_worker{
@@ -781,21 +866,52 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
         if (!created)
             return fail_session("engine_session_create_failed");
         session = std::move(*created);
+        if (timeline_material) {
+            // Spec 006 (RF-4.1): seconds become frames with the timing this core reports.
+            auto compiled = qa::compile_pad_timeline(timeline.parsed, session->timing_fps());
+            if (compiled.error != qa::TimelineCompileError::none)
+                return fail_session("timeline_compile_failed");
+            timeline.compiled = std::move(compiled.compiled);
+            frames = timeline.compiled.frames;
+            result.recording_frames = frames;
+            controller = ri::InspectionController{frames, false};
+            report_state(true);
+        }
         const auto duration = qa::validate_replay_duration(frames, session->timing_fps());
         if (duration.error != qa::ReplayDurationError::none)
             return fail_session(qa::replay_duration_error_code(duration.error));
         const ri::TakeClock clock{frames, session->timing_fps()};
         const auto frame_period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
             std::chrono::duration<double>{1.0 / session->timing_fps()});
-        const auto prepared = qa::prepare_recording_replay(recording, layout.layout, session.get(),
-                                                           qa::restore_engine_game_state);
-        if (!prepared.inputs || !prepared.restore.succeeded)
-            return fail_session("game_state_restore_failed");
+        // Spec 006 (RF-3): a take restores its initial state; a timeline starts from power-on
+        // (the fresh session as created) or from its bookmark. The same preparation re-arms a
+        // post-end inspection.
+        const auto restore_material = [&]() -> std::string_view {
+            if (!timeline_material) {
+                const auto prepared = qa::prepare_recording_replay(
+                    recording, layout.layout, session.get(), qa::restore_engine_game_state);
+                if (!prepared.inputs || !prepared.restore.succeeded)
+                    return "game_state_restore_failed";
+                return {};
+            }
+            if (timeline.parsed.start.kind == qa::TimelineStartKind::state &&
+                !qa::restore_engine_game_state(session.get(), timeline.state_bytes).succeeded)
+                return "timeline_state_restore_failed";
+            return {};
+        };
+        if (const auto restore_code = restore_material(); !restore_code.empty())
+            return fail_session(restore_code);
+        // The inputs of the take, or the compiled timeline in the same layout.
+        const auto prepared_inputs =
+            timeline_material ? qa::make_timeline_input_source(timeline.compiled)
+                              : qa::make_recording_input_source(recording, layout.layout);
+        if (prepared_inputs.error != qa::RecordingInputSourceError::none)
+            return fail_session("recording_input_boundary_failed");
         // RF-5.2: navigation re-simulates with the recorded input of each frame.
         std::vector<std::uint16_t> recorded_buttons;
         recorded_buttons.reserve(frames);
         {
-            auto scan = *prepared.inputs;
+            auto scan = prepared_inputs.source;
             while (const auto input = scan.next())
                 recorded_buttons.push_back(input->buttons);
         }
@@ -882,7 +998,7 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
             fresh_initial_state(result.run_id, digest_id(result.initial_game_state))};
         if (!publication.publish(nullptr, acknowledge_initial_state))
             return fail_session("initial_state_publication_failed");
-        auto inputs = *prepared.inputs;
+        auto inputs = prepared_inputs.source;
         qa::ReplayProgressPublisher progress{frames, nullptr, acknowledge_progress};
         if (!progress.publish_acceptance())
             return fail_session("replay_progress_failed");
@@ -975,6 +1091,19 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
         std::uint64_t event_sequence{};
         // The Runtime's own facts (C2) share the producer `inspection` and its sequence.
         std::uint64_t inspection_sequence{};
+        // Spec 006 (RF-4.2): the evidence says how the timeline was compiled for this run.
+        if (timeline_material) {
+            const auto record = timeline_compiled_record(timeline);
+            (void)writer.push_fact(
+                qa::make_timeline_compiled_fact(current_run_id, ++inspection_sequence, record));
+            timing.mark("timeline_compiled", record.fps, record.frames, record.start,
+                        record.fm_sidecar);
+            if (record.fm_sidecar != "not_applicable")
+                std::fprintf(stderr,
+                             "audio_qa_warning: timeline_fm_seed_absent start=state "
+                             "fm_sidecar=%s\n",
+                             record.fm_sidecar.c_str());
+        }
         ri::FrameMeasurer measurer;
         bool after_resume = true;
         // RF-6, RF-7, RNF-7: the record drawn by the overlay and the notice of the inspection.
@@ -1088,7 +1217,8 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
             // Plan §5.9: the record is copied as soon as the frame is produced.
             if (presentation) {
                 ri::FrameGeneral general{
-                    options.rom_path, result.take_id,
+                    options.rom_path,
+                    timeline_material ? "Guion: " + result.take_id : result.take_id,
                     options.pack_path.empty() ? std::optional<std::string>{}
                                               : std::optional<std::string>{options.pack_path},
                     std::string{
@@ -1138,9 +1268,7 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                 session = std::move(*rearmed);
                 // The same preparation as the take: its initial state and a fresh HD boundary,
                 // so that the checkpoints of the take restore into it.
-                const auto again = qa::prepare_recording_replay(
-                    recording, layout.layout, session.get(), qa::restore_engine_game_state);
-                if (!again.inputs || !again.restore.succeeded)
+                if (!restore_material().empty())
                     return false;
                 const auto fresh = qa::initialize_engine_hd_audio(
                     session.get(), digest_id(result.initial_game_state), nullptr);

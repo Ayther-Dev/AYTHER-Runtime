@@ -197,9 +197,13 @@ class RequestRun final {
         observer_.on_phase({RequestPhaseKind::closed, 0});
         return outcome_;
     }
-    RequestOutcome &reject(std::vector<FieldIssue> issues) {
+    RequestOutcome &reject(std::vector<FieldIssue> issues,
+                           const std::vector<std::string> &diagnostics = {}) {
         for (const auto &issue : issues)
             error(issue.code, issue.field);
+        // Spec 006 (RF-2.3): the line and reason of a timeline that was rejected.
+        for (const auto &diagnostic : diagnostics)
+            report(diagnostic);
         outcome_.issues = std::move(issues);
         return finish(invalid_exit_code, CheckMessage::invalid_request);
     }
@@ -261,15 +265,17 @@ RequestOutcome &RequestRun::known(const Run &run) {
             return finish(evidence_failure_exit_code, CheckMessage::technical_summary_invalid);
         }
         for (const auto &take : document->takes) {
+            const auto kind = parse_material_kind(take.kind).value_or(MaterialKind::take);
             if (take.playback == "not_started") {
                 outcome_.per_take.emplace_back(
-                    NotStartedTake{take.position, take.take, take.diagnostic});
+                    NotStartedTake{take.position, take.take, take.diagnostic, kind});
                 continue;
             }
             TakeOutcome value;
             value.position = take.position;
             value.take = take.take;
             value.run_id = take.run_id;
+            value.kind = kind;
             value.playback = {parse_playback_kind(take.playback).value_or(PlaybackKind::failed),
                               take.diagnostic};
             value.traversal = parse_traversal_kind(take.traversal);
@@ -305,17 +311,21 @@ TakeRecord RequestRun::run_take(const EffectiveRequest &effective, const Preflig
     take.position = slot.position;
     take.take = slot.path;
     take.run_id = run_id;
+    take.kind = slot.kind;
+    // Spec 006: the material of the slot is a take or a pad timeline, pinned by position.
+    const auto &material_pins = slot.kind == MaterialKind::timeline ? pins.timelines : pins.takes;
     const auto take_pin =
-        std::find_if(pins.takes.begin(), pins.takes.end(),
+        std::find_if(material_pins.begin(), material_pins.end(),
                      [&slot](const auto &pin) { return pin.position == slot.position; });
-    if (take_pin != pins.takes.end())
+    const bool material_pinned = take_pin != material_pins.end();
+    if (material_pinned)
         record.stored.sha256 = stored_material(*take_pin).sha256;
     std::string diagnostic;
     bool launched{};
 
     // RF-2.11: the materials of this take stay open for reading only while it runs; one
     // that changed since the validation stops the request before the Runtime receives it.
-    const auto held = hold_materials(take_material_pins(pins, slot.position));
+    const auto held = hold_materials(slot_material_pins(pins, slot.position));
     if (const auto *changed = std::get_if<FieldIssue>(&held)) {
         error(changed->code, changed->field);
         diagnostic = changed->code;
@@ -324,6 +334,10 @@ TakeRecord RequestRun::run_take(const EffectiveRequest &effective, const Preflig
     } else {
         auto take_request = admitted_request;
         take_request.take_ids = {slot.path};
+        // Spec 006 (RF-4.4): only a timeline names its kind; a take request keeps the shape a
+        // Runtime that predates timelines reads.
+        if (slot.kind == MaterialKind::timeline)
+            take_request.material_kind = "timeline";
         const ReplayExecutionControl control{
             &cancel_,
             [this, &slot] { observer_.on_phase({RequestPhaseKind::running, slot.position}); },
@@ -341,7 +355,8 @@ TakeRecord RequestRun::run_take(const EffectiveRequest &effective, const Preflig
                 last_frame = replay.inputs_consumed - 1U;
             std::ostringstream line;
             line << "audio_qa_replay: run_id=" << replay.run_id << " take=" << replay.take_id
-                 << " position=" << slot.position << " recording_frames=" << replay.recording_frames
+                 << " material=" << material_kind_code(slot.kind) << " position=" << slot.position
+                 << " recording_frames=" << replay.recording_frames
                  << " inputs_consumed=" << replay.inputs_consumed
                  << " assignments=" << replay.assignment_count
                  << " initial_state_sha256=" << digest(replay.initial_game_state)
@@ -406,8 +421,7 @@ TakeRecord RequestRun::run_take(const EffectiveRequest &effective, const Preflig
             const auto run_directory = output_ / "runs" / run_id;
             std::error_code ignored;
             EvidenceParts parts;
-            parts.identification =
-                take_pin != pins.takes.end() && !run_id.empty() && replay.run_id == run_id;
+            parts.identification = material_pinned && !run_id.empty() && replay.run_id == run_id;
             parts.conditions = !admitted_request.conditions_id.empty();
             parts.positions = std::holds_alternative<TraversalDocument>(
                 read_traversal(run_directory / "traversal.toml"));
@@ -470,6 +484,8 @@ TakeRecord RequestRun::run_take(const EffectiveRequest &effective, const Preflig
     auto &stored = record.stored;
     stored.position = slot.position;
     stored.take = slot.path;
+    if (slot.kind == MaterialKind::timeline)
+        stored.kind = std::string{material_kind_code(slot.kind)};
     stored.run_id = run_id;
     stored.outcome = check_technical_outcome_code(technical.outcome);
     stored.diagnostic = technical.diagnostic_code;
@@ -505,7 +521,7 @@ RequestOutcome RequestRun::run() {
     // pack are validated before admission; nothing is created in the destination.
     auto checked = preflight_request(effective);
     if (!checked.issues.empty())
-        return reject(std::move(checked.issues));
+        return reject(std::move(checked.issues), checked.diagnostics);
     const auto &pins = *checked.pins;
 
     output_ = request_.output;
@@ -565,7 +581,7 @@ RequestOutcome RequestRun::run() {
     // RF-1.4, RF-2.5, plan §5.3: takes in order; a cancellation or a failure stops the
     // request and the takes that did not start say why.
     RequestTerminalArbiter arbiter;
-    const auto slots = plan_takes(effective.takes);
+    const auto slots = plan_materials(effective.takes, effective.timelines);
     std::vector<TakeTechnicalResult> results;
     std::vector<StoredTakeSummary> stored;
     bool cessation_confirmed = true;
@@ -575,7 +591,7 @@ RequestOutcome RequestRun::run() {
             (void)arbiter.cancel();
         if (arbiter.stop_requested()) {
             const std::string reason{arbiter.not_started_reason()};
-            NotStartedTake pending{slot.position, slot.path, reason};
+            NotStartedTake pending{slot.position, slot.path, reason, slot.kind};
             outcome_.per_take.emplace_back(pending);
             TakeTechnicalResult technical;
             technical.take_id = slot.path;
@@ -589,6 +605,8 @@ RequestOutcome RequestRun::run() {
             StoredTakeSummary summary;
             summary.position = slot.position;
             summary.take = slot.path;
+            if (slot.kind == MaterialKind::timeline)
+                summary.kind = std::string{material_kind_code(slot.kind)};
             summary.outcome = "incomplete";
             summary.diagnostic = reason;
             summary.playback = "not_started";
@@ -599,7 +617,7 @@ RequestOutcome RequestRun::run() {
         }
         observer_.on_phase({RequestPhaseKind::preparing, slot.position});
         arbiter.begin_take(slot.position);
-        const auto run_id = run_id_for_position(admitted.run.run_id, slot.position);
+        const auto run_id = run_id_for_slot(admitted.run.run_id, slot);
         auto record = run_take(effective, pins, admitted_request, slot, run_id, arbiter,
                                cessation_confirmed, last_frame, &slot == &slots.back());
         observer_.on_take_outcome(record.outcome);
@@ -680,7 +698,9 @@ PreflightResult preflight(const ReplayRequest &request) {
         return result;
     }
     result.effective = prepared.effective->values;
-    result.issues = preflight_request(*prepared.effective).issues;
+    auto checked = preflight_request(*prepared.effective);
+    result.issues = std::move(checked.issues);
+    result.diagnostics = std::move(checked.diagnostics);
     return result;
 }
 

@@ -58,6 +58,13 @@ std::optional<std::string> text_field(const Fact &fact, std::string_view name) {
 
 ProtocolChoice negotiate_runtime_protocol(const CapabilitySet &offer,
                                           std::string_view presentation) {
+    return negotiate_runtime_protocol(offer, presentation, false);
+}
+
+ProtocolChoice negotiate_runtime_protocol(const CapabilitySet &offer, std::string_view presentation,
+                                          const bool timelines) {
+    if (timelines && !offers(offer, timeline_replay_capability))
+        return FieldIssue{"--runtime", "runtime_missing_timeline_replay_v1"};
     const auto &runtime = offer.contracts[static_cast<std::size_t>(ContractKind::runtime)];
     const bool v11 =
         std::find(runtime.begin(), runtime.end(), runtime_protocol_v11) != runtime.end();

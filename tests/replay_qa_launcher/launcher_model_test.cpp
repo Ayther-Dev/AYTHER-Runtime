@@ -56,6 +56,16 @@ void fields_and_required() {
                            [field](const qa::FieldIssue &issue) { return issue.field == field; });
     };
     expect(flagged("--rom") && flagged("--take"), "RF-1.2: the missing ROM and take are flagged");
+    const auto code_of = [&missing](std::string_view field) {
+        const auto found = std::find_if(missing.begin(), missing.end(), [field](const auto &issue) {
+            return issue.field == field;
+        });
+        return found == missing.end() ? std::string{} : found->code;
+    };
+    expect(flagged("--timeline") && code_of("--take") == "missing_required_material" &&
+               code_of("--timeline") == "missing_required_material" &&
+               code_of("--rom") == "missing_required_option",
+           "spec 006 RF-1.1: take and timeline share the material group, the ROM stands alone");
     auto with_rom = ready();
     expect(with_rom.missing_required().empty(), "RF-1.1: ROM, take, runtime and output suffice");
     with_rom.set("--pack", "C:/packs/game.ay");
@@ -284,8 +294,52 @@ void prefill() {
            "DI-23: unknown or malformed lines reject the whole prefill");
 }
 
+// Spec 006 (RF-1.1, RF-5): a pad timeline satisfies the material group, has the list
+// operations of the takes, arrives through the prefill and shows its issue and diagnostic.
+void timelines() {
+    la::LauncherModel model;
+    model.set("--runtime", "C:/qa/ayther_runtime.exe");
+    model.set("--rom", "C:/roms/game.md");
+    model.set("--core", "C:/cores/core.dll");
+    model.set("--output", "C:/evidence");
+    model.add_timeline("C:/qa/boot.timeline");
+    expect(model.missing_required().empty() && model.takes().empty() &&
+               model.request().timelines == std::vector<std::string>{"C:/qa/boot.timeline"},
+           "spec 006 RF-1.1: a timeline without takes is enough to start");
+    model.add_value("--timeline", "\"C:/qa/menu.timeline\"");
+    model.move_value("--timeline", 1, 0);
+    model.repeat_value("--timeline", 1);
+    model.remove_value("--timeline", 0);
+    expect(model.timelines() ==
+               std::vector<std::string>{"C:/qa/boot.timeline", "C:/qa/boot.timeline"},
+           "spec 006 RF-5: timelines move, repeat and are removed like takes, quotes dropped");
+    model.add_value("--profile", "x");
+    expect(model.value("--profile").empty(), "spec 006 RF-5: list operations ignore scalar fields");
+
+    la::LauncherModel prefilled;
+    const auto errors = la::apply_prefill(prefilled, "--timeline=C:/qa/a.timeline\n"
+                                                     "--timeline=C:/qa/b.timeline\n");
+    expect(errors.empty() && prefilled.timelines() ==
+                                 std::vector<std::string>{"C:/qa/a.timeline", "C:/qa/b.timeline"},
+           "spec 006 RF-5: the prefill fills the timelines in order");
+
+    model.revalidate([](const qa::ReplayRequest &) {
+        qa::PreflightResult result;
+        result.issues.push_back({"--timeline[1]", "timeline_syntax_invalid"});
+        result.diagnostics.push_back("audio_qa_diagnostic: timeline_syntax_invalid "
+                                     "field=--timeline[1] line=3 reason=unknown_keyword");
+        return result;
+    });
+    expect(model.value_issue("--timeline", 1) == "timeline_syntax_invalid" &&
+               !model.value_issue("--timeline", 0) &&
+               model.issue_of("--timeline") == "timeline_syntax_invalid" &&
+               model.diagnostics().size() == 1U && !model.can_start(),
+           "spec 006 RF-2.3: the rejected timeline shows its code at its position and its line");
+}
+
 int main() {
     prefill();
+    timelines();
     fields_and_required();
     pasted_paths_lose_their_quotes();
     effective_values();

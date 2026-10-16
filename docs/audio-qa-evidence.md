@@ -16,6 +16,20 @@ El modo visible requiere el protocolo QA 1.1 con las capacidades `visible_replay
 la toma; ninguna tecla llega al juego. Cada toma abre su propia ventana, y cerrarla cancela
 y conserva lo disponible.
 
+## Guiones de mando
+
+Un guion de mando (`--timeline`, spec 006) sustituye a la toma: el Runtime arranca la ROM desde
+el encendido o restaura un marcador del Lab y compila el guion a una máscara RetroPad por
+frame con el timing del core. A partir de ahí la ejecución es la de una toma: las mismas
+entradas por frame, el mismo cierre y la misma evidencia. Requiere la capacidad
+`timeline_replay_v1`; la solicitud que el supervisor entrega al Runtime lleva
+`material_kind = "timeline"`, una clave que una solicitud de toma nunca escribe, así que un
+Runtime anterior sigue sirviendo tomas. La evidencia de un guion añade el hecho
+`timeline_compiled` (productor `inspection`): `fps`, `frames`, `steps`, `start`, `state_id`,
+`fm_sidecar` y `fm_seeded`. En `request-summary.toml` (minor 2) la fila del guion dice
+`kind = 'timeline'`, y el guion, su marcador (`timeline_state`) y el `.fm` que lo acompañe
+(`timeline_fm_sidecar`) figuran entre los materiales con su SHA-256.
+
 ### Controles de inspección
 
 | Tecla | Efecto |
@@ -166,7 +180,9 @@ vista nueva.
 
 Runtime negocia por separado los contratos Engine, Runtime QA, evidencia y
 estado HD. Los cuatro deben ofrecer 1.0 y las diez capacidades obligatorias. Un
-Runtime incompatible produce `runtime_incompatible` y no acredita replay.
+Runtime incompatible produce `runtime_incompatible` y no acredita replay. Una solicitud con
+guiones de mando exige además `timeline_replay_v1`; sin ella se rechaza con
+`runtime_missing_timeline_replay_v1` antes de la admisión.
 
 ## Aislamiento y materiales privados
 

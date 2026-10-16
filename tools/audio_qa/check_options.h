@@ -26,6 +26,8 @@ struct CheckOptions {
     std::string pack_mode = "hd";
     std::string trust_registry;
     std::vector<std::string> takes;
+    // Spec 006 (RF-1.1): pad timelines, in order; at least one take or timeline is required.
+    std::vector<std::string> timelines;
     std::string output;
     std::string request_id;
     std::string language = "es";
@@ -58,6 +60,8 @@ enum class CheckOptionErrorCode {
     duplicate_option,
     too_many_takes,
     missing_required_option,
+    // Spec 006 (RF-1.1): no member of a required group was given.
+    missing_required_material,
     unsupported_language,
     invalid_number,
     unsupported_presentation,

@@ -12,6 +12,7 @@ Se instala con el componente `qa`, junto a `ayther_audio_qa`, y nunca con el com
 2. **Elige los materiales** con «Elegir…», que abre el diálogo nativo de archivos.
    - **ROM:** el juego.
    - **Tomas:** una o varias `.ayr`. Se pueden reordenar, repetir y quitar; cada repetición se ve como otra posición.
+   - **Guiones de mando:** uno o varios archivos de texto (`.timeline`) que manejan el mando en lugar de una toma, desde el encendido o desde un marcador del Lab (spec 006). Mismas operaciones que las tomas; van después de ellas. Hace falta al menos una toma o un guion; si no hay ninguno, ambos campos dicen «Hace falta una toma o un guion de mando». Un guion rechazado muestra su código en su posición y, debajo de los errores, la línea y el motivo (`audio_qa_diagnostic`). La gramática está en el README de `ayther_audio_qa`.
    - **Pack:** opcional. «Quitar» lo retira, y el resumen dice entonces «Sin pack».
    - **Runtime y core:** si hay un Runtime instalado junto al launcher y una configuración de AYTHER Play CE, salen de ahí. El resumen muestra su origen como «entorno», y la configuración de Play CE sólo se lee.
    - **Rutas pegadas:** una ruta pegada entre comillas dobles, como la deja «Copiar como ruta de acceso» de Windows, se usa sin ese par de comillas en todos los campos de ruta. El resumen y la solicitud registran la ruta sin comillas.
@@ -80,7 +81,7 @@ ctest --preset windows-qa-gpu -R "^replay_qa_launcher_(window_smoke|interface_sm
   - inicia una solicitud visible con el core sintético;
   - la cancela tras dos segundos de reproducción;
   - muestra la toma como «Cancelada» y el resultado conjunto.
-  - Los materiales llegan con `--runtime`, `--core`, `--rom`, `--take` y `--output`.
+  - Los materiales llegan con `--runtime`, `--core`, `--rom`, `--take` (o `--timeline`) y `--output`.
 - **`replay_qa_launcher_idle_cpu`:** `ayther_replay_qa --idle-seconds 3` deja la ventana en reposo tres segundos e informa de los redibujos y de la CPU usada. En reposo la ventana espera la entrada (o redibuja cada 100 ms el progreso) con vsync, para no competir con el Runtime mientras presenta la reproducción; la prueba exige como mucho un redibujo por refresco y menos de un cuarto de núcleo.
 
 `--self-test`, `--smoke-frames`, `--smoke-capture` e `--idle-seconds` son modos de prueba del ejecutable QA; no forman parte del uso normal.
@@ -88,7 +89,7 @@ ctest --preset windows-qa-gpu -R "^replay_qa_launcher_(window_smoke|interface_sm
 ## Campos precargados (DI-23)
 
 `ayther_replay_qa --prefill <archivo>` abre el formulario con los campos del archivo: una
-línea `--campo=valor` por valor; `--take` y `--core-option` se repiten en orden. Todos los
+línea `--campo=valor` por valor; `--take`, `--timeline` y `--core-option` se repiten en orden. Todos los
 valores cuentan como explícitos y los campos ausentes quedan sin seleccionar. Una línea
 desconocida o mal formada rechaza el archivo entero (`prefill_rejected` en el log) y el
 formulario queda vacío. Lo usa la herramienta de campaña de la spec 002.

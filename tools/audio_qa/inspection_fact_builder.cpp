@@ -77,6 +77,45 @@ Fact make_fact_exclusion_fact(std::string run_id, std::uint64_t producer_sequenc
     return fact;
 }
 
+Fact make_timeline_compiled_fact(std::string run_id, std::uint64_t producer_sequence,
+                                 const TimelineCompiledRecord &record) {
+    Fact fact;
+    fact.id = {std::move(run_id), std::string{inspection_producer}, producer_sequence};
+    fact.kind = "timeline_compiled";
+    fact.frame_index = {Availability::known, 0U, {}};
+    fact.fields = {known("fps", record.fps),
+                   known("frames", record.frames, FactFieldUnit::emulation_frame),
+                   known("steps", record.steps, FactFieldUnit::count),
+                   known("start", record.start),
+                   record.state_id.empty()
+                       ? FactField{"state_id", Availability::not_applicable, FactFieldUnit::none,
+                                   std::monostate{}, "power_on"}
+                       : known("state_id", record.state_id),
+                   known("fm_sidecar", record.fm_sidecar),
+                   known("fm_seeded", record.fm_seeded)};
+    return fact;
+}
+
+std::optional<TimelineCompiledRecord> read_timeline_compiled(const Fact &fact) {
+    if (fact.kind != "timeline_compiled" || fact.id.producer_id != inspection_producer)
+        return std::nullopt;
+    const auto *fps = known_value<double>(fact, "fps");
+    const auto *frames = known_value<std::uint64_t>(fact, "frames");
+    const auto *steps = known_value<std::uint64_t>(fact, "steps");
+    const auto *start = known_value<std::string>(fact, "start");
+    const auto *state_id = known_value<std::string>(fact, "state_id");
+    const auto *sidecar = known_value<std::string>(fact, "fm_sidecar");
+    const auto *seeded = known_value<bool>(fact, "fm_seeded");
+    if (fps == nullptr || frames == nullptr || steps == nullptr || start == nullptr ||
+        sidecar == nullptr || seeded == nullptr || *frames == 0U ||
+        (*start != "power_on" && *start != "state") ||
+        ((*start == "state") != (state_id != nullptr)))
+        return std::nullopt;
+    return TimelineCompiledRecord{
+        *fps,     *frames, *steps, *start, state_id == nullptr ? std::string{} : *state_id,
+        *sidecar, *seeded};
+}
+
 std::optional<FactExclusion> read_fact_exclusion(const Fact &fact) {
     if (fact.kind != "fact_exclusion" || fact.id.producer_id != inspection_producer)
         return std::nullopt;

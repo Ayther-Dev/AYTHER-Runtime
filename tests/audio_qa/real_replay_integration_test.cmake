@@ -364,7 +364,7 @@ endif()
 # RF-1.4: an explicit repetition runs twice, one run per position.
 spec002_check(0 "${TEST_ROOT}/spec002-repeat" --take "${TAKE_FILE}" --take "${TAKE_FILE}"
               --request-id spec002-repeat)
-string(REGEX MATCHALL "audio_qa_replay: run_id=[^ ]+ take=[^ ]+ position=[01]" replays
+string(REGEX MATCHALL "audio_qa_replay: run_id=[^ ]+ take=[^ ]+ material=take position=[01]" replays
        "${spec002_report}")
 list(LENGTH replays replay_count)
 file(GLOB repeated_runs "${TEST_ROOT}/spec002-repeat/runs/*")

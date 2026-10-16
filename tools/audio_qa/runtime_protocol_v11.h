@@ -25,6 +25,13 @@ inline constexpr ContractVersion runtime_protocol_v11{1, 1};
 using ProtocolChoice = std::variant<ContractVersion, FieldIssue>;
 [[nodiscard]] ProtocolChoice negotiate_runtime_protocol(const CapabilitySet &offer,
                                                         std::string_view presentation);
+// Spec 006 (RF-4.4): a request with pad timelines also needs `timeline_replay_v1`
+// (`runtime_missing_timeline_replay_v1` otherwise); a request without them negotiates as
+// before, so a Runtime that predates timelines keeps serving takes.
+inline constexpr std::string_view timeline_replay_capability = "timeline_replay_v1";
+[[nodiscard]] ProtocolChoice negotiate_runtime_protocol(const CapabilitySet &offer,
+                                                        std::string_view presentation,
+                                                        bool timelines);
 
 // C1-6: the Runtime opened a post-end inspection traversal with its own run.
 struct RunOpened {

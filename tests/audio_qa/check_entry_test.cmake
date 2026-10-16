@@ -73,10 +73,11 @@ assert_invocation(3 "invalid_invocation" inspect)
 assert_invocation(3 "missing_required_option: --runtime" check)
 # RF-1.1: the ROM is an explicit selection.
 assert_invocation(3 "missing_required_option: --rom" check --runtime runtime.exe)
-# RF-1.2: no default take; the message follows --language (RNF-7).
-assert_invocation(3 "missing_required_option: --take.*audio_qa_message\\[es\\]" check
+# RF-1.2 and spec 006 (RF-1.1): no default take; a take or a pad timeline is required, and
+# the message follows --language (RNF-7).
+assert_invocation(3 "missing_required_material: --take.*audio_qa_message\\[es\\]" check
     --runtime runtime.exe --rom game.md --output "${TEST_ROOT}")
-assert_invocation(3 "missing_required_option: --take.*audio_qa_message\\[en\\]" check
+assert_invocation(3 "missing_required_material: --take.*audio_qa_message\\[en\\]" check
     --runtime runtime.exe --rom game.md --output "${TEST_ROOT}" --language en)
 
 # Spec 002 (RF-1.2, RF-2.2, plan §5.2): every material is validated before admission.
@@ -113,7 +114,7 @@ assert_invocation(3 "audio_qa_message\\[en\\]: --rom: The file does not exist" c
 assert_invocation(3 "audio_qa_message\\[es\\]: --rom: El archivo no existe" check
     --runtime runtime.exe --rom game.md --core core.dll --take main.ayr
     --output "${TEST_ROOT}/never-created")
-assert_invocation(3 "audio_qa_message\\[en\\]: --take: A required option is missing" check
+assert_invocation(3 "audio_qa_message\\[en\\]: --take: Select at least one take or one pad timeline" check
     --runtime runtime.exe --rom game.md --output "${TEST_ROOT}/never-created" --language en)
 # A directory is not a material, in any field.
 assert_invocation(3 "material_is_directory: --rom" check

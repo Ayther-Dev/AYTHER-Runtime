@@ -74,7 +74,7 @@ if(NOT summary_count EQUAL 1)
     message(FATAL_ERROR "The confirmed request has no durable summary: ${summaries}")
 endif()
 file(READ "${summaries}" summary_text)
-expect_in("${summary_text}" "schema_version = 1" "schema_minor = 1" "confirmed = true"
+expect_in("${summary_text}" "schema_version = 1" "schema_minor = 2" "confirmed = true"
           "pack = 'none'" "playback = 'natural_end'" "traversal = 'linear'"
           "evidence = 'complete'" "linear_complete = true")
 file(GLOB runs_before "${MAIN}/runs/*")
@@ -223,6 +223,58 @@ foreach(language IN ITEMS es en)
     endif()
 endforeach()
 message(STATUS "[preflight] request-id-257: request_id_too_long: --request-id (es, en)")
+
+# 9. Spec 006 (RF-1.1, RF-2, RF-3, RF-4): a pad timeline replaces the take. From power-on
+#    the synthetic core consumes exactly the compiled frames; the summary names the kind.
+file(WRITE "${TEST_ROOT}/boot.timeline"
+    "# boot the synthetic core and press a few buttons\n"
+    "start power_on\npress b 1f\nwait 1f\npress a 1f\nwait 2f\npress start 1f\n")
+check(0 "${TEST_ROOT}/timeline-main" --rom "${ROM_FILE}" --core "${CORE_DLL}"
+      --timeline "${TEST_ROOT}/boot.timeline" --request-id preflight-timeline)
+expect_in("${last_report}"
+    "audio_qa_effective: timeline\\[0\\]=.* source=explicit"
+    "audio_qa_status: request_accepted: preflight-timeline"
+    "material=timeline position=0 recording_frames=6 inputs_consumed=6"
+    "playback=natural_end" "audio_qa_summary: exit_code=0")
+file(GLOB timeline_summaries "${TEST_ROOT}/timeline-main/requests/*/request-summary.toml")
+file(READ "${timeline_summaries}" timeline_summary)
+expect_in("${timeline_summary}" "schema_minor = 2" "kind = 'timeline'" "role = 'timeline'"
+          "linear_complete = true")
+#    A take and a timeline in one request: contiguous positions and a run id by kind.
+check(0 "${TEST_ROOT}/timeline-mixed" --rom "${ROM_FILE}" --core "${CORE_DLL}"
+      --take "${TAKE_FILE}" --timeline "${TEST_ROOT}/boot.timeline")
+expect_in("${last_report}" "material=take position=0" "material=timeline position=1"
+          "run_id=run-[0-9a-f]+-timeline-2" "audio_qa_summary: exit_code=0")
+#    A timeline that starts from a bookmark state (the raw serialized state of the core).
+if(DEFINED TIMELINE_STATE_FILE AND EXISTS "${TIMELINE_STATE_FILE}")
+    file(WRITE "${TEST_ROOT}/state.timeline"
+        "start state ${TIMELINE_STATE_FILE}\npress b 2f\nwait 2f\n")
+    check(0 "${TEST_ROOT}/timeline-state" --rom "${ROM_FILE}" --core "${CORE_DLL}"
+          --timeline "${TEST_ROOT}/state.timeline")
+    expect_in("${last_report}" "material=timeline position=0 recording_frames=4 inputs_consumed=4"
+              "audio_qa_summary: exit_code=0")
+    file(GLOB state_summaries "${TEST_ROOT}/timeline-state/requests/*/request-summary.toml")
+    file(READ "${state_summaries}" state_summary)
+    expect_in("${state_summary}" "role = 'timeline_state'")
+endif()
+#    Rejections before admission, each in its field.
+rejected("no-material" "missing_required_material: --take" --rom "${ROM_FILE}" --core "${CORE_DLL}")
+file(WRITE "${TEST_ROOT}/bad.timeline" "wait 1f\njump 2f\n")
+set(destination "${TEST_ROOT}/rejected-timeline-syntax")
+check(3 "${destination}" --rom "${ROM_FILE}" --core "${CORE_DLL}"
+      --timeline "${TEST_ROOT}/bad.timeline")
+expect_in("${last_report}" "timeline_syntax_invalid: --timeline\\[0\\]"
+    "audio_qa_diagnostic: timeline_syntax_invalid field=--timeline\\[0\\] line=2 reason=unknown_keyword")
+if(EXISTS "${destination}")
+    message(FATAL_ERROR "[timeline-syntax] a rejected request created ${destination}")
+endif()
+file(WRITE "${TEST_ROOT}/missing-state.timeline" "start state ./nowhere.sav\nwait 1f\n")
+rejected("timeline-state-missing" "timeline_state_unavailable: --timeline\\[0\\]"
+    --rom "${ROM_FILE}" --core "${CORE_DLL}" --timeline "${TEST_ROOT}/missing-state.timeline")
+file(WRITE "${TEST_ROOT}/long.timeline" "wait 900s\nwait 1s\n")
+rejected("timeline-too-long" "timeline_too_long: --timeline\\[0\\]"
+    --rom "${ROM_FILE}" --core "${CORE_DLL}" --timeline "${TEST_ROOT}/long.timeline")
+message(STATUS "[preflight] pad timelines replay from power-on and from a state")
 
 # Nothing reached the user's Runtime data.
 if(EXISTS "${TEST_ROOT}/user-appdata/Ayther")

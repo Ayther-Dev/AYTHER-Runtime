@@ -97,37 +97,56 @@ void LauncherModel::set(std::string_view flag, std::string value) {
 
 void LauncherModel::remove_pack() { set("--pack", {}); }
 
-const std::vector<std::string> &LauncherModel::takes() const { return find("--take")->values; }
+const std::vector<std::string> &LauncherModel::takes() const { return values("--take"); }
 
-void LauncherModel::add_take(std::string path) {
-    auto *takes = find("--take");
-    takes->values.push_back(pasted_value(*takes->descriptor, std::move(path)));
+void LauncherModel::add_take(std::string path) { add_value("--take", std::move(path)); }
+
+void LauncherModel::remove_take(std::size_t position) { remove_value("--take", position); }
+
+void LauncherModel::move_take(std::size_t from, std::size_t to) { move_value("--take", from, to); }
+
+void LauncherModel::repeat_take(std::size_t position) { repeat_value("--take", position); }
+
+const std::vector<std::string> &LauncherModel::values(std::string_view flag) const {
+    static const std::vector<std::string> none;
+    const auto *field = find(flag);
+    return field == nullptr || !field->descriptor->repeatable ? none : field->values;
+}
+
+void LauncherModel::add_value(std::string_view flag, std::string path) {
+    auto *field = find(flag);
+    if (field == nullptr || !field->descriptor->repeatable)
+        return;
+    field->values.push_back(pasted_value(*field->descriptor, std::move(path)));
     dirty_ = true;
 }
 
-void LauncherModel::remove_take(std::size_t position) {
-    auto &takes = find("--take")->values;
-    if (position >= takes.size())
+void LauncherModel::remove_value(std::string_view flag, std::size_t position) {
+    auto *field = find(flag);
+    if (field == nullptr || !field->descriptor->repeatable || position >= field->values.size())
         return;
-    takes.erase(takes.begin() + static_cast<std::ptrdiff_t>(position));
+    field->values.erase(field->values.begin() + static_cast<std::ptrdiff_t>(position));
     dirty_ = true;
 }
 
-void LauncherModel::move_take(std::size_t from, std::size_t to) {
-    auto &takes = find("--take")->values;
-    if (from >= takes.size() || to >= takes.size() || from == to)
+void LauncherModel::move_value(std::string_view flag, std::size_t from, std::size_t to) {
+    auto *field = find(flag);
+    if (field == nullptr || !field->descriptor->repeatable)
         return;
-    auto take = std::move(takes[from]);
-    takes.erase(takes.begin() + static_cast<std::ptrdiff_t>(from));
-    takes.insert(takes.begin() + static_cast<std::ptrdiff_t>(to), std::move(take));
+    auto &list = field->values;
+    if (from >= list.size() || to >= list.size() || from == to)
+        return;
+    auto value = std::move(list[from]);
+    list.erase(list.begin() + static_cast<std::ptrdiff_t>(from));
+    list.insert(list.begin() + static_cast<std::ptrdiff_t>(to), std::move(value));
     dirty_ = true;
 }
 
-void LauncherModel::repeat_take(std::size_t position) {
-    auto &takes = find("--take")->values;
-    if (position >= takes.size())
+void LauncherModel::repeat_value(std::string_view flag, std::size_t position) {
+    auto *field = find(flag);
+    if (field == nullptr || !field->descriptor->repeatable || position >= field->values.size())
         return;
-    takes.push_back(takes[position]);
+    field->values.push_back(field->values[position]);
     dirty_ = true;
 }
 
@@ -180,14 +199,35 @@ audio_qa::ReplayRequest LauncherModel::request() const {
 
 std::vector<audio_qa::FieldIssue> LauncherModel::missing_required() const {
     std::vector<audio_qa::FieldIssue> missing;
+    const auto empty_field = [](const ModelField &field) {
+        return field.descriptor->repeatable ? field.values.empty() : field.value.empty();
+    };
     for (const auto &field : fields_) {
         const auto &descriptor = *field.descriptor;
         if (!descriptor.required)
             continue;
-        const bool empty = descriptor.repeatable ? field.values.empty() : field.value.empty();
         const bool resolved = descriptor.flag == "--runtime" && from_environment("runtime");
-        if (empty && !resolved)
+        if (empty_field(field) && !resolved)
             missing.push_back({std::string{descriptor.flag}, "missing_required_option"});
+    }
+    // Spec 006 (RF-1.1, RF-5): a required group with every member empty flags each member, so
+    // both fields show the same error and Start stays disabled.
+    std::vector<std::string_view> groups;
+    for (const auto &field : fields_) {
+        const auto group = field.descriptor->required_group;
+        if (group.empty() || std::find(groups.begin(), groups.end(), group) != groups.end())
+            continue;
+        groups.push_back(group);
+        bool any_given = false;
+        for (const auto &member : fields_)
+            if (member.descriptor->required_group == group && !empty_field(member))
+                any_given = true;
+        if (any_given)
+            continue;
+        for (const auto &member : fields_)
+            if (member.descriptor->required_group == group)
+                missing.push_back(
+                    {std::string{member.descriptor->flag}, "missing_required_material"});
     }
     return missing;
 }
@@ -196,6 +236,7 @@ void LauncherModel::revalidate(const Preflighter &preflight) {
     auto result = preflight(request());
     effective_ = std::move(result.effective);
     issues_ = std::move(result.issues);
+    diagnostics_ = std::move(result.diagnostics);
     dirty_ = false;
 }
 
@@ -207,7 +248,12 @@ std::optional<std::string> LauncherModel::issue_of(std::string_view flag) const 
 }
 
 std::optional<std::string> LauncherModel::take_issue(std::size_t position) const {
-    const auto field = "--take[" + std::to_string(position) + "]";
+    return value_issue("--take", position);
+}
+
+std::optional<std::string> LauncherModel::value_issue(std::string_view flag,
+                                                      std::size_t position) const {
+    const auto field = std::string{flag} + "[" + std::to_string(position) + "]";
     for (const auto &issue : issues_)
         if (issue.field == field)
             return issue.code;
@@ -277,6 +323,7 @@ void LauncherModel::on_finished(const audio_qa::RequestOutcome &outcome) {
         if (const auto *take = std::get_if<audio_qa::TakeOutcome>(&slot)) {
             row.position = take->position;
             row.take = take->take;
+            row.kind = take->kind;
             row.playback = playback_text(take->playback.kind);
             row.traversal = traversal_text(take->traversal);
             row.evidence = take->evidence.complete ? LauncherText::evidence_complete
@@ -287,6 +334,7 @@ void LauncherModel::on_finished(const audio_qa::RequestOutcome &outcome) {
             const auto &pending = std::get<audio_qa::NotStartedTake>(slot);
             row.position = pending.position;
             row.take = pending.take;
+            row.kind = pending.kind;
             row.diagnostic = pending.reason;
         }
         results_.push_back(std::move(row));

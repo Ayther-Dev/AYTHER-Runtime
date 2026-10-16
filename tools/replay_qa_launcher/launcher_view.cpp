@@ -51,6 +51,9 @@ DialogSpec dialog_for(std::string_view flag) {
                 {{"ROM", "md;bin;gen;smd;sms;gg;sfc;smc;nes;gb;gbc;gba;pce;zip;7z"}, any_file}};
     if (flag == "--take")
         return {FileDialog::open_files, {{"AYR", "ayr"}, any_file}};
+    // Spec 006 (RF-5): pad timelines are text files, several at once like the takes.
+    if (flag == "--timeline")
+        return {FileDialog::open_files, {{"Timeline", "timeline;txt"}, any_file}};
     if (flag == "--pack")
         return {FileDialog::open_file, {{"AY", "ay"}, any_file}};
     if (flag == "--runtime")
@@ -141,9 +144,13 @@ std::optional<std::string> field_error(const LauncherModel &model, LauncherLangu
         return issue;
     }
     const auto missing = model.missing_required();
-    if (std::any_of(missing.begin(), missing.end(),
-                    [flag](const audio_qa::FieldIssue &issue) { return issue.field == flag; }))
-        return std::string{launcher_text(language, LauncherText::required_missing)};
+    const auto flagged =
+        std::find_if(missing.begin(), missing.end(),
+                     [flag](const audio_qa::FieldIssue &issue) { return issue.field == flag; });
+    if (flagged != missing.end())
+        return std::string{launcher_text(language, flagged->code == "missing_required_material"
+                                                       ? LauncherText::required_material_missing
+                                                       : LauncherText::required_missing)};
     if (auto issue = model.issue_of(flag))
         return issue;
     // The preflight may resolve from the environment what the launcher could not yet.
@@ -167,8 +174,11 @@ std::vector<SummaryRow> summary_rows(const LauncherModel &model, LauncherLanguag
 ResultsView results_view(const LauncherModel &model, LauncherLanguage language) {
     ResultsView view;
     for (const auto &row : model.results()) {
+        // Spec 006 (RF-5): a pad timeline row says so before its path.
         ResultRowView item{std::to_string(row.position + 1U),
-                           row.take,
+                           row.kind == audio_qa::MaterialKind::timeline
+                               ? std::string{field_label(language, "timelines")} + ": " + row.take
+                               : row.take,
                            std::string{launcher_text(language, row.playback)},
                            std::string{launcher_text(language, row.traversal)},
                            std::string{launcher_text(language, row.evidence)},

@@ -64,6 +64,8 @@ struct Options {
     std::string core;
     std::string rom;
     std::string take;
+    // Spec 006 (RF-5): the self-test may select a pad timeline instead of a take.
+    std::string timeline;
     std::string output;
     // DI-23: the fields of one campaign attempt, as `--flag=value` lines.
     std::string prefill;
@@ -86,6 +88,8 @@ Options parse_options(int argc, char **argv) {
             options.rom = argv[index + 1];
         else if (name == "--take")
             options.take = argv[index + 1];
+        else if (name == "--timeline")
+            options.timeline = argv[index + 1];
         else if (name == "--output")
             options.output = argv[index + 1];
         else if (name == "--prefill")
@@ -250,9 +254,10 @@ class LauncherApp final {
         for (auto &result : results) {
             if (model_.active())
                 continue;
-            if (result.flag == "--take") {
+            if (const auto *option = qa::find_check_option(result.flag);
+                option != nullptr && option->repeatable) {
                 for (auto &path : result.paths)
-                    model_.add_take(std::move(path));
+                    model_.add_value(result.flag, std::move(path));
                 continue;
             }
             model_.set(result.flag, std::move(result.paths.front()));
@@ -300,8 +305,8 @@ class LauncherApp final {
         if (field.required)
             label += " *";
         ImGui::TextUnformatted(label.c_str());
-        if (field.flag == "--take") {
-            draw_takes();
+        if (field.repeatable && field.input == la::FieldInput::path) {
+            draw_path_list(field.flag);
         } else if (field.input == la::FieldInput::choice) {
             draw_choice(field);
         } else if (field.input == la::FieldInput::key_value) {
@@ -365,32 +370,40 @@ class LauncherApp final {
         model_.set_values(field.flag, std::move(values));
     }
 
-    // RF-1.4: the ordered takes, with explicit repetitions.
-    void draw_takes() {
-        const auto takes = model_.takes();
-        if (takes.empty())
-            ImGui::TextDisabled("%s", std::string{text(la::LauncherText::no_takes)}.c_str());
-        for (std::size_t position = 0; position < takes.size(); ++position) {
+    // RF-1.4 and spec 006 (RF-5): the ordered takes or pad timelines, with explicit
+    // repetitions.
+    void draw_path_list(std::string_view flag) {
+        const bool timelines = flag == "--timeline";
+        const auto values = model_.values(flag);
+        if (values.empty())
+            ImGui::TextDisabled("%s", std::string{text(timelines ? la::LauncherText::no_timelines
+                                                                 : la::LauncherText::no_takes)}
+                                          .c_str());
+        for (std::size_t position = 0; position < values.size(); ++position) {
             ImGui::PushID(static_cast<int>(position));
-            ImGui::Text("%zu. %s", position + 1U, takes[position].c_str());
+            ImGui::Text("%zu. %s", position + 1U, values[position].c_str());
             if (ImGui::SmallButton(std::string{text(la::LauncherText::move_up)}.c_str()) &&
                 position > 0U)
-                model_.move_take(position, position - 1U);
+                model_.move_value(flag, position, position - 1U);
             ImGui::SameLine();
             if (ImGui::SmallButton(std::string{text(la::LauncherText::move_down)}.c_str()))
-                model_.move_take(position, position + 1U);
+                model_.move_value(flag, position, position + 1U);
             ImGui::SameLine();
             if (ImGui::SmallButton(std::string{text(la::LauncherText::repeat_take)}.c_str()))
-                model_.repeat_take(position);
+                model_.repeat_value(flag, position);
             ImGui::SameLine();
-            if (ImGui::SmallButton(std::string{text(la::LauncherText::remove_take)}.c_str()))
-                model_.remove_take(position);
-            if (const auto issue = model_.take_issue(position))
+            if (ImGui::SmallButton(std::string{text(timelines ? la::LauncherText::remove_timeline
+                                                              : la::LauncherText::remove_take)}
+                                       .c_str()))
+                model_.remove_value(flag, position);
+            if (const auto issue = model_.value_issue(flag, position))
                 ImGui::TextColored(error_colour, "%s", issue->c_str());
             ImGui::PopID();
         }
-        if (ImGui::Button(std::string{text(la::LauncherText::add_take)}.c_str()))
-            open_dialog(window_, dialogs_, "--take");
+        if (ImGui::Button(std::string{
+                text(timelines ? la::LauncherText::add_timeline : la::LauncherText::add_take)}
+                              .c_str()))
+            open_dialog(window_, dialogs_, flag);
     }
 
     void draw_controls() {
@@ -433,6 +446,9 @@ class LauncherApp final {
         ImGui::SeparatorText(std::string{text(la::LauncherText::issues_title)}.c_str());
         for (const auto &issue : issues)
             ImGui::TextColored(error_colour, "%s: %s", issue.field.c_str(), issue.code.c_str());
+        // Spec 006 (RF-2.3): the line and reason of a rejected pad timeline.
+        for (const auto &diagnostic : model_.diagnostics())
+            ImGui::TextDisabled("%s", diagnostic.c_str());
     }
 
     // BR-170 (RF-2.4, RF-2.12): per take, apart, and the joint result.
@@ -506,18 +522,25 @@ class SelfTest final {
             return fail("timed out in step " + std::to_string(static_cast<int>(stage_)));
         switch (stage_) {
         case Stage::required: {
-            // RF-1.1, RF-1.2: without materials the ROM and the take are required.
+            // RF-1.1, RF-1.2 and spec 006 (RF-1.1): without materials the ROM is required and
+            // a take or a pad timeline is required.
             const auto required =
                 std::string{la::launcher_text(language, la::LauncherText::required_missing)};
+            const auto material = std::string{
+                la::launcher_text(language, la::LauncherText::required_material_missing)};
             if (la::field_error(model, language, "--rom") != required ||
-                la::field_error(model, language, "--take") != required || model.start_enabled())
+                la::field_error(model, language, "--take") != material ||
+                la::field_error(model, language, "--timeline") != material || model.start_enabled())
                 return fail("the required fields are not flagged");
             std::printf("ayther_replay_qa: self_test required_errors=shown\n");
             model.set("--runtime", options_.runtime);
             model.set("--core", options_.core);
             model.set("--rom", options_.rom);
             model.set("--output", options_.output);
-            model.add_take(options_.take);
+            if (!options_.timeline.empty())
+                model.add_timeline(options_.timeline);
+            else
+                model.add_take(options_.take);
             stage_ = Stage::valid;
             return true;
         }

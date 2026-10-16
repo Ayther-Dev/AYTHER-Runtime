@@ -1,6 +1,7 @@
 #pragma once
 
 #include "field_issue.h"
+#include "pad_timeline.h"
 #include "reference_model.h"
 
 #include <array>
@@ -19,7 +20,19 @@ namespace ayther::audio_qa {
 
 // Spec 002, plan §4.1 and §5.2 (RF-2.2, RF-2.11): the identity of each selected material
 // is fixed before the request is admitted, and the take uses exactly that content.
-enum class MaterialPinRole { rom, core, pack, take, runtime, trust_registry };
+// Spec 006: a pad timeline, the bookmark state it starts from and the `.fm` register shadow
+// next to that bookmark are materials too.
+enum class MaterialPinRole {
+    rom,
+    core,
+    pack,
+    take,
+    runtime,
+    trust_registry,
+    timeline,
+    timeline_state,
+    timeline_fm_sidecar
+};
 
 // Which file a path named when it was pinned: replacing the file changes it even when
 // the new content is the same.
@@ -150,5 +163,36 @@ take_game_issue(std::string_view take_game_id, std::uint32_t rom_crc32,
                 std::optional<std::string_view> pack_game_id);
 [[nodiscard]] std::optional<std::string> pack_game_issue(std::string_view pack_game_id,
                                                          std::uint32_t rom_crc32);
+
+// Spec 006 (RF-2, RF-3): what a pad timeline declares, read from its pinned bytes. The
+// state and sidecar paths are resolved against the timeline file; the sidecar is empty when
+// no `.fm` exists next to the bookmark.
+struct TimelineFacts {
+    PadTimeline timeline;
+    std::size_t steps{};
+    TimelineStartKind start{TimelineStartKind::power_on};
+    std::filesystem::path state_path;
+    std::filesystem::path fm_sidecar;
+    bool operator==(const TimelineFacts &) const = default;
+};
+
+// A rejected timeline: the issue code, the reason and the 1-based line (0 without one).
+struct TimelineInspectionIssue {
+    std::string code;
+    std::string reason;
+    std::size_t line{};
+    bool operator==(const TimelineInspectionIssue &) const = default;
+};
+
+using TimelineInspection = std::variant<TimelineFacts, TimelineInspectionIssue>;
+
+// Syntax, then the bounds without the core: at the slowest supported timing no step rounds
+// to zero frames; at the fastest the whole fits in 54 000 frames (`timeline_too_long`).
+[[nodiscard]] TimelineInspection inspect_timeline(std::span<const std::byte> bytes,
+                                                  const std::filesystem::path &file);
+
+// With the timing the core reports: the compiled frames fit in 54 000 and 900 s.
+[[nodiscard]] std::optional<FieldIssue> timeline_duration_issue(const PadTimeline &timeline,
+                                                                std::optional<double> timing_fps);
 
 } // namespace ayther::audio_qa

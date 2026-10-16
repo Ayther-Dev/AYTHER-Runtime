@@ -160,6 +160,11 @@ EffectiveResult resolve_effective_request(const CheckOptions &options,
     for (std::size_t position = 0; position < options.takes.size(); ++position)
         builder.add("take[" + std::to_string(position) + "]", options.takes[position],
                     ValueSource::explicit_option);
+    // Spec 006 (RF-1.1, RF-1.2): explicit pad timelines, in order, after the takes.
+    request.timelines = options.timelines;
+    for (std::size_t index = 0; index < options.timelines.size(); ++index)
+        builder.add("timeline[" + std::to_string(index) + "]", options.timelines[index],
+                    ValueSource::explicit_option);
 
     // RF-1.3: no pack means no pack, never one from another source. «Sin pack» is the
     // selection made by leaving out --pack, so it is explicit too: no ROM, take or pack

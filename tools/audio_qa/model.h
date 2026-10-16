@@ -23,6 +23,9 @@ struct Request {
     // Spec 002 (contracts.md C1-2): `es` or `en`, mandatory in protocol 1.1 and absent in 1.0.
     // A request with a language is a 1.1 request.
     std::optional<std::string> language;
+    // Spec 006 (RF-4.4): `timeline` when the single id of a delivered request is a pad
+    // timeline; absent for takes, so a Runtime that predates timelines reads the same request.
+    std::optional<std::string> material_kind;
     bool operator==(const Request &) const = default;
 };
 

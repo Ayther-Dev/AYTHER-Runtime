@@ -31,6 +31,21 @@ void requests() {
     auto invalid = request;
     invalid.take_ids.clear();
     require(std::holds_alternative<qa::CodecError>(qa::to_toml(invalid)), "empty_request_accepted");
+    // Spec 006 (RF-4.4): a timeline request names its kind and round-trips; a take request
+    // never writes the key, so an older Runtime reads the same document.
+    require(encoded(qa::to_toml(request)).find("material_kind") == std::string::npos,
+            "material_kind_written_for_take");
+    auto timeline = request;
+    timeline.take_ids = {"boot.timeline"};
+    timeline.material_kind = "timeline";
+    const auto timeline_decoded = qa::request_from_toml(encoded(qa::to_toml(timeline)));
+    require(std::holds_alternative<qa::Request>(timeline_decoded) &&
+                std::get<qa::Request>(timeline_decoded) == timeline,
+            "material_kind_lost");
+    auto unknown_kind = timeline;
+    unknown_kind.material_kind = "macro";
+    require(std::holds_alternative<qa::CodecError>(qa::to_toml(unknown_kind)),
+            "unknown_material_kind_accepted");
     auto bounded = request;
     bounded.request_id = std::string(qa::max_identity_bytes, 'r');
     bounded.take_ids.assign(qa::max_request_takes, "take-A");

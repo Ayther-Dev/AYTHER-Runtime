@@ -40,10 +40,17 @@ $runtime = 'C:\ruta\audio-qa\bin\ayther_runtime.exe'
   --language es
 ```
 
-- `--rom` y `--take` son obligatorias. No hay toma por defecto: sin `--take` la
-  solicitud se rechaza con `missing_required_option: --take` (RF-1.2).
+- `--rom` es obligatoria, y hace falta al menos una toma (`--take`) o un guion de mando
+  (`--timeline`). No hay toma por defecto: sin ninguno de los dos la solicitud se rechaza
+  con `missing_required_material: --take` (RF-1.2; spec 006 RF-1.1).
 - `--take` es repetible, conserva el orden y admite repeticiones explícitas: cada
   posición es una ejecución propia (`<run>`, `<run>-take-2`, ...) (RF-1.4).
+- `--timeline` (spec 006) es repetible como `--take`. Los guiones van después de las tomas,
+  con posiciones contiguas, y su ejecución se llama `<run>-timeline-N` (N = posición + 1);
+  un guion en la primera posición conserva `<run>`. El Runtime debe ofrecer la capacidad
+  `timeline_replay_v1`; si no, la solicitud se rechaza con
+  `runtime_missing_timeline_replay_v1: --runtime` y una solicitud sólo con tomas sigue
+  funcionando con Runtimes anteriores.
 - `--core` es opcional. Si falta, se toma del manifiesto de Play, de la referencia o,
   en último lugar, de la configuración de Play CE (`cores[plataforma]` y después
   `default_core` en `%APPDATA%\Ayther\play_config.toml`), que sólo se lee (RF-1.6).
@@ -63,6 +70,14 @@ $runtime = 'C:\ruta\audio-qa\bin\ayther_runtime.exe'
 - Cada toma se valida entera antes de admitir la solicitud: además de cabecera, tamaños
   y entradas, su estado inicial se descomprime completo, como lo hará el Runtime antes de
   restaurarlo. Un estado dañado se rechaza con `take_initial_state_invalid: --take[i]`.
+- Cada guion de mando se analiza antes de admitir la solicitud. Un error de sintaxis se
+  rechaza con `timeline_syntax_invalid: --timeline[j]` y una línea
+  `audio_qa_diagnostic: timeline_syntax_invalid field=--timeline[j] line=<n> reason=<código>`;
+  un guion que supera 54 000 frames o 900 s al timing del core, con `timeline_too_long`; uno
+  sin frames, con `timeline_empty`; un marcador que no se puede leer, con
+  `timeline_state_unavailable`; y un archivo `.fm` junto al marcador que no tenga 512 bytes,
+  con `timeline_fm_sidecar_invalid`. El guion, el marcador y el `.fm` se fijan por SHA-256 como
+  cualquier material y entran en la identidad de las condiciones.
 - `--request-id` es opcional; una repetición intencional debe usar otra identidad.
   Admite hasta 256 bytes de texto imprimible: una identidad más larga se rechaza antes de
   crear el destino con `request_id_too_long: --request-id`, y una con caracteres de
@@ -72,6 +87,49 @@ $runtime = 'C:\ruta\audio-qa\bin\ayther_runtime.exe'
   exclusiva sin reemplazar las anteriores. La evidencia de cada toma se escribe y se
   reabre por la forma extendida de su ruta (`\\?\`), así que una raíz larga no deja
   fragmentos por encima de los 260 caracteres de `MAX_PATH` sin publicar.
+
+### Guiones de mando (spec 006)
+
+Un guion de mando es un archivo de texto que maneja el mando en lugar de una toma. Una
+instrucción por línea; `#` abre un comentario al principio de la línea o tras un blanco;
+las palabras clave y los botones no distinguen mayúsculas.
+
+```
+start power_on              # por defecto si falta; debe ser la primera instrucción
+start state ../bookmarks/prueba-audio.sav   # un marcador del Lab (.sav), relativo al guion
+wait 5s                     # pasan frames con los botones mantenidos
+press start                 # 4 frames pulsado y suelta
+press a 100ms               # duración explícita
+hold right 0.1s             # igual que press, con duración obligatoria
+down b                      # añade a los botones mantenidos; no pasa tiempo
+wait 12f
+up b                        # quita de los botones mantenidos
+press a+c 6f                # combinación
+```
+
+- Botones Genesis: `a b c x y z start mode up down left right`, unidos con `+`. Se traducen al
+  RetroPad como lo hace Genesis Plus GX (A→Y, B→B, C→A, X→L, Y→X, Z→R, Mode→Select).
+- Duraciones: `<decimal>s`, `<decimal>ms` o `<entero>f`. Los segundos se convierten en frames
+  en el Runtime con el timing que informa el core (`llround(segundos × fps)`): `0.1s` son 6
+  frames a 59.92 fps y 5 a 49.70. Sólo `f` es independiente del timing. Un paso que redondea a
+  cero frames es un error.
+- La máscara de cada frame es la de los botones mantenidos más la del `press` en curso. Dos
+  `press` seguidos sin `wait` son una pulsación continua.
+- Límites: 64 KiB, 4 096 instrucciones y de 1 a 54 000 frames compilados (900 s al timing del
+  core).
+- Inicio. `power_on` arranca la ROM en la sesión recién creada, así que el detector de eventos
+  de audio observa cada escritura FM desde el primer frame. `state <ruta>` restaura un marcador
+  del Lab (`<proyecto>/bookmarks/<nombre>.sav`, el estado serializado crudo) o un estado del
+  Runtime (`.bin` con cabecera `AYTHSTAT`) antes de la frontera HD. Un marcador no lleva la
+  sombra de registros FM del detector: si existe `<nombre>.fm` (512 bytes) junto al marcador se
+  fija como material y la evidencia lo registra, pero el Runtime de esta versión aún no la
+  siembra (`fm_seeded = false`); mientras tanto, un guion que empiece con la música sonando
+  tiene el mismo riesgo que una toma a mitad de música.
+- Evidencia. La ejecución de un guion escribe la misma evidencia que una toma y, además, un
+  hecho `timeline_compiled` del productor `inspection` con `fps`, `frames`, `steps`, `start`
+  (`power_on` o `state`), `state_id`, `fm_sidecar` (`present`, `absent`, `not_applicable`) y
+  `fm_seeded`. La línea `audio_qa_replay` dice `material=timeline` y el resumen de la solicitud
+  (`schema_minor = 2`) escribe `kind = 'timeline'` en la fila del guion.
 
 Antes de admitir la solicitud, cada valor efectivo se escribe con su origen:
 `audio_qa_effective: <clave>=<valor> source=explicit|play_manifest|reference|environment|default|generated`.

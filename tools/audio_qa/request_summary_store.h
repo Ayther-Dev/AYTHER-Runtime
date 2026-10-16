@@ -16,7 +16,8 @@
 namespace ayther::audio_qa {
 
 inline constexpr std::int64_t request_summary_schema_version = 1;
-inline constexpr std::int64_t request_summary_schema_minor = 1;
+// Minor 2 (spec 006): a take row may say `kind = 'timeline'`.
+inline constexpr std::int64_t request_summary_schema_minor = 2;
 
 // Spec 002 (contracts.md C2, plan §4.6; RF-2.3, RF-2.4, RF-2.12, RNF-5): the confirmed
 // summary of a request: its selections with their origin and SHA-256, the identity of its
@@ -35,6 +36,8 @@ struct StoredTakeSummary {
     std::string traversal;
     std::string evidence;
     std::vector<std::string> evidence_reasons;
+    // Spec 006: `timeline` for a pad timeline; empty (a take) in rows written before minor 2.
+    std::string kind;
     bool operator==(const StoredTakeSummary &) const = default;
 };
 

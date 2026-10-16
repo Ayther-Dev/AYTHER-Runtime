@@ -65,6 +65,27 @@ struct FactExclusion {
 
 [[nodiscard]] Fact make_fact_exclusion_fact(std::string run_id, std::uint64_t producer_sequence,
                                             const FactExclusion &exclusion);
+
+// Spec 006 (RF-4.2): how the pad timeline of this run was compiled: the timing of the core,
+// the frames it produced, where it started and whether a register shadow was next to its
+// bookmark. `fm_seeded` says if that shadow reached the detector.
+struct TimelineCompiledRecord {
+    double fps{};
+    std::uint64_t frames{};
+    std::uint64_t steps{};
+    // power_on | state
+    std::string start;
+    // `state-<sha256>` of the restored bookmark; empty for power_on.
+    std::string state_id;
+    // present | absent | not_applicable
+    std::string fm_sidecar;
+    bool fm_seeded{};
+    bool operator==(const TimelineCompiledRecord &) const = default;
+};
+
+[[nodiscard]] Fact make_timeline_compiled_fact(std::string run_id, std::uint64_t producer_sequence,
+                                               const TimelineCompiledRecord &record);
+[[nodiscard]] std::optional<TimelineCompiledRecord> read_timeline_compiled(const Fact &fact);
 // A `fact_exclusion` with every field, a recovery from 1, an `engine-` producer, a
 // non-empty interval from 1 and the cause `silent_recovery`; anything else is not one.
 [[nodiscard]] std::optional<FactExclusion> read_fact_exclusion(const Fact &fact);

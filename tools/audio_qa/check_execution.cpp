@@ -244,7 +244,8 @@ CheckExecutionResult execute_check_replay(const EffectiveRequest &effective, con
             return CheckExecutionError::runtime_incompatible;
         // Contracts.md C1: visible replay negotiates 1.1; without presentation 1.1 is chosen
         // when offered and a 1.0 Runtime keeps working (RNF-6).
-        const auto protocol = negotiate_runtime_protocol(*offer, effective.presentation);
+        const auto protocol = negotiate_runtime_protocol(*offer, effective.presentation,
+                                                         request.material_kind == "timeline");
         const auto *negotiated = std::get_if<ContractVersion>(&protocol);
         if (negotiated == nullptr)
             return CheckExecutionError::runtime_incompatible;

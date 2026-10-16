@@ -62,14 +62,17 @@ if(EXPECT_FULL)
     if(NOT runtime_count EQUAL 2 OR NOT runtime_v11 STREQUAL "1.1")
         message(FATAL_ERROR "Runtime does not offer protocol 1.1: ${json}")
     endif()
-    if(NOT capability_count EQUAL 12)
+    if(NOT capability_count EQUAL 13)
         message(FATAL_ERROR "Runtime omitted required capabilities: ${json}")
     endif()
     string(JSON visible_capability GET "${json}" capabilities 10)
     string(JSON inspection_capability GET "${json}" capabilities 11)
+    # Spec 006 (RF-4.4): pad timelines are a capability of their own.
+    string(JSON timeline_capability GET "${json}" capabilities 12)
     if(NOT visible_capability STREQUAL "visible_replay_v1" OR
-       NOT inspection_capability STREQUAL "inspection_v1")
-        message(FATAL_ERROR "Runtime omitted visible replay or inspection: ${json}")
+       NOT inspection_capability STREQUAL "inspection_v1" OR
+       NOT timeline_capability STREQUAL "timeline_replay_v1")
+        message(FATAL_ERROR "Runtime omitted visible replay, inspection or timelines: ${json}")
     endif()
     foreach(limit IN ITEMS fact_bytes batch_bytes live_occurrences
                            audio_channels sample_rate cancel_milliseconds)

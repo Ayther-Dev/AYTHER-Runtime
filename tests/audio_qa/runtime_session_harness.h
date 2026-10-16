@@ -58,6 +58,8 @@ struct Options {
     fs::path root;
     std::string label;
     std::optional<std::string> language{"es"};
+    // Spec 006 (RF-4.4): `timeline` when `take` names a pad timeline.
+    std::optional<std::string> material_kind;
     std::string script;
     std::string presentation{"none"};
     std::size_t take_position{};
@@ -189,6 +191,7 @@ inline Session run(const Options &options) {
     Request request{
         "request-" + options.label,      "session-" + options.label, "conditions-" + options.label,
         {options.take.generic_string()}, Admission::pending,         options.language};
+    request.material_kind = options.material_kind;
     const auto encoded = encode_request_message(request, 1U);
     const auto *bytes = std::get_if<std::vector<std::byte>>(&encoded);
     if (bytes == nullptr || !write_channel(control->supervisor_write, *bytes)) {
