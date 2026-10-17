@@ -1125,6 +1125,10 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
         const auto replay_language = ri::parse_replay_language(pending->language.value_or("es"));
         std::optional<ri::FrameRecord> current_record;
         std::string notice_text;
+        // Spec 006 (RF-7.5): the history of timeline steps shown at the bottom left, and the
+        // next step still to add to it. It only grows, so navigating back never drops a row.
+        std::vector<std::string> timeline_log;
+        std::size_t next_logged_step{};
         // RF-7.1, RF-7.6 (D-7): the phase the overlay shows is the phase of now, not the one of
         // the moment the record of the frame was copied (playing, recovering).
         const auto live_phase = [&] {
@@ -1160,11 +1164,37 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                     status += " · " + label(ri::ReplayMessage::label_step) + " " +
                               current_record->general.step;
             }
+            // Spec 006 (RF-7.5): every step the timeline reaches becomes a row in the event
+            // history, with the time it started; a step between two spans (down/up) is added
+            // with the span that follows it.
+            if (timeline_material && current_record) {
+                const auto position =
+                    qa::timeline_position(timeline.compiled, current_record->frame);
+                if (position && position->step >= next_logged_step) {
+                    char event_seconds[32];
+                    std::snprintf(event_seconds, sizeof event_seconds, "%.2f",
+                                  clock.at(current_record->frame).elapsed_ms / 1000.0);
+                    for (auto step = next_logged_step;
+                         step <= position->step && step < timeline.parsed.steps.size(); ++step)
+                        timeline_log.push_back(
+                            std::string{event_seconds} + " s  " +
+                            qa::describe_timeline_step(timeline.parsed.steps[step]));
+                    next_logged_step = position->step + 1U;
+                }
+            }
+            // Only the last rows fit on screen; the older ones have scrolled off the top.
+            constexpr std::size_t max_shown_events = 14;
+            std::vector<std::string> events;
+            const std::size_t first_event = timeline_log.size() > max_shown_events
+                                                ? timeline_log.size() - max_shown_events
+                                                : 0U;
+            for (std::size_t index = first_event; index < timeline_log.size(); ++index)
+                events.push_back(timeline_log[index]);
             presentation->set_debug(visible,
                                     visible && current_record
                                         ? ri::debug_lines(*current_record, clock, replay_language)
                                         : std::vector<ri::DebugLine>{},
-                                    notice_text, std::move(status));
+                                    notice_text, std::move(status), std::move(events));
         };
         const auto notice_of = [&](const ri::Notice notice) -> std::string {
             switch (notice) {
