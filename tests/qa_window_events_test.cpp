@@ -117,6 +117,14 @@ void window_events() {
         rt::translate_window_event(window(SDL_EVENT_WINDOW_CLOSE_REQUESTED), own_window);
     expect(close && close->kind == rt::PresentationEvent::Kind::close,
            "RF-2.10: closing the window is reported");
+    // Spec 006 (RF-7.1): Escape asks to close like the close button; a repeat asks nothing.
+    const auto escape =
+        rt::translate_window_event(key(SDL_EVENT_KEY_DOWN, SDL_SCANCODE_ESCAPE), own_window);
+    expect(escape && escape->kind == rt::PresentationEvent::Kind::close,
+           "spec 006 RF-7.1: Escape asks to close the window");
+    expect(
+        !rt::translate_window_event(key(SDL_EVENT_KEY_DOWN, SDL_SCANCODE_ESCAPE, true), own_window),
+        "spec 006 RF-7.1: a held Escape repeats nothing");
     // BR-145 (D15): Page Down and the wheel scroll the overlay; they are never navigation.
     const auto page =
         rt::translate_window_event(key(SDL_EVENT_KEY_DOWN, SDL_SCANCODE_PAGEDOWN), own_window);

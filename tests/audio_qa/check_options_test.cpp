@@ -238,12 +238,27 @@ bool test_presentation() {
     return qa::parse_check_options(views(arguments)).error() != nullptr;
 }
 
+// Spec 006 (RF-7.3): --at-end takes inspect (default) or close.
+bool test_at_end() {
+    auto arguments = valid_arguments();
+    const auto defaulted = qa::parse_check_options(views(arguments));
+    if (!defaulted.options() || defaulted.options()->at_end != "inspect")
+        return false;
+    arguments.insert(arguments.end(), {"--at-end", "close"});
+    const auto closing = qa::parse_check_options(views(arguments));
+    if (!closing.options() || closing.options()->at_end != "close")
+        return false;
+    arguments.back() = "later";
+    return has_error(arguments, qa::CheckOptionErrorCode::unsupported_at_end, "--at-end");
+}
+
 } // namespace
 
 int main() {
     return test_valid() && test_minimal_request() && test_required_options() &&
                    test_required_material() && test_repeated_takes() && test_conditions() &&
-                   test_malformed() && test_original_audio_mode() && test_presentation()
+                   test_malformed() && test_original_audio_mode() && test_presentation() &&
+                   test_at_end()
                ? 0
                : 1;
 }

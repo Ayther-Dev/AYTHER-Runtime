@@ -53,7 +53,7 @@ class AudioQaPresentation final {
     [[nodiscard]] const AytherRenderer::PrewarmReport &prewarm() const noexcept { return prewarm_; }
     // RF-6, RF-7: what the debug overlay draws over the next presented frames.
     void set_debug(bool visible, std::vector<replay_inspection::DebugLine> lines,
-                   std::string notice);
+                   std::string notice, std::string status);
     void scroll_debug(replay_inspection::ScrollKey key) noexcept {
         debug_overlay_.scroll(key, debug_lines_.size());
     }
@@ -98,6 +98,7 @@ class AudioQaPresentation final {
     bool debug_visible_{};
     std::vector<replay_inspection::DebugLine> debug_lines_;
     std::string debug_notice_;
+    std::string debug_status_;
     double last_overlay_ms_{};
     std::optional<std::chrono::steady_clock::time_point> composed_at_;
     std::optional<engine::render_observation::DrawReport> draw_report_;

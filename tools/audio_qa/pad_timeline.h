@@ -121,8 +121,18 @@ enum class TimelineCompileError {
     no_frames,
 };
 
+// Spec 006 (RF-7.4): the frames a time-consuming step compiled to, so the window can say
+// which step of the timeline a frame belongs to. `down` and `up` take no frames.
+struct CompiledStepSpan {
+    std::size_t step{};
+    std::uint32_t first_frame{};
+    std::uint32_t frames{};
+    bool operator==(const CompiledStepSpan &) const = default;
+};
+
 struct CompiledTimeline {
     std::vector<std::uint16_t> buttons;
+    std::vector<CompiledStepSpan> spans;
     // The same masks as little-endian u16, the layout of the inputs of a take.
     std::vector<std::byte> input_bytes;
     double fps{};
@@ -146,6 +156,22 @@ struct TimelineCompileResult {
 [[nodiscard]] RecordingLayout timeline_input_layout(const CompiledTimeline &compiled) noexcept;
 [[nodiscard]] RecordingInputSourceResult
 make_timeline_input_source(const CompiledTimeline &compiled) noexcept;
+
+// Spec 006 (RF-7.4): what the window shows while a timeline runs.
+struct TimelinePosition {
+    std::size_t span{};
+    std::size_t step{};
+    // Frames of the step still to run, the current one included.
+    std::uint32_t frames_left{};
+};
+// The step frame `frame` falls in; nullopt outside the compiled frames.
+[[nodiscard]] std::optional<TimelinePosition> timeline_position(const CompiledTimeline &compiled,
+                                                                std::uint32_t frame) noexcept;
+// The Genesis names of the buttons in `mask`, joined with `+`, in the order of the table;
+// `-` for none. Bits outside the table are not named.
+[[nodiscard]] std::string describe_timeline_buttons(std::uint16_t mask);
+// A step as it could have been written: `press a+right 3f`, `wait 2s`, `down b`.
+[[nodiscard]] std::string describe_timeline_step(const TimelineStep &step);
 
 // `start state <path>` is resolved against the directory of the timeline file.
 [[nodiscard]] std::filesystem::path

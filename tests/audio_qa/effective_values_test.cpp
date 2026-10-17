@@ -322,6 +322,14 @@ void runtime_command_line() {
            "RF-2.3: the take position and the last take reach the Runtime");
     arguments = qa::runtime_replay_arguments(*resolved(result), "11", "22", "run-1", 0U, false);
     expect(!contains(arguments, L"--qa-last-take"), "an intermediate take is not the last one");
+    // Spec 006 (RF-7.3): --at-end close reaches the Runtime as --qa-close-at-end.
+    expect(!contains(arguments, L"--qa-close-at-end"),
+           "spec 006 RF-7.3: by default the window stays for the inspection");
+    options.at_end = "close";
+    result = qa::resolve_effective_request(options, {});
+    arguments = qa::runtime_replay_arguments(*resolved(result), "11", "22", "run-1", 0U, true);
+    expect(contains(arguments, L"--qa-close-at-end"),
+           "spec 006 RF-7.3: --at-end close reaches the Runtime");
 }
 
 // D-13 (campaign 2026-10-05, BR-191; RF-2.2, RNF-3): the request identity holds 256 bytes of

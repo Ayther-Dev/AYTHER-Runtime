@@ -209,12 +209,13 @@ void AudioQaPresentation::deliver(const replay_inspection::ScriptAction &action)
 }
 
 void AudioQaPresentation::set_debug(bool visible, std::vector<replay_inspection::DebugLine> lines,
-                                    std::string notice) {
+                                    std::string notice, std::string status) {
     if (visible && !debug_visible_)
         debug_overlay_.reset_scroll();
     debug_visible_ = visible;
     debug_lines_ = std::move(lines);
     debug_notice_ = std::move(notice);
+    debug_status_ = std::move(status);
 }
 
 std::string AudioQaPresentation::device_name() const {
@@ -324,7 +325,7 @@ VideoResult AudioQaPresentation::present(AytherSession &session, const FrameView
                                      profile_->smoothing);
     }
     const auto overlay_started = std::chrono::steady_clock::now();
-    debug_overlay_.render(frame, debug_visible_, debug_lines_, debug_notice_);
+    debug_overlay_.render(frame, debug_visible_, debug_lines_, debug_notice_, debug_status_);
     last_overlay_ms_ = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                                  overlay_started)
                            .count();

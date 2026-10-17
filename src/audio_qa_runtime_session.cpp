@@ -471,6 +471,21 @@ struct TimelineMaterial {
     bool fm_sidecar_present{};
 };
 
+// Spec 006 (RF-7.4): «7/9 wait 2s (1.20 s)»: the step frame `frame` falls in, among the
+// steps that take frames, as it was written, and the seconds it still lasts.
+std::string describe_timeline_progress(const TimelineMaterial &material,
+                                       const std::uint32_t frame) {
+    const auto position = qa::timeline_position(material.compiled, frame);
+    if (!position || position->step >= material.parsed.steps.size() || material.compiled.fps <= 0.0)
+        return {};
+    char seconds[32];
+    std::snprintf(seconds, sizeof seconds, "%.2f", position->frames_left / material.compiled.fps);
+    return std::to_string(position->span + 1U) + "/" +
+           std::to_string(material.compiled.spans.size()) + " " +
+           qa::describe_timeline_step(material.parsed.steps[position->step]) + " (" + seconds +
+           " s)";
+}
+
 // Reads the timeline file and, when it starts from a bookmark, that state. Returns the
 // terminal code of the problem, or empty.
 [[nodiscard]] std::string read_timeline_material(const std::filesystem::path &path,
@@ -1126,11 +1141,30 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
             timing.mark("debug", visible ? 1 : 0,
                         current_record ? current_record->general.phase : std::string{},
                         current_record ? current_record->frame : 0U);
+            // Spec 006 (RF-7.4): the status line follows every frame, with the overlay hidden
+            // too: time of the take, frame, pad and, for a timeline, its step.
+            std::string status;
+            if (current_record) {
+                const auto label = [&](const ri::ReplayMessage message) {
+                    return std::string{ri::replay_message(replay_language, message)};
+                };
+                char seconds[32];
+                std::snprintf(seconds, sizeof seconds, "%.2f",
+                              clock.at(current_record->frame).elapsed_ms / 1000.0);
+                status = label(ri::ReplayMessage::label_time) + " " + seconds + " · " +
+                         label(ri::ReplayMessage::label_frame) + " " +
+                         std::to_string(current_record->frame) + "/" + std::to_string(frames) +
+                         " · " + label(ri::ReplayMessage::label_buttons) + " " +
+                         current_record->general.buttons;
+                if (!current_record->general.step.empty())
+                    status += " · " + label(ri::ReplayMessage::label_step) + " " +
+                              current_record->general.step;
+            }
             presentation->set_debug(visible,
                                     visible && current_record
                                         ? ri::debug_lines(*current_record, clock, replay_language)
                                         : std::vector<ri::DebugLine>{},
-                                    notice_text);
+                                    notice_text, std::move(status));
         };
         const auto notice_of = [&](const ri::Notice notice) -> std::string {
             switch (notice) {
@@ -1224,7 +1258,10 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                     std::string{
                         phase_code(controller.phase(),
                                    confirmed_linear && controller.position() == frames - 1U)},
-                    frames};
+                    frames,
+                    qa::describe_timeline_buttons(recorded_buttons[frame]),
+                    timeline_material ? describe_timeline_progress(timeline, frame)
+                                      : std::string{}};
                 current_record = ri::make_frame_record(
                     frame, static_cast<std::uint32_t>(visits[frame]), std::move(general),
                     render_observation.valid ? render_observation.observation
@@ -1625,8 +1662,18 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                     confirmed_linear = true;
                     // C1-3: the window stays paused at N−1 after the confirmed result.
                     report_state(true);
-                    if (!session)
+                    if (!session) {
                         done = true;
+                    } else if (options.qa_close_at_end) {
+                        // Spec 006 (RF-7.3): the window closes itself once the result is
+                        // sent, as the headless replay ends; nothing is left to inspect.
+                        done = true;
+                    } else {
+                        // Spec 006 (RF-7.2): the window says how to inspect and how to leave.
+                        notice_text = std::string{
+                            ri::replay_message(replay_language, ri::ReplayMessage::end_hint)};
+                        push_debug();
+                    }
                     break;
                 case ri::CommandKind::advance_take:
                     done = true;

@@ -12,6 +12,8 @@ namespace {
 
 constexpr std::array<std::string_view, 2> language_values{"es", "en"};
 constexpr std::array<std::string_view, 2> presentation_values{"none", "visible"};
+// Spec 006 (RF-7.3): what the window does after the natural end.
+constexpr std::array<std::string_view, 2> at_end_values{"inspect", "close"};
 constexpr std::array<std::string_view, 2> pack_mode_values{"hd", "original"};
 constexpr std::array<std::string_view, 2> shaders_values{"on", "off"};
 
@@ -22,7 +24,7 @@ constexpr auto no_error = CheckOptionErrorCode::unknown_option;
 
 // Order matters: required options are reported in this order and choices are
 // validated in this order. The first options keep the reference order.
-const std::array<CheckOptionDescriptor, 21> descriptors{{
+const std::array<CheckOptionDescriptor, 22> descriptors{{
     {"--runtime",
      environment,
      path,
@@ -165,6 +167,22 @@ const std::array<CheckOptionDescriptor, 21> descriptors{{
      nullptr,
      "presentation",
      same,
+     {}},
+    // Spec 006 (RF-7.3): after the natural end the window stays paused for the post-end
+    // inspection (`inspect`) or closes itself once the result is sent (`close`).
+    {"--at-end",
+     presentation,
+     choice,
+     false,
+     false,
+     "inspect",
+     at_end_values,
+     CheckOptionErrorCode::unsupported_at_end,
+     &CheckOptions::at_end,
+     nullptr,
+     "at_end",
+     added,
+     "spec 006 RF-7.3",
      {}},
     {"--pack-mode",
      pack,

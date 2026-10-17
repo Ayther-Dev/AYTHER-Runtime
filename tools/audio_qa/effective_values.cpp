@@ -196,6 +196,7 @@ EffectiveResult resolve_effective_request(const CheckOptions &options,
         builder.issues.push_back({"--request-id", "request_id_invalid"});
     request.language = options.language;
     request.presentation = options.presentation;
+    request.at_end = options.at_end;
     if (!options.play_manifest.empty()) {
         request.play_manifest = options.play_manifest;
         builder.add("play_manifest", options.play_manifest, ValueSource::explicit_option);
@@ -273,6 +274,7 @@ EffectiveResult resolve_effective_request(const CheckOptions &options,
     builder.add("language", options.language, origin("--language", options.language, "es"));
     builder.add("presentation", options.presentation,
                 origin("--presentation", options.presentation, "none"));
+    builder.add("at_end", options.at_end, origin("--at-end", options.at_end, "inspect"));
     builder.add("pack_mode", options.pack_mode, origin("--pack-mode", options.pack_mode, "hd"));
 
     if (!builder.issues.empty())

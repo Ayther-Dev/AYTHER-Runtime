@@ -41,6 +41,12 @@ enum class ReplayMessage {
     label_occurrences,
     label_overflow,
     debug_hidden_hint,
+    // Spec 006 (RF-7.4): the status line of the window.
+    label_time,
+    label_buttons,
+    label_step,
+    // Spec 006 (RF-7.2): what the window offers after the natural end.
+    end_hint,
 };
 
 [[nodiscard]] std::span<const ReplayMessage> all_replay_messages() noexcept;

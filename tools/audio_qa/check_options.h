@@ -32,6 +32,9 @@ struct CheckOptions {
     std::string request_id;
     std::string language = "es";
     std::string presentation = "none";
+    // Spec 006 (RF-7.3): what the window does after the natural end: `inspect` stays paused
+    // for the post-end inspection, `close` closes it once the result is sent.
+    std::string at_end = "inspect";
     std::string profile;
     std::string subsystems;
     std::string mute_buses;
@@ -65,6 +68,7 @@ enum class CheckOptionErrorCode {
     unsupported_language,
     invalid_number,
     unsupported_presentation,
+    unsupported_at_end,
     unsupported_pack_mode,
     unsupported_shaders,
     invalid_unsigned_value,

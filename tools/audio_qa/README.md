@@ -51,6 +51,13 @@ $runtime = 'C:\ruta\audio-qa\bin\ayther_runtime.exe'
   `timeline_replay_v1`; si no, la solicitud se rechaza con
   `runtime_missing_timeline_replay_v1: --runtime` y una solicitud sólo con tomas sigue
   funcionando con Runtimes anteriores.
+- `--at-end inspect|close` (spec 006 RF-7.3) decide qué hace la ventana de
+  `--presentation visible` al fin natural de la última toma o guion: `inspect`
+  (predeterminado) la deja en pausa en el último frame con el aviso «Flechas: inspeccionar
+  · Esc: cerrar la ventana»; `close` la cierra sola en cuanto el resultado se ha enviado y el
+  Runtime llega a su fin, como sin presentación. `close` exige la capacidad
+  `close_at_end_v1` (`runtime_missing_close_at_end_v1: --runtime` si falta). Sin
+  presentación la opción no cambia nada.
 - `--core` es opcional. Si falta, se toma del manifiesto de Play, de la referencia o,
   en último lugar, de la configuración de Play CE (`cores[plataforma]` y después
   `default_core` en `%APPDATA%\Ayther\play_config.toml`), que sólo se lee (RF-1.6).

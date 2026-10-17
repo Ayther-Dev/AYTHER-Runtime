@@ -36,6 +36,8 @@ constexpr std::array issue_texts{
     IssueText{"invalid_number", "El número no es válido.", "The number is not valid."},
     IssueText{"unsupported_presentation", "La presentación no es none ni visible.",
               "The presentation is not none or visible."},
+    IssueText{"unsupported_at_end", "Al terminar debe ser inspect o close.",
+              "At the end must be inspect or close."},
     IssueText{"unsupported_pack_mode", "El modo de pack no es hd ni original.",
               "The pack mode is not hd or original."},
     IssueText{"unsupported_shaders", "Los shaders deben ser on u off.",
@@ -155,6 +157,9 @@ constexpr std::array issue_texts{
     IssueText{"runtime_missing_timeline_replay_v1",
               "El Runtime no ofrece guiones de mando (timeline_replay_v1).",
               "The Runtime does not offer pad timelines (timeline_replay_v1)."},
+    IssueText{"runtime_missing_close_at_end_v1",
+              "El Runtime no ofrece cerrar la ventana al terminar (close_at_end_v1).",
+              "The Runtime does not offer closing the window at the end (close_at_end_v1)."},
     IssueText{"runtime_incompatible", "El Runtime no es compatible con esta comprobación.",
               "The Runtime is not compatible with this check."},
     // Pack.

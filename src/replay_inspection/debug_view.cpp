@@ -69,6 +69,11 @@ std::vector<DebugLine> debug_lines(const FrameRecord &record, const TakeClock &c
         {text(language, label_elapsed), decimal(times.elapsed_ms)},
         {text(language, label_remaining), decimal(times.remaining_ms)},
     };
+    // Spec 006 (RF-7.4): the pad of the frame, and the step of a timeline.
+    if (!record.general.buttons.empty())
+        lines.push_back({text(language, label_buttons), record.general.buttons});
+    if (!record.general.step.empty())
+        lines.push_back({text(language, label_step), record.general.step});
     // RF-7.7: only the measures that exist for this visit.
     if (record.measurements.processing_ms)
         lines.push_back(

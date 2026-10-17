@@ -63,8 +63,15 @@ ProtocolChoice negotiate_runtime_protocol(const CapabilitySet &offer,
 
 ProtocolChoice negotiate_runtime_protocol(const CapabilitySet &offer, std::string_view presentation,
                                           const bool timelines) {
-    if (timelines && !offers(offer, timeline_replay_capability))
+    return negotiate_runtime_protocol(offer, ProtocolNeeds{presentation, timelines, false});
+}
+
+ProtocolChoice negotiate_runtime_protocol(const CapabilitySet &offer, const ProtocolNeeds &needs) {
+    const auto presentation = needs.presentation;
+    if (needs.timelines && !offers(offer, timeline_replay_capability))
         return FieldIssue{"--runtime", "runtime_missing_timeline_replay_v1"};
+    if (needs.close_at_end && !offers(offer, close_at_end_capability))
+        return FieldIssue{"--runtime", "runtime_missing_close_at_end_v1"};
     const auto &runtime = offer.contracts[static_cast<std::size_t>(ContractKind::runtime)];
     const bool v11 =
         std::find(runtime.begin(), runtime.end(), runtime_protocol_v11) != runtime.end();

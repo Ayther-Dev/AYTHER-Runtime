@@ -57,6 +57,8 @@ struct EffectiveRequest {
     std::string request_id;
     std::string language;
     std::string presentation;
+    // Spec 006 (RF-7.3): `inspect` or `close`; only the Runtime arguments carry it.
+    std::string at_end;
     std::optional<std::string> play_manifest;
     std::optional<std::string> reference;
     EffectiveConditions conditions;

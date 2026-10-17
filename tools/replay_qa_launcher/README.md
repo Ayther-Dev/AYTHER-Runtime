@@ -17,6 +17,7 @@ Se instala con el componente `qa`, junto a `ayther_audio_qa`, y nunca con el com
    - **Runtime y core:** si hay un Runtime instalado junto al launcher y una configuración de AYTHER Play CE, salen de ahí. El resumen muestra su origen como «entorno», y la configuración de Play CE sólo se lee.
    - **Rutas pegadas:** una ruta pegada entre comillas dobles, como la deja «Copiar como ruta de acceso» de Windows, se usa sin ese par de comillas en todos los campos de ruta. El resumen y la solicitud registran la ruta sin comillas.
 3. **Revisa las secciones.** Son entorno y condiciones, información auxiliar, destino e identidad, presentación e idioma. Un campo no válido muestra su error debajo, por ejemplo «Campo obligatorio» o el código de la validación previa, como `core_platform_mismatch`.
+   - **Al terminar** (`--at-end`): `inspect` deja la ventana del Runtime en pausa en el último frame al fin natural, con el aviso «Flechas: inspeccionar · Esc: cerrar la ventana»; `close` la cierra sola en cuanto el resultado se ha enviado. Exige un Runtime con `close_at_end_v1` (spec 006 RF-7.3).
 4. **Comprueba el resumen de valores efectivos.** Cada fila muestra su origen: seleccionado, por defecto, entorno o manifiesto.
    - Cualquier cambio vuelve a validar la solicitud con el Runtime antes de poder iniciar.
    - «Iniciar» sólo se habilita cuando no queda ningún error.
@@ -36,6 +37,8 @@ Se instala con el componente `qa`, junto a `ayther_audio_qa`, y nunca con el com
 Con presentación visible, el Runtime abre su propia ventana por toma. Los controles son:
 
 - **Espacio:** pausa al terminar el frame en curso (si no hay ninguno, en el último mostrado) y reanuda.
+- **Línea de estado:** abajo a la izquierda, siempre visible: tiempo de la toma (s), frame/total, botones del mando del frame («Mando a+right») y, en un guion, el paso en curso con los segundos que le quedan («Paso 7/9 wait 2s (1.20 s)»). Sirve para seguir los `wait` y ver cuándo entra cada botón.
+- **Esc:** pide cerrar la ventana, igual que su botón de cierre (la ventana ocupa la pantalla). Antes del fin natural cancela la toma; después sólo cierra la ventana y el resultado confirmado no cambia. Al fin natural la ventana lo recuerda: «Fin de la reproducción. Flechas: inspeccionar · Esc: cerrar la ventana». El campo «Al terminar» (`--at-end`) con `close` hace que la ventana se cierre sola en cuanto el resultado se ha enviado (spec 006 RF-7).
 - **← y →:** en pausa, retroceden y avanzan un frame.
 - **I:** muestra u oculta el registro de depuración.
 

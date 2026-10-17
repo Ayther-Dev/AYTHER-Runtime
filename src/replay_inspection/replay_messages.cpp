@@ -49,6 +49,13 @@ constexpr std::array texts{
     Text{ReplayMessage::label_occurrences, "Ocurrencias", "Occurrences"},
     Text{ReplayMessage::label_overflow, "Filas no mostradas", "Rows not shown"},
     Text{ReplayMessage::debug_hidden_hint, "Pulse I para la depuración", "Press I for debug"},
+    Text{ReplayMessage::label_time, "Tiempo (s)", "Time (s)"},
+    Text{ReplayMessage::label_buttons, "Mando", "Pad"},
+    Text{ReplayMessage::label_step, "Paso", "Step"},
+    // The overlay font covers Latin-1 only: no arrow glyphs here.
+    Text{ReplayMessage::end_hint,
+         "Fin de la reproducción. Flechas: inspeccionar · Esc: cerrar la ventana",
+         "End of the replay. Arrows: inspect · Esc: close the window"},
 };
 
 constexpr auto keys = [] {

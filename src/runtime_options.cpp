@@ -302,6 +302,8 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char *const argv
             options.qa_take_position = std::get<std::uint32_t>(parsed);
         } else if (argument == "--qa-last-take") {
             options.qa_last_take = true;
+        } else if (argument == "--qa-close-at-end") {
+            options.qa_close_at_end = true;
         } else if (argument == "--frames") {
             auto value = next_value(argument);
             if (const auto *error = std::get_if<RuntimeOptionError>(&value)) {

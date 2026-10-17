@@ -283,8 +283,9 @@ RequestPreflight preflight_request(const EffectiveRequest &request) {
         if (offer == nullptr || !gate.negotiate(*offer)) {
             add_issue(issues, {"--runtime", "runtime_incompatible"});
         } else {
-            auto chosen = negotiate_runtime_protocol(*offer, request.presentation,
-                                                     !request.timelines.empty());
+            auto chosen = negotiate_runtime_protocol(
+                *offer, ProtocolNeeds{request.presentation, !request.timelines.empty(),
+                                      request.at_end == "close"});
             if (auto *issue = std::get_if<FieldIssue>(&chosen))
                 add_issue(issues, std::move(*issue));
             else

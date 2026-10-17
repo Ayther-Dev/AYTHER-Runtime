@@ -49,6 +49,8 @@ void fields_and_required() {
            "RF-1.2, RF-1.3: the launcher starts without materials of an earlier session");
     expect(model.value("--presentation") == "visible" && model.value("--language") == "es",
            "plan §5.14: visible presentation and Spanish at start");
+    expect(model.value("--at-end") == "inspect",
+           "spec 006 RF-7.3: the window stays for the inspection unless asked to close");
     expect(!model.can_start(), "RF-1.2: without ROM and take Start is disabled");
     const auto missing = model.missing_required();
     const auto flagged = [&missing](std::string_view field) {

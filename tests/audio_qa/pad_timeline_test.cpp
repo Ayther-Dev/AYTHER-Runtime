@@ -224,6 +224,37 @@ void paths() {
            "RF-3.3: the sidecar is the state with the .fm extension");
 }
 
+// Spec 006 (RF-7.4): the window follows the timeline by step, pad and time.
+void tracking() {
+    const auto parsed =
+        qa::parse_pad_timeline("wait 2f\npress a+right 3f\ndown b\nwait 1s\nup b\n");
+    const auto built = qa::compile_pad_timeline(parsed.timeline, 50.0);
+    expect(built.error == qa::TimelineCompileError::none && built.compiled.frames == 55U,
+           "tracking: the timeline compiles to 55 frames at 50 fps");
+    const std::vector<qa::CompiledStepSpan> spans{{0, 0, 2}, {1, 2, 3}, {3, 5, 50}};
+    expect(built.compiled.spans == spans,
+           "RF-7.4: only the steps that take frames have a span, with their first frame");
+    const auto inside = qa::timeline_position(built.compiled, 5U);
+    expect(inside && inside->span == 2U && inside->step == 3U && inside->frames_left == 50U,
+           "RF-7.4: frame 5 opens the wait of one second with its 50 frames left");
+    const auto last = qa::timeline_position(built.compiled, 4U);
+    expect(last && last->span == 1U && last->step == 1U && last->frames_left == 1U,
+           "RF-7.4: the last frame of a step has one frame left");
+    expect(!qa::timeline_position(built.compiled, 55U), "RF-7.4: no step after the end");
+    expect(qa::describe_timeline_buttons(0x0082) == "a+right" &&
+               qa::describe_timeline_buttons(0) == "-" &&
+               qa::describe_timeline_buttons(0x0008) == "start",
+           "RF-7.4: a mask is named with the Genesis names of the table");
+    expect(qa::describe_timeline_step(parsed.timeline.steps[1]) == "press a+right 3f" &&
+               qa::describe_timeline_step(parsed.timeline.steps[2]) == "down b" &&
+               qa::describe_timeline_step(parsed.timeline.steps[3]) == "wait 1s",
+           "RF-7.4: a step is described as it was written");
+    const auto hold = qa::parse_pad_timeline("hold right 0.1s\npress a\n");
+    expect(qa::describe_timeline_step(hold.timeline.steps[0]) == "press right 0.1s" &&
+               qa::describe_timeline_step(hold.timeline.steps[1]) == "press a 4f",
+           "RF-7.4: hold is a press with its duration; a default press shows its 4 frames");
+}
+
 } // namespace
 
 int main() {
@@ -233,6 +264,7 @@ int main() {
     compilation();
     input_source();
     paths();
+    tracking();
     if (failures != 0)
         return 1;
     std::cout << "pad timelines parse, compile and feed the replay input source\n";

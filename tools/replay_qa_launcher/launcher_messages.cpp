@@ -86,6 +86,7 @@ constexpr std::array field_texts{
     FieldText{"language", "Idioma", "Language"},
     FieldText{"trust_registry", "Registro de confianza", "Trust registry"},
     FieldText{"presentation", "Presentación", "Presentation"},
+    FieldText{"at_end", "Al terminar", "At the end"},
     FieldText{"pack_mode", "Modo del pack", "Pack mode"},
     FieldText{"takes", "Tomas", "Takes"},
     FieldText{"timelines", "Guiones de mando", "Pad timelines"},

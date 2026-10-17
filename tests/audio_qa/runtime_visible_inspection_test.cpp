@@ -275,6 +275,23 @@ int main(int argc, char **argv) {
                state_seen(one, "ended_paused", 0U),
            "RF-2.8: a take of one frame ends naturally, paused at frame 0");
 
+    // Spec 006 (RF-7.3): with --qa-close-at-end the window closes itself after the confirmed
+    // result, without a close from the script; the result is the same natural end.
+    {
+        auto options = base;
+        options.label = "close-at-end";
+        options.take = single;
+        options.presentation = "visible";
+        options.last_take = true;
+        options.extra_arguments = {L"--qa-close-at-end"};
+        const auto closing = hn::run(options);
+        const auto *closing_terminal = terminal(closing);
+        expect(closing.terminals.size() == 1U && closing_terminal &&
+                   closing_terminal->playback == "natural_end" && closing_terminal->ended_paused &&
+                   closing_terminal->linear_completed,
+               "spec 006 RF-7.3: the window closes itself after the confirmed natural end");
+    }
+
     // BR-150, BR-154 (RF-2.9): navigating after the natural end opens a post-end inspection on a
     // re-armed session; the confirmed result does not change.
     const auto post_end = run("post-end",

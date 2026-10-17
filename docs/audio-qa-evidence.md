@@ -38,13 +38,16 @@ Runtime anterior sigue sirviendo tomas. La evidencia de un guion añade el hecho
 | ← / → | En pausa, retroceden o avanzan un frame dentro de la toma. La navegación es silenciosa y se recupera desde los checkpoints con las entradas grabadas. |
 | I | Muestra u oculta el registro de depuración del frame. No cambia la reproducción ni la posición, y cada toma empieza con el registro oculto. |
 | Re Pág, Av Pág, Inicio, Fin, rueda | Desplazan el registro de depuración visible. |
+| Esc | Pide cerrar la ventana, igual que su botón de cierre (la ventana ocupa la pantalla y no tiene barra de título). Antes del fin natural es una cancelación; después sólo cierra la ventana y la inspección posterior, y el resultado confirmado no cambia (spec 006 RF-7.1). |
 
 - Una tecla mantenida no se repite.
 - Sin foco, ninguna tecla actúa. Al recuperarlo, una tecla que seguía pulsada queda bloqueada hasta que se suelta.
 - ← y → a la vez no mueven nada.
 - Durante la preparación o una recuperación, la ventana avisa «no disponible» u «ocupado» y no acumula órdenes.
 
-**Fin natural.** Al completar el último frame de la última toma, el resultado lineal se confirma y se envía primero, y la ventana queda en pausa en ese frame. Una toma intermedia pasa a la siguiente, salvo que hubiera una pausa pendiente: entonces queda en pausa y Espacio inicia la siguiente.
+**Línea de estado.** Abajo a la izquierda, siempre visible, la ventana muestra el tiempo de la toma en segundos, el frame sobre el total, los botones del mando de ese frame con sus nombres Genesis («Mando a+right», «-» sin botones) y, en un guion, el paso en curso entre los que consumen frames, tal como se escribió, con los segundos que le quedan («Paso 7/9 wait 2s (1.20 s)»). Con I, el registro de depuración repite «Mando» y «Paso» como filas (spec 006 RF-7.4).
+
+**Fin natural.** Al completar el último frame de la última toma, el resultado lineal se confirma y se envía primero, y la ventana queda en pausa en ese frame con el aviso «Fin de la reproducción. Flechas: inspeccionar · Esc: cerrar la ventana» (spec 006 RF-7.2). Una toma intermedia pasa a la siguiente, salvo que hubiera una pausa pendiente: entonces queda en pausa y Espacio inicia la siguiente. Con `--at-end close` (campo «Al terminar» del lanzador) la ventana se cierra sola en cuanto el resultado se ha enviado, como termina la ejecución sin presentación; el Runtime debe ofrecer `close_at_end_v1` o la solicitud se rechaza con `runtime_missing_close_at_end_v1: --runtime` (spec 006 RF-7.3).
 
 **Inspección posterior.** Navegar después del fin natural abre un recorrido aparte, `post_end_inspection`, sobre una sesión rearmada desde los checkpoints. Ese recorrido tiene su propio `run_id` (`<run_id>-inspection-<n>`) y su propio terminal, y nunca cambia el resultado confirmado.
 
@@ -182,7 +185,8 @@ Runtime negocia por separado los contratos Engine, Runtime QA, evidencia y
 estado HD. Los cuatro deben ofrecer 1.0 y las diez capacidades obligatorias. Un
 Runtime incompatible produce `runtime_incompatible` y no acredita replay. Una solicitud con
 guiones de mando exige además `timeline_replay_v1`; sin ella se rechaza con
-`runtime_missing_timeline_replay_v1` antes de la admisión.
+`runtime_missing_timeline_replay_v1` antes de la admisión. Una solicitud con `--at-end close`
+exige `close_at_end_v1`; sin ella se rechaza con `runtime_missing_close_at_end_v1`.
 
 ## Aislamiento y materiales privados
 

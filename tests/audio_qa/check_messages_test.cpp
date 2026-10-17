@@ -74,9 +74,10 @@ constexpr std::array codes{
     // Parser.
     "unknown_option", "missing_option_value", "empty_option_value", "option_value_too_long",
     "duplicate_option", "invalid_number", "missing_required_option", "unsupported_language",
-    "unsupported_presentation", "unsupported_pack_mode", "unsupported_shaders",
-    "invalid_unsigned_value", "malformed_core_option", "too_many_takes", "too_many_values",
-    "too_many_arguments", "missing_required_material",
+    "unsupported_presentation", "unsupported_at_end", "unsupported_pack_mode",
+    "unsupported_shaders", "runtime_missing_close_at_end_v1", "invalid_unsigned_value",
+    "malformed_core_option", "too_many_takes", "too_many_values", "too_many_arguments",
+    "missing_required_material",
     // Auxiliary sources and effective values.
     "play_manifest_unavailable", "reference_unavailable", "play_manifest_rom_mismatch",
     "reference_rom_mismatch", "core_unresolved", "invalid_shaders_condition",

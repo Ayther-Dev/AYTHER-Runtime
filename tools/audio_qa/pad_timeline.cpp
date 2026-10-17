@@ -3,6 +3,7 @@
 #include <array>
 #include <charconv>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <utility>
 
@@ -308,7 +309,8 @@ TimelineCompileResult compile_pad_timeline(const PadTimeline &timeline, const do
     }
     auto &buttons = result.compiled.buttons;
     std::uint16_t held{};
-    for (const auto &step : timeline.steps) {
+    for (std::size_t index = 0; index < timeline.steps.size(); ++index) {
+        const auto &step = timeline.steps[index];
         if (step.kind == TimelineStepKind::down) {
             held = static_cast<std::uint16_t>(held | step.buttons);
             continue;
@@ -339,6 +341,8 @@ TimelineCompileResult compile_pad_timeline(const PadTimeline &timeline, const do
         const auto mask = step.kind == TimelineStepKind::press
                               ? static_cast<std::uint16_t>(held | step.buttons)
                               : held;
+        result.compiled.spans.push_back({index, static_cast<std::uint32_t>(buttons.size()),
+                                         static_cast<std::uint32_t>(frames)});
         buttons.insert(buttons.end(), static_cast<std::size_t>(frames), mask);
     }
     if (buttons.size() < min_recording_frames) {
@@ -353,6 +357,59 @@ TimelineCompileResult compile_pad_timeline(const PadTimeline &timeline, const do
         bytes.push_back(static_cast<std::byte>(mask >> 8U));
     }
     return result;
+}
+
+std::optional<TimelinePosition> timeline_position(const CompiledTimeline &compiled,
+                                                  const std::uint32_t frame) noexcept {
+    for (std::size_t index = 0; index < compiled.spans.size(); ++index) {
+        const auto &span = compiled.spans[index];
+        if (frame >= span.first_frame && frame - span.first_frame < span.frames)
+            return TimelinePosition{index, span.step, span.first_frame + span.frames - frame};
+    }
+    return std::nullopt;
+}
+
+std::string describe_timeline_buttons(const std::uint16_t mask) {
+    std::string names;
+    for (const auto &button : genesis_buttons()) {
+        if ((mask & button.mask) == 0U)
+            continue;
+        if (!names.empty())
+            names.push_back('+');
+        names.append(button.name);
+    }
+    return names.empty() ? std::string{"-"} : names;
+}
+
+std::string describe_timeline_step(const TimelineStep &step) {
+    std::string text;
+    switch (step.kind) {
+    case TimelineStepKind::wait:
+        text = "wait";
+        break;
+    case TimelineStepKind::press:
+        text = "press";
+        break;
+    case TimelineStepKind::down:
+        text = "down";
+        break;
+    case TimelineStepKind::up:
+        text = "up";
+        break;
+    }
+    if (step.kind != TimelineStepKind::wait)
+        text += " " + describe_timeline_buttons(step.buttons);
+    if (step.duration) {
+        if (step.duration->unit == TimelineDurationUnit::frames) {
+            text += " " + std::to_string(step.duration->frames) + "f";
+        } else {
+            char buffer[32];
+            std::snprintf(buffer, sizeof buffer, "%gs", step.duration->seconds);
+            text += " ";
+            text += buffer;
+        }
+    }
+    return text;
 }
 
 std::string_view timeline_compile_error_code(const TimelineCompileError error) noexcept {

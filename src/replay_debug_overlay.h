@@ -31,8 +31,11 @@ class ReplayDebugOverlay final {
     [[nodiscard]] bool ready() const noexcept { return imgui_ready_; }
 
     // Records the overlay after the frame reached the swapchain and before it is finalized.
+    // `status` is the line of the replay (time, frame, pad, step), drawn whenever it is not
+    // empty; `notice` the message of the inspection.
     void render(const AcquiredFrame &frame, bool visible,
-                const std::vector<replay_inspection::DebugLine> &lines, const std::string &notice);
+                const std::vector<replay_inspection::DebugLine> &lines, const std::string &notice,
+                const std::string &status);
     void scroll(replay_inspection::ScrollKey key, std::size_t total_lines) noexcept;
     void reset_scroll() noexcept { scroll_.reset(); }
     // Frames on which debug data was drawn; never while hidden (BR-144).

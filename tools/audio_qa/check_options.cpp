@@ -185,6 +185,8 @@ std::string_view check_option_error_code(CheckOptionErrorCode code) noexcept {
         return "invalid_number";
     case CheckOptionErrorCode::unsupported_presentation:
         return "unsupported_presentation";
+    case CheckOptionErrorCode::unsupported_at_end:
+        return "unsupported_at_end";
     case CheckOptionErrorCode::unsupported_pack_mode:
         return "unsupported_pack_mode";
     case CheckOptionErrorCode::unsupported_shaders:

@@ -54,6 +54,13 @@ std::optional<PresentationEvent> translate_window_event(const SDL_Event &event,
             return PresentationEvent{Kind::close};
         return std::nullopt;
     case SDL_EVENT_KEY_DOWN: {
+        // Spec 006 (RF-7.1): Escape asks to close the window, like its close button; the
+        // window has no title bar in full screen. A repeat of a held Escape asks nothing.
+        if (event.key.scancode == SDL_SCANCODE_ESCAPE) {
+            if (event.key.repeat)
+                return std::nullopt;
+            return PresentationEvent{Kind::close};
+        }
         using replay_inspection::ScrollKey;
         std::optional<ScrollKey> scroll;
         if (event.key.scancode == SDL_SCANCODE_PAGEUP)
