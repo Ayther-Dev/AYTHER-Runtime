@@ -106,6 +106,8 @@ std::vector<std::byte> make_recording(const std::vector<std::uint8_t> &initial_s
     for (std::size_t frame{}; frame < known_inputs.size(); ++frame)
         append_u32(bytes, 0);
     append_u32(bytes, 1);
+    // v9: no FM register shadow (the synthetic core has no detector history to seed).
+    append_u32(bytes, 0);
     return bytes;
 }
 

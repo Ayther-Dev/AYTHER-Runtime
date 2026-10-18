@@ -21,7 +21,7 @@ KEY = Ed25519PrivateKey.from_private_bytes(
 )
 PUBLIC = KEY.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw).hex()
 GAME_ID = "ayther-public-synthetic-v1"
-SIGNATURE = "daf281b060d3fe48"
+SIGNATURE = "2a6620d0f170f9d2"
 ROM = b"AYTHER-PUBLIC-QA"
 WAV = bytes(
     [

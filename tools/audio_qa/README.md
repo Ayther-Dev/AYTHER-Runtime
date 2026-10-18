@@ -77,6 +77,10 @@ $runtime = 'C:\ruta\audio-qa\bin\ayther_runtime.exe'
 - Cada toma se valida entera antes de admitir la solicitud: además de cabecera, tamaños
   y entradas, su estado inicial se descomprime completo, como lo hará el Runtime antes de
   restaurarlo. Un estado dañado se rechaza con `take_initial_state_invalid: --take[i]`.
+  Una toma `.arp` v9 trae al final la sombra de registros FM del detector al iniciar la
+  toma; se lee entera como lo hará el Runtime antes de sembrar el detector, y una cola
+  dañada se rechaza con `take_fm_registers_invalid: --take[i]`. Las tomas v2 a v8 no la
+  traen y se admiten igual.
 - Cada guion de mando se analiza antes de admitir la solicitud. Un error de sintaxis se
   rechaza con `timeline_syntax_invalid: --timeline[j]` y una línea
   `audio_qa_diagnostic: timeline_syntax_invalid field=--timeline[j] line=<n> reason=<código>`;
