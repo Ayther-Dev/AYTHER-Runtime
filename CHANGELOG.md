@@ -17,6 +17,18 @@ once stable compatibility guarantees are defined.
 
 ### Fixed
 
+- The game session decodes the pack's catalog textures before the first HD
+  frame (`AytherRenderer::prewarm_textures`, as the replay QA already did),
+  and again after a pack hot reload. Each HD texture used to be decoded
+  synchronously on its first use, so the main thread stopped for hundreds of
+  milliseconds on every scene entry (Golden Axe: 384 ms at the title, 696 ms
+  leaving the character select); the audio player primed silence over the gap
+  and the music stuttered. The log reports what the prewarm cost.
+- Turning «Modo HD» off and on again from the pause menu now resumes the HD
+  music at the emulated-clock offset. The toggle used the explicit shutdown of
+  the live substitution, which discards every instance, so after switching HD
+  back on the original music kept playing until the sequence re-anchored;
+  short effects re-triggered on their own. It now uses the assets bypass.
 - The button that closes the pause menu (A on «Continuar», Guide, Escape) no
   longer reaches the game as a new press: on a character-select screen it
   picked the character behind the menu. Whatever is held when the menu closes

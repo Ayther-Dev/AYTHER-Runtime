@@ -886,6 +886,36 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
         player_cfg.output = std::string(out_profile_->id);
     }
 
+    // Spec 002 (R6, BR-091): las texturas del catálogo del pack se decodifican
+    // ANTES del primer frame con HD. Sin esto cada textura se decodifica de
+    // forma síncrona en su primer uso (BR-092) y el hilo principal se para al
+    // entrar a cada escena —Golden Axe: 384 ms al aparecer el título, 696 ms al
+    // salir de la selección—; el reproductor de audio antepone silencio y la
+    // música se oye a trompicones. La réplica de QA ya precalentaba; la sesión
+    // de juego no. Se repite tras recargar el pack (las texturas se evictan).
+    bool textures_prewarmed = false;
+    const auto prewarm_pack_textures = [&](const char *why) {
+        textures_prewarmed = true;
+        if (!renderer_ok || !vulkan.is_ready())
+            return;
+        const auto pack = sess->pack();
+        if (!pack)
+            return;
+        // Cola ociosa: el precalentado envía su propio command buffer y espera.
+        if (const auto failure = vulkan.wait_idle("vkDeviceWaitIdle [texture prewarm]")) {
+            ayther::runtime::vulkan::log_vk_failure(*failure);
+            return;
+        }
+        const auto report =
+            renderer.prewarm_textures(vulkan.engine_view(), pack, sess->catalog_texture_assets());
+        std::fprintf(stdout,
+                     "[main] HD textures prewarmed (%s): %u/%u resident, %u over budget, "
+                     "%u missing, %.1f MB, decode %.0f ms, upload %.0f ms\n",
+                     why, report.resident, report.assets, report.over_budget, report.failed,
+                     static_cast<double>(report.gpu_bytes) / (1024.0 * 1024.0), report.decode_ms,
+                     report.upload_ms);
+    };
+
     // Last valid FrameView — kept alive across paused frames (step() not called
     // while paused, so the previous frame's pointers remain valid).
     static const ayther::FrameView kEmptyFrame{};
@@ -1086,6 +1116,9 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
                     if (const auto pack = sess->pack(); pack && renderer_ok) {
                         pack.select_render_tier_for_height(renderer.render_image().extent.height);
                     }
+                    // Las texturas se evictaron arriba: el próximo frame con HD
+                    // las precalienta de nuevo en vez de decodificarlas una a una.
+                    textures_prewarmed = false;
                     std::fprintf(stdout, "[main] Pack reloaded  game=%s\n", sess->game_id());
                 } else {
                     std::fprintf(stdout, "[main] Pack gone — continuing without assets\n");
@@ -1122,6 +1155,10 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
             // ANTES del step, porque la supresión ocurre en produce_frame —
             // pasarlo sólo a renderer.render() no alcanza.
             sess->set_hd_enabled(hd_on_);
+            // Y las texturas que ese modo va a pedir, residentes antes de que
+            // el frame las necesite (arranque, F1 o el menú, recarga del pack).
+            if (hd_on_ && !textures_prewarmed)
+                prewarm_pack_textures(last_fv ? "HD on" : "session start");
             // …y el AUDIO con él (#297). La sustitución en vivo se encendía una
             // sola vez al cargar el pack y no se apagaba nunca, así que poner
             // «HD Mode: OFF» dejaba la imagen original con la música HD encima
@@ -1129,8 +1166,16 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
             // pide justamente que video y audio cambien SINCRONIZADOS.
             // Sólo si el pack trae eventos: sin asignaciones no hay nada que
             // sustituir y encenderlo sería levantar el detector al pedo.
+            // «Modo HD: desactivado» es un BYPASS de assets, no el apagado
+            // explícito: la sustitución sigue encendida (set_pack la activó),
+            // los streams HD callan, suena el original y el bookkeeping de
+            // instancias sigue el reloj emulado. Al volver a activarlo la
+            // música HD reanuda con su offset, sin esperar otro key-on. Con
+            // set_audio_runtime_substitution(false) se descartaban las
+            // instancias y al reactivar seguía sonando el original hasta el
+            // próximo anclaje de la Secuencia.
             if (sess->audio_event_assignment_count() > 0)
-                sess->set_audio_runtime_substitution(hd_on_);
+                sess->set_audio_live_bypass(!hd_on_);
 
             if (rewinding) {
                 if (const ayther::FrameView *rv = sess->rewind_step())
