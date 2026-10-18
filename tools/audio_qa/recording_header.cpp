@@ -270,6 +270,9 @@ RecordingFmRegistersResult decode_recording_fm_registers(const std::span<const s
     const auto begin = cursor.offset();
     if (!cursor.skip(size))
         return truncated();
+    // v10 (Engine spec 007): the take id follows the shadow.
+    if (layout.header.version >= take_id_recording_version && !cursor.skip(take_id_bytes))
+        return truncated();
     if (!cursor.at_end()) {
         result.error = RecordingFmRegistersError::trailing_content;
         return result;

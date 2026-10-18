@@ -234,7 +234,7 @@ emisiones después del cierre se contabilizan fuera de las colas; el callback no
 serializa, espera ni realiza E/S.
 
 QA-096 añade la validación fija de la cabecera de toma por contenido. Reconoce
-`ARP1`, admite las versiones 2 a 8 de Engine y devuelve códigos distintos para
+`ARP1`, admite las versiones 2 a 10 de Engine (una toma v10, con el `take_id` embebido de la spec 007 del Engine, exige que el Runtime ofrezca `take_format_v10`: `runtime_missing_take_format_v10` si no) y devuelve códigos distintos para
 entrada vacía, cabecera truncada, magic inválido y versión no admitida. El
 lector no recibe el nombre de archivo, por lo que `.ayr` y `.arp` no influyen
 en la aceptación. Tamaños variables y descompresión continúan en QA-097.

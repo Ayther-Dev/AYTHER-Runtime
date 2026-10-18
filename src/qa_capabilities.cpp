@@ -9,6 +9,9 @@
 #if defined(AYTHER_RUNTIME_AUDIO_QA)
 #include "capabilities.h"
 #include "contract_version.h"
+#if __has_include(<ayther/ayther_recording.h>)
+#include <ayther/ayther_recording.h>   // AYTHER_RECORDING_TAKE_ID (Engine spec 007)
+#endif
 #endif
 
 #include <string>
@@ -70,6 +73,10 @@ std::string qa_capabilities_report() {
     // Spec 006 (RF-4.4): pad timelines drive the game instead of a take; (RF-7.3): the
     // window can close itself after the natural end.
     report.append(R"(,"visible_replay_v1","inspection_v1","timeline_replay_v1","close_at_end_v1")");
+#if defined(AYTHER_RECORDING_TAKE_ID)
+    // Engine spec 007: this Runtime's Engine loads takes of format 10 (embedded take id).
+    report.append(R"(,"take_format_v10")");
+#endif
     report.append(R"(],"limits":{"fact_bytes":)");
     report.append(std::to_string(limits.fact_bytes));
     report.append(R"(,"batch_bytes":)");

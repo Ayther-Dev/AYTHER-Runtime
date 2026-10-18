@@ -10,11 +10,16 @@ namespace ayther::audio_qa {
 
 inline constexpr std::size_t recording_fixed_header_bytes = 8;
 inline constexpr std::uint32_t oldest_supported_recording_version = 2;
-inline constexpr std::uint32_t current_recording_version = 9;
 // .arp v9: the take ends with the detector's FM register shadow at its start (Engine
 // `AytherRecording::audio_fm_regs`): u32 size (0 = none, or 512) + bytes.
+// .arp v10 (Engine spec 007) appends the take id (u64) after it. Whether the
+// Runtime's Engine can LOAD a v10 take is negotiated: a request with one needs
+// `take_format_v10`.
+inline constexpr std::uint32_t current_recording_version = 10;
 inline constexpr std::uint32_t recording_fm_registers_version = 9;
 inline constexpr std::uint32_t recording_fm_register_bytes = 0x200;
+inline constexpr std::uint32_t take_id_recording_version = 10;
+inline constexpr std::uint32_t take_id_bytes = 8;
 inline constexpr std::uint64_t max_recording_bytes = 64ULL * 1024ULL * 1024ULL;
 inline constexpr std::uint32_t max_recording_state_bytes = 64U * 1024U * 1024U;
 inline constexpr std::uint32_t min_recording_frames = 1;

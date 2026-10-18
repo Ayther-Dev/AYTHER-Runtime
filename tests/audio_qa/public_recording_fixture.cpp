@@ -83,7 +83,9 @@ std::vector<std::byte> make_recording(const std::vector<std::uint8_t> &initial_s
     compressed.resize(compressed_size);
 
     std::vector<std::byte> bytes{std::byte{'A'}, std::byte{'R'}, std::byte{'P'}, std::byte{'1'}};
-    append_u32(bytes, qa::current_recording_version);
+    // v9, the newest format every Runtime of the protocol loads: a v10 take (Engine spec 007)
+    // needs `take_format_v10` and is covered by the preflight and layout tests.
+    append_u32(bytes, qa::recording_fm_registers_version);
     append_text(bytes, "ayther-public-synthetic-v1");
     append_text(bytes, "audio-qa-public-replay");
     append_u32(bytes, static_cast<std::uint32_t>(known_inputs.size()));
