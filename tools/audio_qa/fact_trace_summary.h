@@ -1,9 +1,11 @@
 #pragma once
 
 #include "fact_model.h"
+#include "inspection_fact_builder.h"
 #include "replay_execution_result.h"
 
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 
@@ -20,6 +22,8 @@ class ReplayFactTraceAccumulator final {
 
     [[nodiscard]] bool consume(const Fact &fact) noexcept;
     [[nodiscard]] ReplayTraceSummary summarize(bool transport_loss_free) const noexcept;
+    // Spec 006 (RF-4.2): the run's `timeline_compiled` fact, when it replayed a timeline.
+    [[nodiscard]] std::optional<TimelineCompiledRecord> timeline() const;
 
   private:
     struct Impl;

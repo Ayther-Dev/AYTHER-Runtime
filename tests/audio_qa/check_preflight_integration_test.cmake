@@ -252,10 +252,29 @@ if(DEFINED TIMELINE_STATE_FILE AND EXISTS "${TIMELINE_STATE_FILE}")
     check(0 "${TEST_ROOT}/timeline-state" --rom "${ROM_FILE}" --core "${CORE_DLL}"
           --timeline "${TEST_ROOT}/state.timeline")
     expect_in("${last_report}" "material=timeline position=0 recording_frames=4 inputs_consumed=4"
+              "audio_qa_warning: timeline_fm_seed_absent position=0 fm_sidecar=absent"
               "audio_qa_summary: exit_code=0")
     file(GLOB state_summaries "${TEST_ROOT}/timeline-state/requests/*/request-summary.toml")
     file(READ "${state_summaries}" state_summary)
     expect_in("${state_summary}" "role = 'timeline_state'")
+    #    The same state with the 512-byte `.fm` the Lab writes next to a bookmark: seeded,
+    #    pinned as material and without the warning (RF-3.3).
+    file(MAKE_DIRECTORY "${TEST_ROOT}/bookmark")
+    file(COPY_FILE "${TIMELINE_STATE_FILE}" "${TEST_ROOT}/bookmark/seeded.sav")
+    string(REPEAT "f" 512 fm_shadow)
+    file(WRITE "${TEST_ROOT}/bookmark/seeded.fm" "${fm_shadow}")
+    file(WRITE "${TEST_ROOT}/seeded.timeline"
+        "start state ${TEST_ROOT}/bookmark/seeded.sav\npress b 2f\nwait 2f\n")
+    check(0 "${TEST_ROOT}/timeline-seeded" --rom "${ROM_FILE}" --core "${CORE_DLL}"
+          --timeline "${TEST_ROOT}/seeded.timeline")
+    expect_in("${last_report}" "material=timeline position=0 recording_frames=4 inputs_consumed=4"
+              "audio_qa_summary: exit_code=0")
+    if(last_report MATCHES "timeline_fm_seed_absent")
+        message(FATAL_ERROR "[timeline-seeded] a seeded sidecar still warns:\n${last_report}")
+    endif()
+    file(GLOB seeded_summaries "${TEST_ROOT}/timeline-seeded/requests/*/request-summary.toml")
+    file(READ "${seeded_summaries}" seeded_summary)
+    expect_in("${seeded_summary}" "role = 'timeline_fm_sidecar'")
 endif()
 #    Rejections before admission, each in its field.
 rejected("no-material" "missing_required_material: --take" --rom "${ROM_FILE}" --core "${CORE_DLL}")

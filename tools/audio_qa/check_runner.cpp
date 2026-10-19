@@ -399,6 +399,13 @@ TakeRecord RequestRun::run_take(const EffectiveRequest &effective, const Preflig
                  << " audio_backend=" << replay.presentation.audio_backend
                  << " status=" << (evidence_complete ? "replay_evidence_reopened" : replay.code);
             report(line.str());
+            // Spec 006 (RF-3.4): a timeline that started from a state without a seeded FM
+            // shadow ran with the known risk of a take that starts mid-music.
+            if (evidence->timeline && evidence->timeline->start == "state" &&
+                !evidence->timeline->fm_seeded)
+                report("audio_qa_warning: timeline_fm_seed_absent position=" +
+                       std::to_string(slot.position) +
+                       " fm_sidecar=" + evidence->timeline->fm_sidecar);
 
             // The Runtime says how the playback ended (terminal 1.4); an older one does not,
             // and its outcome is derived from its code.

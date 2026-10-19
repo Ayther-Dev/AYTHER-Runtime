@@ -469,6 +469,9 @@ struct TimelineMaterial {
     // `state-<sha256>` of the bookmark; empty for power_on.
     std::string state_id;
     bool fm_sidecar_present{};
+    // RF-3.3: the bookmark's `.fm` sidecar, the detector's FM register shadow when the Lab
+    // saved it; seeded after the fresh HD boundary like the shadow of a take.
+    std::vector<std::uint8_t> fm_registers;
 };
 
 // Spec 006 (RF-7.4): «7/9 wait 2s (1.20 s)»: the step frame `frame` falls in, among the
@@ -515,15 +518,22 @@ std::string describe_timeline_progress(const TimelineMaterial &material,
             return "timeline_state_invalid";
         material.state_bytes = std::move(loaded.bytes);
         material.state_id = digest_id(state_identity(material.state_bytes));
+        const auto sidecar = qa::timeline_fm_sidecar_path(state_path);
         std::error_code ignored;
-        material.fm_sidecar_present =
-            std::filesystem::is_regular_file(qa::timeline_fm_sidecar_path(state_path), ignored);
+        material.fm_sidecar_present = std::filesystem::is_regular_file(sidecar, ignored);
+        if (material.fm_sidecar_present) {
+            std::ifstream fm(sidecar, std::ios::binary);
+            material.fm_registers.assign(std::istreambuf_iterator<char>{fm},
+                                         std::istreambuf_iterator<char>{});
+            if (!fm || material.fm_registers.size() != qa::timeline_fm_sidecar_bytes)
+                return "timeline_fm_sidecar_invalid";
+        }
     }
     return {};
 }
 
-[[nodiscard]] qa::TimelineCompiledRecord
-timeline_compiled_record(const TimelineMaterial &material) {
+[[nodiscard]] qa::TimelineCompiledRecord timeline_compiled_record(const TimelineMaterial &material,
+                                                                  const bool fm_seeded) {
     qa::TimelineCompiledRecord record;
     record.fps = material.compiled.fps;
     record.frames = material.compiled.frames;
@@ -531,12 +541,11 @@ timeline_compiled_record(const TimelineMaterial &material) {
     const bool from_state = material.parsed.start.kind == qa::TimelineStartKind::state;
     record.start = from_state ? "state" : "power_on";
     record.state_id = material.state_id;
-    // The Engine of this Runtime does not take a register shadow yet: the sidecar is recorded,
-    // never applied, so the evidence says which detector history the run had.
+    // The evidence says which detector history the run had: a seeded sidecar, or none.
     record.fm_sidecar = !from_state                   ? "not_applicable"
                         : material.fm_sidecar_present ? "present"
                                                       : "absent";
-    record.fm_seeded = false;
+    record.fm_seeded = fm_seeded;
     return record;
 }
 
@@ -766,7 +775,8 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
         // began with the music already playing never shows the detector its patches; without
         // the shadow every channel hashes to the same placeholder instrument and the authored
         // signatures never match. Read like the Engine loader: a malformed tail fails the take.
-        // A timeline has no shadow (a bookmark's `.fm` sidecar is pending, spec 006 TL-020).
+        // A timeline from a bookmark takes it from the `.fm` sidecar (spec 006 RF-3.3), read
+        // with the timeline.
         qa::RecordingFmRegistersResult fm_registers;
         if (!timeline_material) {
             fm_registers = qa::decode_recording_fm_registers(recording, layout.layout);
@@ -775,6 +785,8 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
                 (void)send_result(*data, result);
                 return qa_execution_error;
             }
+        } else {
+            fm_registers.registers = timeline.fm_registers;
         }
 
         auto bridge = std::make_unique<ObservationBridge>(result.run_id);
@@ -1126,12 +1138,12 @@ int run_audio_qa_session_with_bridge(const RuntimeOptions &options) noexcept {
         std::uint64_t inspection_sequence{};
         // Spec 006 (RF-4.2): the evidence says how the timeline was compiled for this run.
         if (timeline_material) {
-            const auto record = timeline_compiled_record(timeline);
+            const auto record = timeline_compiled_record(timeline, !fm_registers.registers.empty());
             (void)writer.push_fact(
                 qa::make_timeline_compiled_fact(current_run_id, ++inspection_sequence, record));
             timing.mark("timeline_compiled", record.fps, record.frames, record.start,
                         record.fm_sidecar);
-            if (record.fm_sidecar != "not_applicable")
+            if (record.fm_sidecar != "not_applicable" && !record.fm_seeded)
                 std::fprintf(stderr,
                              "audio_qa_warning: timeline_fm_seed_absent start=state "
                              "fm_sidecar=%s\n",

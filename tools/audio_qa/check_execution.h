@@ -5,6 +5,7 @@
 #include "check_options.h"
 #include "effective_values.h"
 #include "fact_model.h"
+#include "inspection_fact_builder.h"
 #include "integrated_evidence.h"
 #include "model.h"
 #include "replay_execution_result.h"
@@ -50,6 +51,8 @@ struct CheckExecutionEvidence {
     bool runtime_data_isolated{};
     // Plan §8 P-14: a traversal of the run held more visits than it keeps.
     bool visit_limit_exceeded{};
+    // Spec 006 (RF-3.4, RF-4.2): the run's `timeline_compiled` fact, read from its evidence.
+    std::optional<TimelineCompiledRecord> timeline;
 };
 
 using CheckExecutionResult = std::variant<CheckExecutionEvidence, CheckExecutionError>;

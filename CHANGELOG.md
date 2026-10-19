@@ -15,6 +15,29 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+### Changed
+
+- Engine locks (`dependencies/ayther-engine.lock.json` and the QA lock) move
+  to `v0.1.0-rc.19`: live sequence anchoring re-anchors the open Sequence when
+  the game restarts the same music, so Golden Axe's intro restarts in HD on
+  the selection screen instead of falling back to the original sound.
+
+### Added
+
+- Spec 006 (RF-3.3): a timeline that starts from a Lab bookmark seeds the
+  detector with the bookmark's `.fm` sidecar (Engine rc.18
+  `seed_audio_fm_registers`) after the fresh HD boundary, also when a post-end
+  inspection re-arms the session; `timeline_compiled` reports
+  `fm_seeded = true`. A sidecar that is not 512 bytes ends the run with
+  `timeline_fm_sidecar_invalid`.
+
+### Fixed
+
+- `check` never showed `audio_qa_warning: timeline_fm_seed_absent`: the Runtime
+  printed it on a stream the session launch does not capture. The supervisor
+  now reports it from the run's `timeline_compiled` fact when a timeline
+  started from a state without a seeded FM shadow.
+
 ## [0.1.0-beta.12] - 2026-10-18
 
 ### Added

@@ -472,6 +472,7 @@ CheckExecutionResult execute_check_replay(const EffectiveRequest &effective, con
             ++sequence;
         }
         auto &result = evidence.replay;
+        evidence.timeline = evidence_writer->timeline();
 
         if (!evidence.preservation_error) {
             const auto publication =
