@@ -216,8 +216,13 @@ void paths() {
     expect(qa::resolve_timeline_state_path(timeline, "../bookmarks/title.sav") ==
                std::filesystem::path{"C:/qa/bookmarks/title.sav"}.lexically_normal(),
            "RF-3.2: a relative state path resolves against the timeline file");
-    expect(qa::resolve_timeline_state_path(timeline, "D:/marks/title.sav") ==
-               std::filesystem::path{"D:/marks/title.sav"},
+#ifdef _WIN32
+    const std::string_view absolute_state{"D:/marks/title.sav"};
+#else
+    const std::string_view absolute_state{"/marks/title.sav"};
+#endif
+    expect(qa::resolve_timeline_state_path(timeline, absolute_state) ==
+               std::filesystem::path{absolute_state},
            "RF-3.2: an absolute state path stays");
     expect(qa::timeline_fm_sidecar_path("C:/qa/bookmarks/title.sav") ==
                std::filesystem::path{"C:/qa/bookmarks/title.fm"},
