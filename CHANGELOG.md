@@ -8,15 +8,41 @@ once stable compatibility guarantees are defined.
 
 > [!WARNING]
 > AYTHER Runtime is in early development. The build reports product version
-> `0.1.0-beta.11`; this is an internal prerelease and is not supported for
+> `0.1.0-beta.12`; this is an internal prerelease and is not supported for
 > production use. The Runtime–Play process
 > protocol v1 is the exception: its documented wire fields, reason identifiers,
 > and exit codes are stable within v1.
 
 ## [Unreleased]
 
+## [0.1.0-beta.12] - 2026-10-18
+
 ### Added
 
+- Spec 006: `ayther_audio_qa check --timeline <file>` (repeatable) drives the
+  replay with a pad timeline instead of a `.ayr` take, from power-on or from a
+  Lab bookmark (`start state <path>.sav`): `wait 5s`, `press start`,
+  `hold right 0.1s`, `down b`/`up b`, with the Genesis buttons mapped as in
+  Genesis Plus GX. The Runtime compiles it with the core's timing to one input
+  per frame and feeds it through the same input source as a take. `--take` is
+  now optional; at least one take or timeline is required
+  (`missing_required_material`). A line that does not parse is rejected with
+  its number. Protocol 1.1 gains the capability `timeline_replay_v1`, the
+  optional request field `material_kind = "timeline"` and the fact
+  `timeline_compiled`; `request-summary.toml` minor 2 adds `kind = 'timeline'`.
+  A bookmark has no FM register shadow: its `.fm` sidecar is pinned and
+  recorded but not yet seeded.
+- Spec 006 (RF-7): at the natural end of the replay Escape closes the QA
+  window, `check --at-end inspect|close` chooses between the post-end
+  inspection and closing once the result is sent (capability
+  `close_at_end_v1`), and a status line at the bottom right logs the timeline
+  events.
+- Engine spec 007: replay QA accepts `.arp` takes of version 10, which end with
+  the take id after the FM register shadow. The Runtime offers
+  `take_format_v10` when its Engine defines `AYTHER_RECORDING_TAKE_ID`, and a
+  request with a v10 take needs it (`runtime_missing_take_format_v10`,
+  `--take[i]`). The public synthetic take stays at version 9 so every Runtime
+  of the protocol loads it.
 - Replay QA accepts `.arp` takes of version 9. Such a take ends with the FM
   register shadow the Engine detector held when the take began; the Runtime
   reads it the way the Engine loader does and seeds the live detector with it
@@ -25,8 +51,8 @@ once stable compatibility guarantees are defined.
   music already playing therefore identifies its instruments as the authoring
   take did, and the authored sequences anchor. The supervisor checks the shadow
   before admission (`take_fm_registers_invalid: --take[i]`), and the Runtime
-  fails a malformed one with `recording_fm_registers_invalid`. Requires an
-  Engine package that exports the seeding API (after v0.1.0-rc.17).
+  fails a malformed one with `recording_fm_registers_invalid`. Requires AYTHER
+  Engine `v0.1.0-rc.18`, which exports the seeding API.
 
 ### Fixed
 
@@ -49,6 +75,11 @@ once stable compatibility guarantees are defined.
 
 ### Changed
 
+- The reproducible Engine lock moves from `v0.1.0-rc.17` to `v0.1.0-rc.18`,
+  for the FM register seeding API and the take format v10. The release and QA
+  locks carry the published SHA-256 of its archives and `CHECKSUMS.sha256`;
+  the bootstraps verify them and its SLSA provenance. The public audio QA
+  fixture packs are re-signed for the FM signature revision 3 of rc.18.
 - Pause menu layout: the title and «EN PAUSA» are centred, the buttons use the
   same 24px text as the checkbox labels, and the «Perfil» label sits on the
   left of its combo, which takes the remaining width, like the rest of the
