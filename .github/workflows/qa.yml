@@ -9,6 +9,16 @@ on:
   pull_request:
     branches:
       - main
+  # On main (push and weekly) the job only configures, to keep main's vcpkg
+  # cache for pull requests; nothing is built or tested there.
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '29 4 * * 1'
+
+env:
+  WARM_ONLY: ${{ github.event_name != 'pull_request' }}
 
 permissions:
   attestations: read
@@ -48,6 +58,19 @@ jobs:
               $vcpkgRoot = Split-Path -Parent (Get-Command vcpkg -ErrorAction Stop).Source
           }
           "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          # Each job reuses only its own built ports; vcpkg checks each package's ABI
+          # hash, so an outdated archive is rebuilt, never linked.
+          $binaryCache = Join-Path $env:RUNNER_TEMP 'vcpkg-binary-cache'
+          New-Item -ItemType Directory -Force -Path $binaryCache | Out-Null
+          "VCPKG_BINARY_SOURCES=clear;files,$binaryCache,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Cache vcpkg binary packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+          key: vcpkg-${{ runner.os }}-${{ github.job }}-${{ matrix.preset || 'default' }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ github.job }}-${{ matrix.preset || 'default' }}-
 
       - name: Require the published QA Engine
         shell: pwsh
@@ -87,6 +110,7 @@ jobs:
           if ($exitCode -ne 0) { exit $exitCode }
 
       - name: Build
+        if: env.WARM_ONLY != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
@@ -95,6 +119,7 @@ jobs:
           if ($exitCode -ne 0) { exit $exitCode }
 
       - name: Test audio QA without GPU
+        if: env.WARM_ONLY != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"

@@ -4,6 +4,17 @@ on:
   pull_request:
     branches:
       - main
+  # On main (push and a weekly run, before Actions evicts a cache unused for
+  # seven days) the jobs only configure: they save main's vcpkg cache, which
+  # every pull request restores from its first push. Nothing is built or tested.
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '23 4 * * 1'
+
+env:
+  WARM_ONLY: ${{ github.event_name != 'pull_request' }}
 
 permissions:
   attestations: read
@@ -57,6 +68,19 @@ jobs:
               $vcpkgRoot = Split-Path -Parent (Get-Command vcpkg -ErrorAction Stop).Source
           }
           "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          # Each job reuses only its own built ports; vcpkg checks each package's ABI
+          # hash, so an outdated archive is rebuilt, never linked.
+          $binaryCache = Join-Path $env:RUNNER_TEMP 'vcpkg-binary-cache'
+          New-Item -ItemType Directory -Force -Path $binaryCache | Out-Null
+          "VCPKG_BINARY_SOURCES=clear;files,$binaryCache,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Cache vcpkg binary packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+          key: vcpkg-${{ runner.os }}-${{ github.job }}-${{ matrix.preset || 'default' }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ github.job }}-${{ matrix.preset || 'default' }}-
 
       - name: Bootstrap locked Engine rc.18
         shell: pwsh
@@ -93,6 +117,7 @@ jobs:
           if ($exitCode -ne 0) { exit $exitCode }
 
       - name: Verify required CTest families
+        if: env.WARM_ONLY != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -106,6 +131,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build
+        if: env.WARM_ONLY != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
@@ -115,6 +141,7 @@ jobs:
           if ($exitCode -ne 0) { exit $exitCode }
 
       - name: Verify RF-18 CTest registration
+        if: env.WARM_ONLY != 'true'
         shell: pwsh
         run: |
           $listing = & ctest --preset $env:CI_PRESET -N -R "^music_(evidence_bundle|warning|three_consumer_semantics|product_flow)$" 2>&1 | Out-String
@@ -123,6 +150,7 @@ jobs:
           if ($count -ne 4) { throw "No RF-18 Runtime tests registered: expected 4, got $count" }
 
       - name: Verify build is up to date
+        if: env.WARM_ONLY != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
@@ -132,6 +160,7 @@ jobs:
           if ($exitCode -ne 0) { exit $exitCode }
 
       - name: Test
+        if: env.WARM_ONLY != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
@@ -210,6 +239,19 @@ jobs:
               $vcpkgRoot = Split-Path -Parent (Get-Command vcpkg -ErrorAction Stop).Source
           }
           "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          # Each job reuses only its own built ports; vcpkg checks each package's ABI
+          # hash, so an outdated archive is rebuilt, never linked.
+          $binaryCache = Join-Path $env:RUNNER_TEMP 'vcpkg-binary-cache'
+          New-Item -ItemType Directory -Force -Path $binaryCache | Out-Null
+          "VCPKG_BINARY_SOURCES=clear;files,$binaryCache,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Cache vcpkg binary packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+          key: vcpkg-${{ runner.os }}-${{ github.job }}-${{ matrix.preset || 'default' }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ github.job }}-${{ matrix.preset || 'default' }}-
 
       - name: Install quality tools
         if: ${{ matrix.preset == 'linux-quality' }}
@@ -219,7 +261,7 @@ jobs:
           sudo apt-get install --yes clang-format clang-tidy gcovr llvm
 
       - name: Check modified C++ formatting
-        if: ${{ matrix.preset == 'linux-quality' }}
+        if: env.WARM_ONLY != 'true' && matrix.preset == 'linux-quality'
         shell: bash
         env:
           BASE_REVISION: ${{ github.event.pull_request.base.sha }}
@@ -260,6 +302,7 @@ jobs:
           if ($exitCode -ne 0) { exit $exitCode }
 
       - name: Verify required CTest families
+        if: env.WARM_ONLY != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -272,6 +315,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build
+        if: env.WARM_ONLY != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
@@ -281,6 +325,7 @@ jobs:
           if ($exitCode -ne 0) { exit $exitCode }
 
       - name: Verify build is up to date
+        if: env.WARM_ONLY != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
@@ -290,6 +335,7 @@ jobs:
           if ($exitCode -ne 0) { exit $exitCode }
 
       - name: Test
+        if: env.WARM_ONLY != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
@@ -300,7 +346,7 @@ jobs:
           if ($exitCode -ne 0) { exit $exitCode }
 
       - name: Coverage report and floor
-        if: ${{ matrix.preset == 'linux-quality' }}
+        if: env.WARM_ONLY != 'true' && (matrix.preset == 'linux-quality')
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
