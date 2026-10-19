@@ -57,7 +57,7 @@ jobs:
               $vcpkgRoot = Split-Path -Parent (Get-Command vcpkg -ErrorAction Stop).Source
           }
           "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          # Built ports are reused between runs: vcpkg checks each package's ABI
+          # Each job reuses only its own built ports; vcpkg checks each package's ABI
           # hash, so an outdated archive is rebuilt, never linked.
           $binaryCache = Join-Path $env:RUNNER_TEMP 'vcpkg-binary-cache'
           New-Item -ItemType Directory -Force -Path $binaryCache | Out-Null
@@ -70,7 +70,6 @@ jobs:
           key: vcpkg-${{ runner.os }}-${{ github.job }}-${{ matrix.preset || 'default' }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
           restore-keys: |
             vcpkg-${{ runner.os }}-${{ github.job }}-${{ matrix.preset || 'default' }}-
-            vcpkg-${{ runner.os }}-
 
       - name: Bootstrap locked Engine rc.18
         shell: pwsh
@@ -224,7 +223,7 @@ jobs:
               $vcpkgRoot = Split-Path -Parent (Get-Command vcpkg -ErrorAction Stop).Source
           }
           "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          # Built ports are reused between runs: vcpkg checks each package's ABI
+          # Each job reuses only its own built ports; vcpkg checks each package's ABI
           # hash, so an outdated archive is rebuilt, never linked.
           $binaryCache = Join-Path $env:RUNNER_TEMP 'vcpkg-binary-cache'
           New-Item -ItemType Directory -Force -Path $binaryCache | Out-Null
@@ -237,7 +236,6 @@ jobs:
           key: vcpkg-${{ runner.os }}-${{ github.job }}-${{ matrix.preset || 'default' }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
           restore-keys: |
             vcpkg-${{ runner.os }}-${{ github.job }}-${{ matrix.preset || 'default' }}-
-            vcpkg-${{ runner.os }}-
 
       - name: Install quality tools
         if: ${{ matrix.preset == 'linux-quality' }}
