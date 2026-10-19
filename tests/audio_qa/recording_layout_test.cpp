@@ -52,6 +52,52 @@ void require_error(const qa::RecordingLayoutResult &result, const qa::RecordingL
             message);
 }
 
+// The sections a v9 take carries after its inputs, empty: trim, per-frame stats, sprite and
+// audio histories, keyframes, hash algorithm, then the shadow (none, or 512 registers).
+std::vector<std::byte> tail(const std::uint32_t frames, const bool with_registers,
+                            const std::uint32_t keyframes = 0) {
+    std::vector<std::byte> bytes;
+    append_u32(bytes, 0);
+    append_u32(bytes, 0);
+    bytes.insert(bytes.end(), static_cast<std::size_t>(frames) * 12U, std::byte{0});
+    append_u32(bytes, 0);
+    bytes.insert(bytes.end(), static_cast<std::size_t>(frames) * 4U, std::byte{0});
+    append_u32(bytes, keyframes);
+    for (std::uint32_t index = 0; index < keyframes; ++index) {
+        append_u32(bytes, index);
+        append_u32(bytes, 16);
+        append_u32(bytes, 2);
+        bytes.insert(bytes.end(), {std::byte{0x28}, std::byte{0xb5}});
+    }
+    append_u32(bytes, 0);
+    bytes.insert(bytes.end(), static_cast<std::size_t>(frames) * 4U, std::byte{0});
+    append_u32(bytes, 1);
+    if (with_registers) {
+        append_u32(bytes, qa::recording_fm_register_bytes);
+        for (std::uint32_t index = 0; index < qa::recording_fm_register_bytes; ++index)
+            bytes.push_back(static_cast<std::byte>(index & 0xffU));
+    } else {
+        append_u32(bytes, 0);
+    }
+    return bytes;
+}
+
+std::vector<std::byte> with_tail(std::vector<std::byte> bytes, const std::vector<std::byte> &rest) {
+    bytes.insert(bytes.end(), rest.begin(), rest.end());
+    return bytes;
+}
+
+void require_fm_error(const std::vector<std::byte> &take,
+                      const qa::RecordingFmRegistersError expected, const std::string_view code,
+                      const char *message) {
+    const auto decoded = qa::decode_recording_layout(take);
+    require(decoded.error == qa::RecordingLayoutError::none, message);
+    const auto registers = qa::decode_recording_fm_registers(take, decoded.layout);
+    require(registers.error == expected && registers.registers.empty() &&
+                qa::recording_fm_registers_error_code(registers.error) == code,
+            message);
+}
+
 } // namespace
 
 int main() {
@@ -59,7 +105,7 @@ int main() {
         const auto valid = recording();
         const auto decoded = qa::decode_recording_layout(valid);
         require(decoded.error == qa::RecordingLayoutError::none &&
-                    decoded.layout.header.version == 8 && decoded.layout.game_id.offset == 12 &&
+                    decoded.layout.header.version == 9 && decoded.layout.game_id.offset == 12 &&
                     decoded.layout.game_id.size == 3 && decoded.layout.name.offset == 19 &&
                     decoded.layout.name.size == 4 && decoded.layout.frame_count == 2 &&
                     decoded.layout.raw_state_bytes == 4 &&
@@ -114,6 +160,67 @@ int main() {
         require(bad_header.error == qa::RecordingLayoutError::invalid_header &&
                     bad_header.header_error == qa::RecordingHeaderError::truncated_header,
                 "header_diagnostic_lost");
+
+        // v9 shadow: present, absent, and malformed tails read like the Engine loader.
+        {
+            const auto shadowed = with_tail(recording(), tail(2, true));
+            const auto layout = qa::decode_recording_layout(shadowed);
+            const auto registers = qa::decode_recording_fm_registers(shadowed, layout.layout);
+            require(registers.error == qa::RecordingFmRegistersError::none &&
+                        registers.registers.size() == qa::recording_fm_register_bytes &&
+                        registers.registers[1] == 1 && registers.registers[511] == 0xff,
+                    "fm_registers_not_decoded");
+
+            const auto keyframed = with_tail(recording(), tail(2, true, 2));
+            const auto keyframed_registers = qa::decode_recording_fm_registers(
+                keyframed, qa::decode_recording_layout(keyframed).layout);
+            require(keyframed_registers.error == qa::RecordingFmRegistersError::none &&
+                        keyframed_registers.registers.size() == qa::recording_fm_register_bytes,
+                    "fm_registers_lost_behind_keyframes");
+
+            const auto bare = with_tail(recording(), tail(2, false));
+            const auto none =
+                qa::decode_recording_fm_registers(bare, qa::decode_recording_layout(bare).layout);
+            require(none.error == qa::RecordingFmRegistersError::none && none.registers.empty(),
+                    "absent_shadow_not_empty");
+
+            auto older = with_tail(recording(), tail(2, false));
+            older.resize(older.size() - 4U);
+            set_u32(older, 4, 8);
+            const auto older_layout = qa::decode_recording_layout(older);
+            require(older_layout.error == qa::RecordingLayoutError::none &&
+                        older_layout.layout.header.version == 8,
+                    "v8_take_rejected");
+            const auto v8 = qa::decode_recording_fm_registers(older, older_layout.layout);
+            require(v8.error == qa::RecordingFmRegistersError::none && v8.registers.empty(),
+                    "v8_take_has_registers");
+
+            auto truncated = with_tail(recording(), tail(2, true));
+            truncated.resize(truncated.size() - 1U);
+            require_fm_error(truncated, qa::RecordingFmRegistersError::truncated_content,
+                             "truncated_content", "truncated_shadow_accepted");
+
+            require_fm_error(recording(), qa::RecordingFmRegistersError::truncated_content,
+                             "truncated_content", "missing_sections_accepted");
+
+            auto odd_size = with_tail(recording(), tail(2, false));
+            set_u32(odd_size, odd_size.size() - 4U, 16);
+            odd_size.insert(odd_size.end(), 16, std::byte{0});
+            require_fm_error(odd_size, qa::RecordingFmRegistersError::invalid_size, "invalid_size",
+                             "wrong_shadow_size_accepted");
+
+            auto trailing = with_tail(recording(), tail(2, true));
+            trailing.push_back(std::byte{0});
+            require_fm_error(trailing, qa::RecordingFmRegistersError::trailing_content,
+                             "trailing_content", "trailing_bytes_accepted");
+
+            // Keyframe count sits after inputs (42), trim (8), stats (2 x 12), sprite history
+            // total (4) and counts (2 x 4).
+            auto bad_keyframes = with_tail(recording(), tail(2, true));
+            set_u32(bad_keyframes, 42U + 8U + 24U + 4U + 8U, 4);
+            require_fm_error(bad_keyframes, qa::RecordingFmRegistersError::invalid_section,
+                             "invalid_section", "excess_keyframes_accepted");
+        }
 
         std::puts("recording_layout_test: passed");
         return 0;

@@ -80,11 +80,12 @@ void frame_count_limits() {
 
 void header_versions() {
     expect(std::holds_alternative<qa::TakeFacts>(qa::inspect_take(make_take(2, 3))) &&
-               std::holds_alternative<qa::TakeFacts>(qa::inspect_take(make_take(8, 3))),
-           "RF-2.2: ARP1 versions 2 and 8 are accepted");
+               std::holds_alternative<qa::TakeFacts>(qa::inspect_take(make_take(8, 3))) &&
+               std::holds_alternative<qa::TakeFacts>(qa::inspect_take(make_take(9, 3))),
+           "RF-2.2: ARP1 versions 2, 8 and 9 are accepted");
     expect(code(qa::inspect_take(make_take(1, 3))) == "take_unsupported_version" &&
-               code(qa::inspect_take(make_take(9, 3))) == "take_unsupported_version",
-           "RF-2.2: versions 1 and 9 are rejected");
+               code(qa::inspect_take(make_take(10, 3))) == "take_unsupported_version",
+           "RF-2.2: versions 1 and 10 are rejected");
     auto magic = make_take(8, 3);
     magic[3] = std::byte{'X'};
     expect(code(qa::inspect_take(magic)) == "take_invalid_magic",
@@ -223,7 +224,47 @@ void initial_state_is_checked() {
            "D-2: a frame that declares another size than the take is damaged");
 }
 
+// .arp v9: the FM register shadow at the end of the take is read before admission, as the
+// Runtime will before seeding the detector. `take_with_state` writes three frames.
+std::vector<std::byte> v9_tail(const bool with_registers) {
+    std::vector<std::byte> bytes;
+    append_u32(bytes, 0U);
+    append_u32(bytes, 0U);
+    bytes.insert(bytes.end(), 3U * 12U, std::byte{0});
+    append_u32(bytes, 0U);
+    bytes.insert(bytes.end(), 3U * 4U, std::byte{0});
+    append_u32(bytes, 0U);
+    append_u32(bytes, 0U);
+    bytes.insert(bytes.end(), 3U * 4U, std::byte{0});
+    append_u32(bytes, 1U);
+    append_u32(bytes, with_registers ? qa::recording_fm_register_bytes : 0U);
+    if (with_registers)
+        bytes.insert(bytes.end(), qa::recording_fm_register_bytes, std::byte{0x7f});
+    return bytes;
+}
+
+void fm_registers_are_checked() {
+    const auto v8 = take_with_state();
+    expect(!qa::take_fm_registers_issue(v8), "v8: a take without shadow passes");
+    auto v9 = v8;
+    v9[4] = std::byte{9};
+    expect(qa::take_fm_registers_issue(v9) == std::string{"take_fm_registers_invalid"},
+           "v9: a take cut before its shadow is rejected before admission");
+    for (const bool with_registers : {false, true}) {
+        auto whole = v9;
+        const auto tail = v9_tail(with_registers);
+        whole.insert(whole.end(), tail.begin(), tail.end());
+        expect(std::holds_alternative<qa::TakeFacts>(qa::inspect_take(whole)) &&
+                   !qa::take_state_issue(whole) && !qa::take_fm_registers_issue(whole),
+               "v9: a whole take passes, with or without shadow");
+        whole.resize(whole.size() - 1U);
+        expect(qa::take_fm_registers_issue(whole) == std::string{"take_fm_registers_invalid"},
+               "v9: a shadow cut short is rejected before admission");
+    }
+}
+
 int main() {
+    fm_registers_are_checked();
     frame_count_limits();
     header_versions();
     size_limit_applies_before_reading();

@@ -4,12 +4,17 @@
 #include <cstdint>
 #include <span>
 #include <string_view>
+#include <vector>
 
 namespace ayther::audio_qa {
 
 inline constexpr std::size_t recording_fixed_header_bytes = 8;
 inline constexpr std::uint32_t oldest_supported_recording_version = 2;
-inline constexpr std::uint32_t current_recording_version = 8;
+inline constexpr std::uint32_t current_recording_version = 9;
+// .arp v9: the take ends with the detector's FM register shadow at its start (Engine
+// `AytherRecording::audio_fm_regs`): u32 size (0 = none, or 512) + bytes.
+inline constexpr std::uint32_t recording_fm_registers_version = 9;
+inline constexpr std::uint32_t recording_fm_register_bytes = 0x200;
 inline constexpr std::uint64_t max_recording_bytes = 64ULL * 1024ULL * 1024ULL;
 inline constexpr std::uint32_t max_recording_state_bytes = 64U * 1024U * 1024U;
 inline constexpr std::uint32_t min_recording_frames = 1;
@@ -76,5 +81,30 @@ decode_recording_layout(std::span<const std::byte> bytes) noexcept;
                                                             std::uint64_t total_bytes) noexcept;
 
 [[nodiscard]] std::string_view recording_layout_error_code(RecordingLayoutError error) noexcept;
+
+enum class RecordingFmRegistersError {
+    none,
+    invalid_layout,
+    truncated_content,
+    invalid_section,
+    invalid_size,
+    trailing_content,
+};
+
+struct RecordingFmRegistersResult {
+    RecordingFmRegistersError error{RecordingFmRegistersError::none};
+    // Empty when the take carries no shadow: older than v9, or recorded without a detector.
+    std::vector<std::uint8_t> registers;
+};
+
+// The FM register shadow of a v9 take, read the way the Engine loader reads it: every section
+// the version declares is walked (v2 trim and stats, v3 sprite history, v4 keyframes, v7 audio
+// history, v8 hash algorithm) and the take must end right after the shadow. A take older than
+// v9 has none and decodes as empty without error.
+[[nodiscard]] RecordingFmRegistersResult
+decode_recording_fm_registers(std::span<const std::byte> recording, const RecordingLayout &layout);
+
+[[nodiscard]] std::string_view
+recording_fm_registers_error_code(RecordingFmRegistersError error) noexcept;
 
 } // namespace ayther::audio_qa

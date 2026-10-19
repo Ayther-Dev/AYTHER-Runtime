@@ -63,6 +63,10 @@ $runtime = 'C:\ruta\audio-qa\bin\ayther_runtime.exe'
 - Cada toma se valida entera antes de admitir la solicitud: además de cabecera, tamaños
   y entradas, su estado inicial se descomprime completo, como lo hará el Runtime antes de
   restaurarlo. Un estado dañado se rechaza con `take_initial_state_invalid: --take[i]`.
+  Una toma `.arp` v9 trae al final la sombra de registros FM del detector al iniciar la
+  toma; se lee entera como lo hará el Runtime antes de sembrar el detector, y una cola
+  dañada se rechaza con `take_fm_registers_invalid: --take[i]`. Las tomas v2 a v8 no la
+  traen y se admiten igual.
 - `--request-id` es opcional; una repetición intencional debe usar otra identidad.
   Admite hasta 256 bytes de texto imprimible: una identidad más larga se rechaza antes de
   crear el destino con `request_id_too_long: --request-id`, y una con caracteres de
