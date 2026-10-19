@@ -1,5 +1,5 @@
 // Spec 002: RF-2.2 and RNF-3 (plan §5.2, §8 P-10). The take is validated from the same
-// bytes that were pinned: ARP1 versions 2 to 8, 1 to 54 000 frames, the size limit and
+// bytes that were pinned: ARP1 versions 2 to 10, 1 to 54 000 frames, the size limit and
 // the game it was recorded for. Synthetic takes sit at each limit and just above it.
 #include "content_hash.h"
 #include "material_preflight.h"
@@ -84,8 +84,12 @@ void header_versions() {
                std::holds_alternative<qa::TakeFacts>(qa::inspect_take(make_take(9, 3))),
            "RF-2.2: ARP1 versions 2, 8 and 9 are accepted");
     expect(code(qa::inspect_take(make_take(1, 3))) == "take_unsupported_version" &&
-               code(qa::inspect_take(make_take(10, 3))) == "take_unsupported_version",
-           "RF-2.2: versions 1 and 10 are rejected");
+               code(qa::inspect_take(make_take(qa::current_recording_version + 1U, 3))) ==
+                   "take_unsupported_version",
+           "RF-2.2: version 1 and versions newer than 10 are rejected");
+    expect(std::holds_alternative<qa::TakeFacts>(
+               qa::inspect_take(make_take(qa::current_recording_version, 3))),
+           "spec 007: version 10 (embedded take id) passes the preflight");
     auto magic = make_take(8, 3);
     magic[3] = std::byte{'X'};
     expect(code(qa::inspect_take(magic)) == "take_invalid_magic",

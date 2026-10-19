@@ -72,6 +72,8 @@ ProtocolChoice negotiate_runtime_protocol(const CapabilitySet &offer, const Prot
         return FieldIssue{"--runtime", "runtime_missing_timeline_replay_v1"};
     if (needs.close_at_end && !offers(offer, close_at_end_capability))
         return FieldIssue{"--runtime", "runtime_missing_close_at_end_v1"};
+    if (needs.newest_take_version >= 10U && !offers(offer, take_format_v10_capability))
+        return FieldIssue{"--take", "runtime_missing_take_format_v10"};
     const auto &runtime = offer.contracts[static_cast<std::size_t>(ContractKind::runtime)];
     const bool v11 =
         std::find(runtime.begin(), runtime.end(), runtime_protocol_v11) != runtime.end();

@@ -40,7 +40,12 @@ struct ProtocolNeeds {
     std::string_view presentation{"none"};
     bool timelines{};
     bool close_at_end{};
+    /// Engine spec 007: the newest take format in the request. A take of version 10
+    /// (embedded take id) needs `take_format_v10` (`runtime_missing_take_format_v10`
+    /// in the --take field otherwise); older takes negotiate as before.
+    std::uint32_t newest_take_version{};
 };
+inline constexpr std::string_view take_format_v10_capability = "take_format_v10";
 inline constexpr std::string_view close_at_end_capability = "close_at_end_v1";
 [[nodiscard]] ProtocolChoice negotiate_runtime_protocol(const CapabilitySet &offer,
                                                         const ProtocolNeeds &needs);
