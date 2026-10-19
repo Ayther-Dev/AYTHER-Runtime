@@ -288,9 +288,12 @@ RequestPreflight preflight_request(const EffectiveRequest &request) {
         if (offer == nullptr || !gate.negotiate(*offer)) {
             add_issue(issues, {"--runtime", "runtime_incompatible"});
         } else {
+            std::uint32_t newest_take = 0;
+            for (const TakeFacts &facts : take_facts)
+                newest_take = std::max(newest_take, facts.version);
             auto chosen = negotiate_runtime_protocol(
                 *offer, ProtocolNeeds{request.presentation, !request.timelines.empty(),
-                                      request.at_end == "close"});
+                                      request.at_end == "close", newest_take});
             if (auto *issue = std::get_if<FieldIssue>(&chosen))
                 add_issue(issues, std::move(*issue));
             else

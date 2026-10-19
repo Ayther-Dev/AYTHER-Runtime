@@ -71,6 +71,22 @@ void negotiation() {
     expect(std::holds_alternative<qa::FieldIssue>(legacy_visible) &&
                std::get<qa::FieldIssue>(legacy_visible).code == "runtime_missing_protocol_1_1",
            "C1: visible replay with a 1.0-only Runtime is rejected");
+    // Engine spec 007: a v10 take needs take_format_v10; a v9 take does not.
+    {
+        const auto plain = offer({v10, v11}, {"visible_replay_v1", "inspection_v1"});
+        const auto with = offer({v10, v11}, {"visible_replay_v1", "inspection_v1", "take_format_v10"});
+        expect(std::holds_alternative<qa::FieldIssue>(qa::negotiate_runtime_protocol(
+                   plain, qa::ProtocolNeeds{"none", false, false, 10U})) &&
+                   std::get<qa::FieldIssue>(qa::negotiate_runtime_protocol(
+                       plain, qa::ProtocolNeeds{"none", false, false, 10U})) ==
+                       qa::FieldIssue{"--take", "runtime_missing_take_format_v10"},
+               "spec 007: a v10 take without take_format_v10 names it in --take");
+        expect(std::holds_alternative<qa::ContractVersion>(qa::negotiate_runtime_protocol(
+                   with, qa::ProtocolNeeds{"none", false, false, 10U})) &&
+                   std::holds_alternative<qa::ContractVersion>(qa::negotiate_runtime_protocol(
+                       plain, qa::ProtocolNeeds{"none", false, false, 9U})),
+               "spec 007: with the capability, or with a v9 take, it negotiates");
+    }
     // Spec 006 (RF-4.4): a request with pad timelines needs timeline_replay_v1; one without
     // them negotiates as before.
     const auto with_timelines = qa::negotiate_runtime_protocol(

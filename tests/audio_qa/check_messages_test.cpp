@@ -100,6 +100,7 @@ constexpr std::array codes{
     "runtime_identity_unavailable", "runtime_missing_protocol_1_1",
     "runtime_missing_visible_replay_v1", "runtime_missing_inspection_v1", "runtime_incompatible",
     "runtime_missing_timeline_replay_v1",
+    "runtime_missing_take_format_v10",
     // Pack.
     "pack_invalid", "pack_trust_unverified", "pack_untrusted", "pack_open_failed",
     "pack_catalog_invalid", "pack_assets_unreadable", "pack_probe_unavailable",

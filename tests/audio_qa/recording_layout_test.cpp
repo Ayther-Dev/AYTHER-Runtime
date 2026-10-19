@@ -27,7 +27,8 @@ std::vector<std::byte> recording(const std::uint32_t frames = 2,
                                  const std::uint32_t compressed_bytes = 3) {
     std::vector<std::byte> bytes{std::byte{0x41}, std::byte{0x52}, std::byte{0x50},
                                  std::byte{0x31}};
-    append_u32(bytes, qa::current_recording_version);
+    // v9, the shadow version these cases are written for; v10 is built from it below.
+    append_u32(bytes, qa::recording_fm_registers_version);
     append_u32(bytes, 3);
     bytes.insert(bytes.end(), {std::byte{'g'}, std::byte{'i'}, std::byte{'d'}});
     append_u32(bytes, 4);
@@ -213,6 +214,22 @@ int main() {
             trailing.push_back(std::byte{0});
             require_fm_error(trailing, qa::RecordingFmRegistersError::trailing_content,
                              "trailing_content", "trailing_bytes_accepted");
+
+            // v10 (Engine spec 007): the take id (u64) follows the shadow.
+            auto v10 = with_tail(recording(), tail(2, true));
+            set_u32(v10, 4, qa::take_id_recording_version);
+            v10.insert(v10.end(), qa::take_id_bytes, std::byte{0x7c});
+            const auto v10_registers =
+                qa::decode_recording_fm_registers(v10, qa::decode_recording_layout(v10).layout);
+            require(v10_registers.error == qa::RecordingFmRegistersError::none &&
+                        v10_registers.registers.size() == qa::recording_fm_register_bytes &&
+                        v10_registers.registers[511] == 0xff,
+                    "v10_shadow_not_decoded");
+            auto v10_short = with_tail(recording(), tail(2, true));
+            set_u32(v10_short, 4, qa::take_id_recording_version);
+            v10_short.insert(v10_short.end(), qa::take_id_bytes - 1U, std::byte{0});
+            require_fm_error(v10_short, qa::RecordingFmRegistersError::truncated_content,
+                             "truncated_content", "truncated_take_id_accepted");
 
             // Keyframe count sits after inputs (42), trim (8), stats (2 x 12), sprite history
             // total (4) and counts (2 x 4).
