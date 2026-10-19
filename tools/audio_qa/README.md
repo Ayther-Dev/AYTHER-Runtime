@@ -132,10 +132,11 @@ press a+c 6f                # combinación
   de audio observa cada escritura FM desde el primer frame. `state <ruta>` restaura un marcador
   del Lab (`<proyecto>/bookmarks/<nombre>.sav`, el estado serializado crudo) o un estado del
   Runtime (`.bin` con cabecera `AYTHSTAT`) antes de la frontera HD. Un marcador no lleva la
-  sombra de registros FM del detector: si existe `<nombre>.fm` (512 bytes) junto al marcador se
-  fija como material y la evidencia lo registra, pero el Runtime de esta versión aún no la
-  siembra (`fm_seeded = false`); mientras tanto, un guion que empiece con la música sonando
-  tiene el mismo riesgo que una toma a mitad de música.
+  sombra de registros FM del detector: el Lab la escribe al lado, en `<nombre>.fm` (512 bytes).
+  Si existe, se fija como material y el Runtime la siembra tras la frontera HD, como la de una
+  toma v9 (`fm_seeded = true`). Sin `.fm` la evidencia dice `fm_sidecar = "absent"`, el informe
+  avisa `timeline_fm_seed_absent` y un guion que empiece con la música sonando tiene el mismo
+  riesgo que una toma a mitad de música.
 - Evidencia. La ejecución de un guion escribe la misma evidencia que una toma y, además, un
   hecho `timeline_compiled` del productor `inspection` con `fps`, `frames`, `steps`, `start`
   (`power_on` o `state`), `state_id`, `fm_sidecar` (`present`, `absent`, `not_applicable`) y

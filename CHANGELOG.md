@@ -15,6 +15,16 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+### Added
+
+- Spec 006 (RF-3.3): a timeline that starts from a Lab bookmark seeds the
+  detector with the bookmark's `.fm` sidecar (Engine rc.18
+  `seed_audio_fm_registers`) after the fresh HD boundary, also when a post-end
+  inspection re-arms the session; `timeline_compiled` reports
+  `fm_seeded = true` and the `timeline_fm_seed_absent` warning is only printed
+  when no sidecar was seeded. A sidecar that is not 512 bytes ends the run with
+  `timeline_fm_sidecar_invalid`.
+
 ## [0.1.0-beta.12] - 2026-10-18
 
 ### Added

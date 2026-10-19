@@ -5,9 +5,12 @@
 //     fps, frames, start and the absence of a register shadow.
 //   - From a state (the raw serialized state of the core, the shape of a Lab bookmark) the
 //     session restores it first and the fact names the state.
+//   - A bookmark with a 512-byte `.fm` sidecar seeds the detector after the HD boundary and the
+//     fact says `fm_seeded`; a sidecar of another size ends with `timeline_fm_sidecar_invalid`.
 //   - A timeline that does not parse ends with `timeline_syntax_invalid` before any frame.
 //   - A take request without `material_kind` still replays the take (RNF-1).
 // Arguments: runtime, core, ROM, take, state, work directory.
+#include "pad_timeline.h"
 #include "runtime_session_harness.h"
 
 #include <algorithm>
@@ -128,6 +131,48 @@ int main(int argc, char **argv) {
             record && record->start == "state" && record->state_id.starts_with("state-") &&
                 record->fm_sidecar == "absent" && !record->fm_seeded,
             "RF-3.4, RF-4.2: the fact names the state and says no register shadow was next to it");
+    }
+
+    // RF-3.3: a bookmark with its `.fm` sidecar, as the Lab writes it next to the `.sav`.
+    {
+        const auto bookmarks = base.root / "bookmarks";
+        fs::create_directories(bookmarks);
+        const auto seeded_state = bookmarks / "seeded.sav";
+        fs::copy_file(state, seeded_state, fs::copy_options::overwrite_existing);
+        std::string registers(qa::timeline_fm_sidecar_bytes, '\0');
+        for (std::size_t i = 0; i < registers.size(); ++i)
+            registers[i] = static_cast<char>(i * 7U);
+        std::ofstream{bookmarks / "seeded.fm", std::ios::binary} << registers;
+
+        auto options = base;
+        options.label = "fm-seeded";
+        options.material_kind = "timeline";
+        options.take = write_timeline(base.root / "timelines", "seeded.timeline",
+                                      "start state " + seeded_state.generic_string() +
+                                          "\npress b 2f\nwait 2f\n");
+        const auto session = harness::run(options);
+        expect(session.terminals.size() == 1U && session.terminals.front().succeeded &&
+                   session.terminals.front().playback == "natural_end",
+               "RF-3.3: the timeline with a sidecar replays to its natural end");
+        const auto record = compiled_fact(session);
+        expect(record && record->start == "state" && record->fm_sidecar == "present" &&
+                   record->fm_seeded,
+               "RF-3.3, RF-4.2: the sidecar is present and seeded the detector");
+
+        const auto short_state = bookmarks / "short.sav";
+        fs::copy_file(state, short_state, fs::copy_options::overwrite_existing);
+        std::ofstream{bookmarks / "short.fm", std::ios::binary} << std::string(100, '\1');
+        auto invalid = base;
+        invalid.label = "fm-invalid";
+        invalid.material_kind = "timeline";
+        invalid.take =
+            write_timeline(base.root / "timelines", "short.timeline",
+                           "start state " + short_state.generic_string() + "\nwait 2f\n");
+        const auto rejected = harness::run(invalid);
+        expect(rejected.terminals.size() == 1U && !rejected.terminals.front().succeeded &&
+                   rejected.terminals.front().code == "timeline_fm_sidecar_invalid" &&
+                   rejected.terminals.front().inputs_consumed == 0U,
+               "RF-3.3: a sidecar that is not 512 bytes fails before any frame");
     }
 
     // RF-2.3: a timeline that does not parse.
