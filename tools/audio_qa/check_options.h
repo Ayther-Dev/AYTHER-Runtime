@@ -27,7 +27,7 @@ struct CheckOptions {
     std::string trust_registry;
     std::vector<std::string> takes;
     // Spec 006 (RF-1.1): pad timelines, in order; at least one take or timeline is required.
-    std::vector<std::string> timelines;
+    std::vector<std::string> timelines{};
     std::string output;
     std::string request_id;
     std::string language = "es";

@@ -25,7 +25,7 @@ struct Request {
     std::optional<std::string> language;
     // Spec 006 (RF-4.4): `timeline` when the single id of a delivered request is a pad
     // timeline; absent for takes, so a Runtime that predates timelines reads the same request.
-    std::optional<std::string> material_kind;
+    std::optional<std::string> material_kind{};
     bool operator==(const Request &) const = default;
 };
 

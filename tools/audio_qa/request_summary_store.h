@@ -37,7 +37,7 @@ struct StoredTakeSummary {
     std::string evidence;
     std::vector<std::string> evidence_reasons;
     // Spec 006: `timeline` for a pad timeline; empty (a take) in rows written before minor 2.
-    std::string kind;
+    std::string kind{};
     bool operator==(const StoredTakeSummary &) const = default;
 };
 

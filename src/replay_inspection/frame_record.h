@@ -23,8 +23,8 @@ struct FrameGeneral {
     std::uint32_t total_frames{};
     // Spec 006 (RF-7.4): the pad mask of the frame as Genesis names, and the step of the
     // timeline it belongs to (empty for a take).
-    std::string buttons;
-    std::string step;
+    std::string buttons{};
+    std::string step{};
     // RF-1.3: no pack is «Sin pack».
     [[nodiscard]] std::string pack_label() const { return pack.value_or("Sin pack"); }
 };

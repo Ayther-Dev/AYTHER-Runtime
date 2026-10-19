@@ -59,7 +59,7 @@ struct Options {
     std::string label;
     std::optional<std::string> language{"es"};
     // Spec 006 (RF-4.4): `timeline` when `take` names a pad timeline.
-    std::optional<std::string> material_kind;
+    std::optional<std::string> material_kind{};
     std::string script;
     std::string presentation{"none"};
     std::size_t take_position{};
