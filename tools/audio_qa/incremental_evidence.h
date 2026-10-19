@@ -3,6 +3,7 @@
 #include "audio_chunk.h"
 #include "audio_integrity.h"
 #include "fact_model.h"
+#include "inspection_fact_builder.h"
 #include "integrated_evidence.h"
 
 #include <filesystem>
@@ -39,6 +40,8 @@ class IncrementalEvidenceWriter final {
     finish(const ReplayTraceSummary &transport_trace, bool require_hd_relationships = true,
            PcmContinuity continuity = PcmContinuity::single) noexcept;
     [[nodiscard]] ReplayTraceSummary trace() const noexcept;
+    // Spec 006 (RF-4.2): how the timeline of the run was compiled, if it replayed one.
+    [[nodiscard]] std::optional<TimelineCompiledRecord> timeline() const;
 
   private:
     std::unique_ptr<Impl> impl_;

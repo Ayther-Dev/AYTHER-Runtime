@@ -123,6 +123,8 @@ struct ReplayFactTraceAccumulator::Impl {
 
     explicit Impl(std::string value) : run_id(std::move(value)) { chains.push_back({}); }
 
+    std::optional<TimelineCompiledRecord> timeline;
+
     [[nodiscard]] std::uint32_t token(const CompactId id) const noexcept {
         if (id.producer == 0U || id.producer > tokens.size() || id.sequence == 0U)
             return unresolved_token;
@@ -397,8 +399,10 @@ bool ReplayFactTraceAccumulator::consume(const Fact &fact) noexcept {
             }
             // Spec 006 (RF-4.2): a `timeline_compiled` fact says how a pad timeline was built.
             if (fact.kind == "timeline_compiled") {
-                if (!read_timeline_compiled(fact))
+                auto record = read_timeline_compiled(fact);
+                if (!record)
                     return impl_->valid = false;
+                impl_->timeline = std::move(*record);
                 ++impl_->fact_count;
                 return true;
             }
@@ -446,6 +450,10 @@ bool ReplayFactTraceAccumulator::consume(const Fact &fact) noexcept {
         impl_->valid = false;
         return false;
     }
+}
+
+std::optional<TimelineCompiledRecord> ReplayFactTraceAccumulator::timeline() const {
+    return impl_ ? impl_->timeline : std::nullopt;
 }
 
 ReplayTraceSummary

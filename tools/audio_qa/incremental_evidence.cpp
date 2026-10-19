@@ -284,6 +284,10 @@ ReplayTraceSummary IncrementalEvidenceWriter::trace() const noexcept {
     return impl_ ? impl_->final_trace : ReplayTraceSummary{};
 }
 
+std::optional<TimelineCompiledRecord> IncrementalEvidenceWriter::timeline() const {
+    return impl_ ? impl_->trace.timeline() : std::nullopt;
+}
+
 IncrementalEvidenceOpenResult open_incremental_evidence(const std::filesystem::path &output_root,
                                                         const std::string_view run_id) noexcept {
     try {
