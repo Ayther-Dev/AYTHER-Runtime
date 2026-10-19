@@ -57,6 +57,20 @@ jobs:
               $vcpkgRoot = Split-Path -Parent (Get-Command vcpkg -ErrorAction Stop).Source
           }
           "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          # Built ports are reused between runs: vcpkg checks each package's ABI
+          # hash, so an outdated archive is rebuilt, never linked.
+          $binaryCache = Join-Path $env:RUNNER_TEMP 'vcpkg-binary-cache'
+          New-Item -ItemType Directory -Force -Path $binaryCache | Out-Null
+          "VCPKG_BINARY_SOURCES=clear;files,$binaryCache,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Cache vcpkg binary packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+          key: vcpkg-${{ runner.os }}-${{ github.job }}-${{ matrix.preset || 'default' }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ github.job }}-${{ matrix.preset || 'default' }}-
+            vcpkg-${{ runner.os }}-
 
       - name: Bootstrap locked Engine rc.18
         shell: pwsh
@@ -210,6 +224,20 @@ jobs:
               $vcpkgRoot = Split-Path -Parent (Get-Command vcpkg -ErrorAction Stop).Source
           }
           "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          # Built ports are reused between runs: vcpkg checks each package's ABI
+          # hash, so an outdated archive is rebuilt, never linked.
+          $binaryCache = Join-Path $env:RUNNER_TEMP 'vcpkg-binary-cache'
+          New-Item -ItemType Directory -Force -Path $binaryCache | Out-Null
+          "VCPKG_BINARY_SOURCES=clear;files,$binaryCache,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Cache vcpkg binary packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+          key: vcpkg-${{ runner.os }}-${{ github.job }}-${{ matrix.preset || 'default' }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ github.job }}-${{ matrix.preset || 'default' }}-
+            vcpkg-${{ runner.os }}-
 
       - name: Install quality tools
         if: ${{ matrix.preset == 'linux-quality' }}
