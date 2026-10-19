@@ -34,10 +34,10 @@ struct PreflightPins {
     // Spec 006: the pad timelines, by position after the takes, with the bookmark state and
     // the `.fm` sidecar each one names. A state or sidecar pin keeps the position of its
     // timeline.
-    std::vector<MaterialPin> timelines;
-    std::vector<TimelineFacts> timeline_facts;
-    std::vector<MaterialPin> timeline_states;
-    std::vector<MaterialPin> timeline_fm_sidecars;
+    std::vector<MaterialPin> timelines{};
+    std::vector<TimelineFacts> timeline_facts{};
+    std::vector<MaterialPin> timeline_states{};
+    std::vector<MaterialPin> timeline_fm_sidecars{};
 };
 
 struct RequestPreflight {
@@ -46,7 +46,7 @@ struct RequestPreflight {
     std::optional<PreflightPins> pins;
     // Spec 006 (RF-2.3): `audio_qa_diagnostic:` lines that explain an issue, such as the
     // line of a timeline that does not parse.
-    std::vector<std::string> diagnostics;
+    std::vector<std::string> diagnostics{};
 };
 
 // Every pinned material, in a fixed order: runtime, ROM, core, takes by position,

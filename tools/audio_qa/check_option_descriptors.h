@@ -45,7 +45,7 @@ struct CheckOptionDescriptor {
     std::string_view requirements;
     // Spec 006 (RF-1.1): options that share a group are required together: at least one
     // of them must be given. Empty for the options that stand alone.
-    std::string_view required_group;
+    std::string_view required_group{};
 };
 
 // Options of the subcommands that spec 002 does not change. They only feed the
