@@ -395,6 +395,13 @@ bool ReplayFactTraceAccumulator::consume(const Fact &fact) noexcept {
                 impl_->exclude(*exclusion);
                 return impl_->valid;
             }
+            // Spec 006 (RF-4.2): a `timeline_compiled` fact says how a pad timeline was built.
+            if (fact.kind == "timeline_compiled") {
+                if (!read_timeline_compiled(fact))
+                    return impl_->valid = false;
+                ++impl_->fact_count;
+                return true;
+            }
             if (fact.kind != "inspection_event" && fact.kind != "render_frame" &&
                 fact.kind != "render_summary")
                 return impl_->valid = false;

@@ -99,7 +99,7 @@ int main() {
            "RF-2.3: the summary reads back exactly as confirmed");
     const auto text = read_text(path);
     expect(text.find("schema_version = 1") != std::string::npos &&
-               text.find("schema_minor = 1") != std::string::npos &&
+               text.find("schema_minor = 2") != std::string::npos &&
                text.find("pack = 'none'") != std::string::npos &&
                text.find("visual_evaluation = 'not_evaluated'") != std::string::npos,
            "RF-1.3, RF-2.7: «Sin pack» and the absent visual evaluation are stated");

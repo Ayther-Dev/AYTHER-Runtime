@@ -250,6 +250,11 @@ int main() {
     check(single.options() && single.options()->qa_take_position == 0U &&
               !single.options()->qa_last_take,
           "without them the take is the first and not the last");
+    // Spec 006 (RF-7.3): the supervisor can ask the window to close itself at the end.
+    const auto closing = parse({"ayther_runtime", "--qa-session", "--qa-close-at-end"});
+    check(closing.options() && closing.options()->qa_close_at_end &&
+              !single.options()->qa_close_at_end,
+          "spec 006 RF-7.3: --qa-close-at-end is parsed and is off by default");
     expect_error({"ayther_runtime", "--qa-take-position", "-1"},
                  RuntimeOptionErrorCode::invalid_sign, "--qa-take-position",
                  "a negative take position is rejected");

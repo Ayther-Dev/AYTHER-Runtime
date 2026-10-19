@@ -12,6 +12,8 @@ namespace {
 
 constexpr std::array<std::string_view, 2> language_values{"es", "en"};
 constexpr std::array<std::string_view, 2> presentation_values{"none", "visible"};
+// Spec 006 (RF-7.3): what the window does after the natural end.
+constexpr std::array<std::string_view, 2> at_end_values{"inspect", "close"};
 constexpr std::array<std::string_view, 2> pack_mode_values{"hd", "original"};
 constexpr std::array<std::string_view, 2> shaders_values{"on", "off"};
 
@@ -22,7 +24,7 @@ constexpr auto no_error = CheckOptionErrorCode::unknown_option;
 
 // Order matters: required options are reported in this order and choices are
 // validated in this order. The first options keep the reference order.
-const std::array<CheckOptionDescriptor, 20> descriptors{{
+const std::array<CheckOptionDescriptor, 22> descriptors{{
     {"--runtime",
      environment,
      path,
@@ -166,6 +168,22 @@ const std::array<CheckOptionDescriptor, 20> descriptors{{
      "presentation",
      same,
      {}},
+    // Spec 006 (RF-7.3): after the natural end the window stays paused for the post-end
+    // inspection (`inspect`) or closes itself once the result is sent (`close`).
+    {"--at-end",
+     presentation,
+     choice,
+     false,
+     false,
+     "inspect",
+     at_end_values,
+     CheckOptionErrorCode::unsupported_at_end,
+     &CheckOptions::at_end,
+     nullptr,
+     "at_end",
+     added,
+     "spec 006 RF-7.3",
+     {}},
     {"--pack-mode",
      pack,
      choice,
@@ -182,7 +200,7 @@ const std::array<CheckOptionDescriptor, 20> descriptors{{
     {"--take",
      take,
      path,
-     true,
+     false,
      true,
      {},
      {},
@@ -191,7 +209,24 @@ const std::array<CheckOptionDescriptor, 20> descriptors{{
      &CheckOptions::takes,
      "takes",
      changed,
-     "RF-1.2, RF-1.4"},
+     "RF-1.2, RF-1.4; spec 006 RF-1.1",
+     "material"},
+    // Spec 006 (RF-1.1, RF-1.2): a pad timeline drives the game instead of a take; at
+    // least one take or one timeline is required.
+    {"--timeline",
+     take,
+     path,
+     false,
+     true,
+     {},
+     {},
+     no_error,
+     nullptr,
+     &CheckOptions::timelines,
+     "timelines",
+     added,
+     "spec 006 RF-1.1, RF-1.2",
+     "material"},
     {"--profile",
      environment,
      text,
@@ -309,13 +344,17 @@ void write_quoted(std::ostringstream &output, std::string_view value) {
 
 void write_option(std::ostringstream &output, std::string_view command, std::string_view flag,
                   bool required, bool repeatable, std::string_view default_value,
-                  std::span<const std::string_view> values) {
+                  std::span<const std::string_view> values, std::string_view required_group = {}) {
     output << "\n[[option]]\ncommand = ";
     write_quoted(output, command);
     output << "\nflag = ";
     write_quoted(output, flag);
     output << "\nrequired = " << (required ? "true" : "false");
     output << "\nrepeatable = " << (repeatable ? "true" : "false");
+    if (!required_group.empty()) {
+        output << "\nrequired_group = ";
+        write_quoted(output, required_group);
+    }
     if (!default_value.empty()) {
         output << "\ndefault = ";
         write_quoted(output, default_value);
@@ -344,6 +383,16 @@ const CheckOptionDescriptor *find_check_option(std::string_view flag) noexcept {
     const auto found = std::find_if(descriptors.begin(), descriptors.end(),
                                     [flag](const auto &item) { return item.flag == flag; });
     return found == descriptors.end() ? nullptr : &*found;
+}
+
+std::vector<const CheckOptionDescriptor *> check_option_group(std::string_view group) noexcept {
+    std::vector<const CheckOptionDescriptor *> members;
+    if (group.empty())
+        return members;
+    for (const auto &item : descriptors)
+        if (item.required_group == group)
+            members.push_back(&item);
+    return members;
 }
 
 std::string_view check_option_category_code(CheckOptionCategory category) noexcept {
@@ -393,7 +442,7 @@ std::string format_check_option_inventory(std::string_view ref, std::string_view
            << '\n';
     for (const auto &item : descriptors)
         write_option(output, "check", item.flag, item.required, item.repeatable, item.default_value,
-                     item.values);
+                     item.values, item.required_group);
     for (const auto &item : fixed_descriptors)
         write_option(output, item.command, item.flag, item.required, false, item.default_value,
                      item.values);
@@ -415,6 +464,14 @@ std::string format_check_usage() {
                                                                         : "text");
         }
         output << '>' << (item.repeatable ? "..." : "") << (item.required ? "" : "]");
+    }
+    output << "\naudio_qa_usage: at least one of the material options is required: ";
+    bool first = true;
+    for (const auto &item : descriptors) {
+        if (item.required_group != "material")
+            continue;
+        output << (first ? "" : ", ") << item.flag;
+        first = false;
     }
     output << "\naudio_qa_usage: ayther_audio_qa options --format toml";
     output << "\naudio_qa_usage: ayther_audio_qa query|audit <options>";

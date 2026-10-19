@@ -60,6 +60,13 @@ std::string check_conditions_id(const EffectiveRequest &effective,
     hash_text(hasher, "takes");
     for (const auto &take : effective.takes)
         hash_text(hasher, take);
+    // Spec 006 (RF-4.3): the timelines, in order; their bookmark states and sidecars are
+    // pinned materials and follow below with their content.
+    if (!effective.timelines.empty()) {
+        hash_text(hasher, "timelines");
+        for (const auto &timeline : effective.timelines)
+            hash_text(hasher, timeline);
+    }
     hash_text(hasher, "materials");
     for (const auto &pin : pins) {
         hash_text(hasher, material_pin_role_code(pin.role));
@@ -74,14 +81,18 @@ std::string check_conditions_id(const EffectiveRequest &effective,
 CheckRequestDraft make_check_request(const EffectiveRequest &effective,
                                      std::span<const MaterialPin> pins, std::string request_id,
                                      std::string run_id) {
+    // Spec 006 (RF-1.2): the ids of the request are every material in slot order, takes
+    // first and then timelines.
+    auto materials = effective.takes;
+    materials.insert(materials.end(), effective.timelines.begin(), effective.timelines.end());
     Request request{
         std::move(request_id), "audio-qa-check-v1", check_conditions_id(effective, pins),
-        effective.takes,       Admission::pending,  std::nullopt};
+        std::move(materials),  Admission::pending,  std::nullopt};
     Run run;
     run.run_id = std::move(run_id);
     run.request_id = request.request_id;
-    if (!effective.takes.empty())
-        run.take_id = effective.takes.front();
+    if (!request.take_ids.empty())
+        run.take_id = request.take_ids.front();
     return {std::move(request), std::move(run)};
 }
 

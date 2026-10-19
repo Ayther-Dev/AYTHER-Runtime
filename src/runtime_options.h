@@ -74,6 +74,9 @@ struct RuntimeOptions {
     // it is the last one, for the live state and the natural end (RF-2.8).
     std::uint32_t qa_take_position{};
     bool qa_last_take{};
+    // Spec 006 (RF-7.3): the window closes itself after the confirmed natural end instead
+    // of staying paused for the post-end inspection.
+    bool qa_close_at_end{};
 
     [[nodiscard]] static RuntimeOptionsParseResult parse(int argc, char *const argv[]);
 };

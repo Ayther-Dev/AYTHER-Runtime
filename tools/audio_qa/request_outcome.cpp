@@ -18,6 +18,23 @@ std::string_view playback_kind_code(PlaybackKind kind) noexcept {
     return "failed";
 }
 
+std::string_view material_kind_code(MaterialKind kind) noexcept {
+    switch (kind) {
+    case MaterialKind::take:
+        return "take";
+    case MaterialKind::timeline:
+        return "timeline";
+    }
+    return "take";
+}
+
+std::optional<MaterialKind> parse_material_kind(std::string_view code) noexcept {
+    for (const auto kind : {MaterialKind::take, MaterialKind::timeline})
+        if (material_kind_code(kind) == code)
+            return kind;
+    return std::nullopt;
+}
+
 std::optional<PlaybackKind> parse_playback_kind(std::string_view code) noexcept {
     for (const auto kind : {PlaybackKind::natural_end, PlaybackKind::cancelled,
                             PlaybackKind::failed, PlaybackKind::interrupted})

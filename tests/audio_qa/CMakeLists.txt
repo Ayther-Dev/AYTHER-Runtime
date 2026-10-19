@@ -288,6 +288,26 @@ endif()
 add_test(NAME audio_qa_check_options COMMAND audio_qa_check_options_test)
 set_tests_properties(audio_qa_check_options PROPERTIES
     LABELS "audio_qa;cli;unit" TIMEOUT 10)
+
+# Spec 006 (RF-2): the pad timeline grammar, compilation and input source.
+add_executable(audio_qa_pad_timeline_test pad_timeline_test.cpp)
+target_link_libraries(audio_qa_pad_timeline_test PRIVATE ayther_audio_qa_domain)
+target_compile_features(audio_qa_pad_timeline_test PRIVATE cxx_std_20)
+set_target_properties(audio_qa_pad_timeline_test PROPERTIES CXX_EXTENSIONS OFF)
+if(AYTHER_CLANG_TIDY_COMMAND)
+    set_target_properties(audio_qa_pad_timeline_test PROPERTIES
+        CXX_CLANG_TIDY "${AYTHER_CLANG_TIDY_COMMAND}")
+endif()
+if(MSVC)
+    target_compile_options(audio_qa_pad_timeline_test PRIVATE
+        /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(audio_qa_pad_timeline_test PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME audio_qa_pad_timeline COMMAND audio_qa_pad_timeline_test)
+set_tests_properties(audio_qa_pad_timeline PROPERTIES
+    LABELS "audio_qa;unit" TIMEOUT 10)
 add_executable(audio_qa_check_option_descriptors_test check_option_descriptors_test.cpp)
 target_link_libraries(audio_qa_check_option_descriptors_test PRIVATE
     ayther_audio_qa_cli tomlplusplus::tomlplusplus)
@@ -758,6 +778,15 @@ add_test(NAME audio_qa_public_recording_fixture
 set_tests_properties(audio_qa_public_recording_fixture PROPERTIES
     LABELS "audio_qa;fixture;integration" TIMEOUT 15
     FIXTURES_SETUP audio_qa_public_recording)
+# Spec 006 (RF-3.2): the raw serialized state of the synthetic core at power-on, the shape
+# of a Lab bookmark, for the timelines that start from a state.
+add_test(NAME audio_qa_public_recording_fixture_state
+    COMMAND audio_qa_public_recording_fixture
+        "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic.state" --state)
+set_tests_properties(audio_qa_public_recording_fixture_state PROPERTIES
+    LABELS "audio_qa;fixture" TIMEOUT 15
+    PASS_REGULAR_EXPRESSION "public_recording_fixture: state_bytes="
+    FIXTURES_SETUP audio_qa_public_recording)
 # Spec 002, BR-152 (RF-2.8): synthetic takes of N frames, among them the take of one frame.
 foreach(frames IN ITEMS 1 6 600)
     add_test(NAME audio_qa_public_recording_fixture_${frames}
@@ -937,6 +966,31 @@ if(AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE AND WIN32)
     set_tests_properties(audio_qa_runtime_session_v11 PROPERTIES
         LABELS "audio_qa;runtime;protocol;integration"
         TIMEOUT 120 FIXTURES_REQUIRED audio_qa_public_recording)
+    # Spec 006 (RF-3, RF-4): the Runtime replays a pad timeline from power-on and from a
+    # state, records how it compiled it, and still replays a take without material_kind.
+    add_executable(audio_qa_runtime_session_timeline_test runtime_session_timeline_test.cpp)
+    target_link_libraries(audio_qa_runtime_session_timeline_test PRIVATE ayther_audio_qa_cli
+        ayther_audio_qa_transport ayther_audio_qa_model_toml)
+    target_compile_features(audio_qa_runtime_session_timeline_test PRIVATE cxx_std_20)
+    set_target_properties(audio_qa_runtime_session_timeline_test PROPERTIES CXX_EXTENSIONS OFF)
+    target_compile_options(audio_qa_runtime_session_timeline_test PRIVATE
+        /W4 /WX /permissive- /EHsc)
+    add_custom_command(TARGET audio_qa_runtime_session_timeline_test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<IF:$<CONFIG:Debug>,${qa_descriptor_toml_dll_debug},${qa_descriptor_toml_dll_release}>"
+            "$<TARGET_FILE_DIR:audio_qa_runtime_session_timeline_test>" VERBATIM)
+    add_dependencies(audio_qa_runtime_session_timeline_test ayther_runtime synthetic_libretro_core)
+    add_test(NAME audio_qa_runtime_session_timeline
+        COMMAND audio_qa_runtime_session_timeline_test
+            "$<TARGET_FILE:ayther_runtime>"
+            "$<TARGET_FILE:synthetic_libretro_core>"
+            "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic.aytest"
+            "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic.arp"
+            "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic.state"
+            "${CMAKE_CURRENT_BINARY_DIR}/runtime-session-timeline/$<CONFIG>")
+    set_tests_properties(audio_qa_runtime_session_timeline PROPERTIES
+        LABELS "audio_qa;runtime;protocol;integration"
+        TIMEOUT 120 FIXTURES_REQUIRED audio_qa_public_recording)
     # Spec 002 (BR-139, BR-155): checkpoints and oracle O3 with the Engine session.
     add_executable(audio_qa_checkpoint_recovery_test checkpoint_recovery_test.cpp
         "${PROJECT_SOURCE_DIR}/src/audio_qa_inspection.cpp")
@@ -995,6 +1049,7 @@ if(AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE AND WIN32)
             "-DROM_FILE=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/public-synthetic.aytest"
             "-DTAKE_FILE=${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic.arp"
             "-DBROKEN_TAKE_FILE=${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic-broken.arp"
+            "-DTIMELINE_STATE_FILE=${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>/public-synthetic.state"
             "-DFIXTURES=${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
             "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/check-preflight/$<CONFIG>"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/check_preflight_integration_test.cmake")

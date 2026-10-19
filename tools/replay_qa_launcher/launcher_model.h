@@ -33,7 +33,9 @@ struct SummaryLine {
 
 struct TakeResultRow {
     std::size_t position{};
+    // The take or the pad timeline (`kind`) of the slot.
     std::string take;
+    audio_qa::MaterialKind kind{audio_qa::MaterialKind::take};
     LauncherText playback{LauncherText::playback_not_started};
     LauncherText traversal{LauncherText::traversal_unknown};
     LauncherText evidence{LauncherText::evidence_incomplete};
@@ -71,6 +73,15 @@ class LauncherModel final {
     void remove_take(std::size_t position);
     void move_take(std::size_t from, std::size_t to);
     void repeat_take(std::size_t position);
+    // Spec 006 (RF-5): the same list operations for any repeatable path option, such as the
+    // pad timelines (`--timeline`).
+    [[nodiscard]] const std::vector<std::string> &values(std::string_view flag) const;
+    void add_value(std::string_view flag, std::string path);
+    void remove_value(std::string_view flag, std::size_t position);
+    void move_value(std::string_view flag, std::size_t from, std::size_t to);
+    void repeat_value(std::string_view flag, std::size_t position);
+    [[nodiscard]] const std::vector<std::string> &timelines() const { return values("--timeline"); }
+    void add_timeline(std::string path) { add_value("--timeline", std::move(path)); }
     void set_values(std::string_view flag, std::vector<std::string> values);
 
     // RF-1.6: the environment fills what the user did not select.
@@ -88,6 +99,13 @@ class LauncherModel final {
     }
     [[nodiscard]] std::optional<std::string> issue_of(std::string_view flag) const;
     [[nodiscard]] std::optional<std::string> take_issue(std::size_t position) const;
+    // The issue of the value at `position` of a repeatable option: `--flag[position]`.
+    [[nodiscard]] std::optional<std::string> value_issue(std::string_view flag,
+                                                         std::size_t position) const;
+    // Spec 006 (RF-2.3): the diagnostic lines of the last preflight.
+    [[nodiscard]] const std::vector<std::string> &diagnostics() const noexcept {
+        return diagnostics_;
+    }
     [[nodiscard]] std::vector<SummaryLine> summary() const;
     [[nodiscard]] std::optional<audio_qa::ValueSource> source_of(std::string_view key) const;
 
@@ -119,6 +137,7 @@ class LauncherModel final {
     EnvironmentValues environment_;
     std::vector<audio_qa::EffectiveValue> effective_;
     std::vector<audio_qa::FieldIssue> issues_;
+    std::vector<std::string> diagnostics_;
     bool dirty_{true};
     bool active_{};
     audio_qa::RequestPhase phase_{};

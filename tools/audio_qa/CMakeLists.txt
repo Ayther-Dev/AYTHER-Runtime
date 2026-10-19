@@ -9,6 +9,7 @@ add_library(ayther_audio_qa_domain STATIC reference_model.cpp runtime_reference_
     replay_duration_limit.cpp
     trace_query.cpp coexistence_query.cpp
     recording_input_source.cpp recording_replay_preparation.cpp replay_start_policy.cpp
+    pad_timeline.cpp
     hd_initialization.cpp initial_state_publication.cpp
     recording_replay_loop.cpp replay_control_gate.cpp
     replay_condition_lock.cpp replay_progress.cpp

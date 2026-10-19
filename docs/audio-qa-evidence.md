@@ -16,6 +16,20 @@ El modo visible requiere el protocolo QA 1.1 con las capacidades `visible_replay
 la toma; ninguna tecla llega al juego. Cada toma abre su propia ventana, y cerrarla cancela
 y conserva lo disponible.
 
+## Guiones de mando
+
+Un guion de mando (`--timeline`, spec 006) sustituye a la toma: el Runtime arranca la ROM desde
+el encendido o restaura un marcador del Lab y compila el guion a una máscara RetroPad por
+frame con el timing del core. A partir de ahí la ejecución es la de una toma: las mismas
+entradas por frame, el mismo cierre y la misma evidencia. Requiere la capacidad
+`timeline_replay_v1`; la solicitud que el supervisor entrega al Runtime lleva
+`material_kind = "timeline"`, una clave que una solicitud de toma nunca escribe, así que un
+Runtime anterior sigue sirviendo tomas. La evidencia de un guion añade el hecho
+`timeline_compiled` (productor `inspection`): `fps`, `frames`, `steps`, `start`, `state_id`,
+`fm_sidecar` y `fm_seeded`. En `request-summary.toml` (minor 2) la fila del guion dice
+`kind = 'timeline'`, y el guion, su marcador (`timeline_state`) y el `.fm` que lo acompañe
+(`timeline_fm_sidecar`) figuran entre los materiales con su SHA-256.
+
 ### Controles de inspección
 
 | Tecla | Efecto |
@@ -24,13 +38,18 @@ y conserva lo disponible.
 | ← / → | En pausa, retroceden o avanzan un frame dentro de la toma. La navegación es silenciosa y se recupera desde los checkpoints con las entradas grabadas. |
 | I | Muestra u oculta el registro de depuración del frame. No cambia la reproducción ni la posición, y cada toma empieza con el registro oculto. |
 | Re Pág, Av Pág, Inicio, Fin, rueda | Desplazan el registro de depuración visible. |
+| Esc | Pide cerrar la ventana, igual que su botón de cierre (la ventana ocupa la pantalla y no tiene barra de título). Antes del fin natural es una cancelación; después sólo cierra la ventana y la inspección posterior, y el resultado confirmado no cambia (spec 006 RF-7.1). |
 
 - Una tecla mantenida no se repite.
 - Sin foco, ninguna tecla actúa. Al recuperarlo, una tecla que seguía pulsada queda bloqueada hasta que se suelta.
 - ← y → a la vez no mueven nada.
 - Durante la preparación o una recuperación, la ventana avisa «no disponible» u «ocupado» y no acumula órdenes.
 
-**Fin natural.** Al completar el último frame de la última toma, el resultado lineal se confirma y se envía primero, y la ventana queda en pausa en ese frame. Una toma intermedia pasa a la siguiente, salvo que hubiera una pausa pendiente: entonces queda en pausa y Espacio inicia la siguiente.
+**Línea de estado.** Abajo a la derecha, siempre visible, la ventana muestra el estado del frame en curso: el tiempo de la toma en segundos, el frame sobre el total, los botones del mando de ese frame con sus nombres Genesis («Mando a+right», «-» sin botones) y, en un guion, el paso en curso entre los que consumen frames, tal como se escribió, con los segundos que le quedan («Paso 7/9 wait 2s (1.20 s)»). Con I, el registro de depuración repite «Mando» y «Paso» como filas (spec 006 RF-7.4).
+
+**Historial de eventos.** En un guion, abajo a la izquierda, la ventana lleva una lista histórica: cada paso que el guion alcanza se añade como una fila con el segundo en que empezó y su texto («5.00 s  press start»), y la fila nueva aparece en la esquina y empuja las anteriores hacia arriba. Un paso `down`/`up`, que no consume frames, se añade con el paso que lo sigue. La lista sólo crece: navegar hacia atrás no quita filas, y sólo se ven las últimas que caben (spec 006 RF-7.5).
+
+**Fin natural.** Al completar el último frame de la última toma, el resultado lineal se confirma y se envía primero, y la ventana queda en pausa en ese frame con el aviso «Fin de la reproducción. Flechas: inspeccionar · Esc: cerrar la ventana» (spec 006 RF-7.2). Una toma intermedia pasa a la siguiente, salvo que hubiera una pausa pendiente: entonces queda en pausa y Espacio inicia la siguiente. Con `--at-end close` (campo «Al terminar» del lanzador) la ventana se cierra sola en cuanto el resultado se ha enviado, como termina la ejecución sin presentación; el Runtime debe ofrecer `close_at_end_v1` o la solicitud se rechaza con `runtime_missing_close_at_end_v1: --runtime` (spec 006 RF-7.3).
 
 **Inspección posterior.** Navegar después del fin natural abre un recorrido aparte, `post_end_inspection`, sobre una sesión rearmada desde los checkpoints. Ese recorrido tiene su propio `run_id` (`<run_id>-inspection-<n>`) y su propio terminal, y nunca cambia el resultado confirmado.
 
@@ -166,7 +185,10 @@ vista nueva.
 
 Runtime negocia por separado los contratos Engine, Runtime QA, evidencia y
 estado HD. Los cuatro deben ofrecer 1.0 y las diez capacidades obligatorias. Un
-Runtime incompatible produce `runtime_incompatible` y no acredita replay.
+Runtime incompatible produce `runtime_incompatible` y no acredita replay. Una solicitud con
+guiones de mando exige además `timeline_replay_v1`; sin ella se rechaza con
+`runtime_missing_timeline_replay_v1` antes de la admisión. Una solicitud con `--at-end close`
+exige `close_at_end_v1`; sin ella se rechaza con `runtime_missing_close_at_end_v1`.
 
 ## Aislamiento y materiales privados
 

@@ -112,17 +112,22 @@ std::string format_request_summary(const RequestSummaryDocument &summary) {
                                      {"source", std::string{value_source_code(value.source)}}});
     document.insert("effective", std::move(values));
     toml::array takes;
-    for (const auto &take : summary.takes)
-        takes.push_back(toml::table{{"position", static_cast<std::int64_t>(take.position)},
-                                    {"path", take.take},
-                                    {"sha256", take.sha256},
-                                    {"run_id", take.run_id},
-                                    {"outcome", take.outcome},
-                                    {"diagnostic", take.diagnostic},
-                                    {"playback", take.playback},
-                                    {"traversal", take.traversal},
-                                    {"evidence", take.evidence},
-                                    {"evidence_reasons", string_array(take.evidence_reasons)}});
+    for (const auto &take : summary.takes) {
+        toml::table row{{"position", static_cast<std::int64_t>(take.position)},
+                        {"path", take.take},
+                        {"sha256", take.sha256},
+                        {"run_id", take.run_id},
+                        {"outcome", take.outcome},
+                        {"diagnostic", take.diagnostic},
+                        {"playback", take.playback},
+                        {"traversal", take.traversal},
+                        {"evidence", take.evidence},
+                        {"evidence_reasons", string_array(take.evidence_reasons)}};
+        // Spec 006: only a pad timeline names its kind; a take row keeps the minor 1 shape.
+        if (!take.kind.empty())
+            row.insert("kind", take.kind);
+        takes.push_back(std::move(row));
+    }
     document.insert("take", std::move(takes));
     std::ostringstream output;
     output << document << '\n';
@@ -222,6 +227,11 @@ RequestSummaryReadResult parse_request_summary(std::string_view text) {
             take.playback = *playback;
             take.traversal = *traversal;
             take.evidence = *evidence;
+            if (const auto row_kind = (*table)["kind"].value<std::string>()) {
+                if (*row_kind != "take" && *row_kind != "timeline")
+                    return RequestSummaryReadError::invalid;
+                take.kind = *row_kind;
+            }
             summary.takes.push_back(std::move(take));
         }
         return summary;

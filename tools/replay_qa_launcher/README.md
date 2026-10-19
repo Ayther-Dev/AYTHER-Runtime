@@ -12,10 +12,12 @@ Se instala con el componente `qa`, junto a `ayther_audio_qa`, y nunca con el com
 2. **Elige los materiales** con «Elegir…», que abre el diálogo nativo de archivos.
    - **ROM:** el juego.
    - **Tomas:** una o varias `.ayr`. Se pueden reordenar, repetir y quitar; cada repetición se ve como otra posición.
+   - **Guiones de mando:** uno o varios archivos de texto (`.timeline`) que manejan el mando en lugar de una toma, desde el encendido o desde un marcador del Lab (spec 006). Mismas operaciones que las tomas; van después de ellas. Hace falta al menos una toma o un guion; si no hay ninguno, ambos campos dicen «Hace falta una toma o un guion de mando». Un guion rechazado muestra su código en su posición y, debajo de los errores, la línea y el motivo (`audio_qa_diagnostic`). La gramática está en el README de `ayther_audio_qa`.
    - **Pack:** opcional. «Quitar» lo retira, y el resumen dice entonces «Sin pack».
    - **Runtime y core:** si hay un Runtime instalado junto al launcher y una configuración de AYTHER Play CE, salen de ahí. El resumen muestra su origen como «entorno», y la configuración de Play CE sólo se lee.
    - **Rutas pegadas:** una ruta pegada entre comillas dobles, como la deja «Copiar como ruta de acceso» de Windows, se usa sin ese par de comillas en todos los campos de ruta. El resumen y la solicitud registran la ruta sin comillas.
 3. **Revisa las secciones.** Son entorno y condiciones, información auxiliar, destino e identidad, presentación e idioma. Un campo no válido muestra su error debajo, por ejemplo «Campo obligatorio» o el código de la validación previa, como `core_platform_mismatch`.
+   - **Al terminar** (`--at-end`): `inspect` deja la ventana del Runtime en pausa en el último frame al fin natural, con el aviso «Flechas: inspeccionar · Esc: cerrar la ventana»; `close` la cierra sola en cuanto el resultado se ha enviado. Exige un Runtime con `close_at_end_v1` (spec 006 RF-7.3).
 4. **Comprueba el resumen de valores efectivos.** Cada fila muestra su origen: seleccionado, por defecto, entorno o manifiesto.
    - Cualquier cambio vuelve a validar la solicitud con el Runtime antes de poder iniciar.
    - «Iniciar» sólo se habilita cuando no queda ningún error.
@@ -35,6 +37,9 @@ Se instala con el componente `qa`, junto a `ayther_audio_qa`, y nunca con el com
 Con presentación visible, el Runtime abre su propia ventana por toma. Los controles son:
 
 - **Espacio:** pausa al terminar el frame en curso (si no hay ninguno, en el último mostrado) y reanuda.
+- **Línea de estado:** abajo a la derecha, siempre visible: tiempo de la toma (s), frame/total, botones del mando del frame («Mando a+right») y, en un guion, el paso en curso con los segundos que le quedan («Paso 7/9 wait 2s (1.20 s)»).
+- **Historial de eventos:** en un guion, abajo a la izquierda, una lista histórica donde cada paso alcanzado se añade como una fila con el segundo en que empezó («5.00 s  press start»); la fila nueva entra por la esquina y empuja las anteriores hacia arriba. Sirve para seguir los `wait` y ver cuándo entra cada botón.
+- **Esc:** pide cerrar la ventana, igual que su botón de cierre (la ventana ocupa la pantalla). Antes del fin natural cancela la toma; después sólo cierra la ventana y el resultado confirmado no cambia. Al fin natural la ventana lo recuerda: «Fin de la reproducción. Flechas: inspeccionar · Esc: cerrar la ventana». El campo «Al terminar» (`--at-end`) con `close` hace que la ventana se cierre sola en cuanto el resultado se ha enviado (spec 006 RF-7).
 - **← y →:** en pausa, retroceden y avanzan un frame.
 - **I:** muestra u oculta el registro de depuración.
 
@@ -80,7 +85,7 @@ ctest --preset windows-qa-gpu -R "^replay_qa_launcher_(window_smoke|interface_sm
   - inicia una solicitud visible con el core sintético;
   - la cancela tras dos segundos de reproducción;
   - muestra la toma como «Cancelada» y el resultado conjunto.
-  - Los materiales llegan con `--runtime`, `--core`, `--rom`, `--take` y `--output`.
+  - Los materiales llegan con `--runtime`, `--core`, `--rom`, `--take` (o `--timeline`) y `--output`.
 - **`replay_qa_launcher_idle_cpu`:** `ayther_replay_qa --idle-seconds 3` deja la ventana en reposo tres segundos e informa de los redibujos y de la CPU usada. En reposo la ventana espera la entrada (o redibuja cada 100 ms el progreso) con vsync, para no competir con el Runtime mientras presenta la reproducción; la prueba exige como mucho un redibujo por refresco y menos de un cuarto de núcleo.
 
 `--self-test`, `--smoke-frames`, `--smoke-capture` e `--idle-seconds` son modos de prueba del ejecutable QA; no forman parte del uso normal.
@@ -88,7 +93,7 @@ ctest --preset windows-qa-gpu -R "^replay_qa_launcher_(window_smoke|interface_sm
 ## Campos precargados (DI-23)
 
 `ayther_replay_qa --prefill <archivo>` abre el formulario con los campos del archivo: una
-línea `--campo=valor` por valor; `--take` y `--core-option` se repiten en orden. Todos los
+línea `--campo=valor` por valor; `--take`, `--timeline` y `--core-option` se repiten en orden. Todos los
 valores cuentan como explícitos y los campos ausentes quedan sin seleccionar. Una línea
 desconocida o mal formada rechaza el archivo entero (`prefill_rejected` en el log) y el
 formulario queda vacío. Lo usa la herramienta de campaña de la spec 002.

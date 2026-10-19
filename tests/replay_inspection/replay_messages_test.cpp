@@ -39,6 +39,9 @@ int main() {
                ri::replay_message(es, M::not_available) == "No disponible" &&
                ri::replay_message(es, M::no_next_frame) == "Sin frame siguiente",
            "RNF-7: the notices of the controller");
+    expect(ri::replay_message(es, M::end_hint).find("Esc") != std::string::npos &&
+               ri::replay_message(en, M::end_hint).find("Esc") != std::string::npos,
+           "spec 006 RF-7.2: the end hint names Escape in both languages");
     expect(ri::replay_message(es, M::phase_paused) == "En pausa" &&
                ri::replay_message(en, M::phase_paused) == "Paused",
            "RNF-7: the phases");

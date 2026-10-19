@@ -74,9 +74,10 @@ constexpr std::array codes{
     // Parser.
     "unknown_option", "missing_option_value", "empty_option_value", "option_value_too_long",
     "duplicate_option", "invalid_number", "missing_required_option", "unsupported_language",
-    "unsupported_presentation", "unsupported_pack_mode", "unsupported_shaders",
-    "invalid_unsigned_value", "malformed_core_option", "too_many_takes", "too_many_values",
-    "too_many_arguments",
+    "unsupported_presentation", "unsupported_at_end", "unsupported_pack_mode",
+    "unsupported_shaders", "runtime_missing_close_at_end_v1", "invalid_unsigned_value",
+    "malformed_core_option", "too_many_takes", "too_many_values", "too_many_arguments",
+    "missing_required_material",
     // Auxiliary sources and effective values.
     "play_manifest_unavailable", "reference_unavailable", "play_manifest_rom_mismatch",
     "reference_rom_mismatch", "core_unresolved", "invalid_shaders_condition",
@@ -89,11 +90,16 @@ constexpr std::array codes{
     "take_too_large", "take_truncated", "take_invalid_frame_count", "take_empty_initial_state",
     "take_initial_state_too_large", "take_empty_compressed_state", "take_too_long",
     "take_game_mismatch",
+    // Pad timelines (spec 006).
+    "timeline_syntax_invalid", "timeline_too_long", "timeline_empty", "timeline_state_unavailable",
+    "timeline_state_invalid", "timeline_fm_sidecar_invalid", "timeline_compile_failed",
+    "timeline_state_restore_failed", "timeline_unavailable",
     // Core and Runtime.
     "core_invalid", "core_load_failed", "core_platform_mismatch", "core_rejects_rom",
     "core_timing_unknown", "runtime_probe_failed", "runtime_rom_probe_unsupported",
     "runtime_identity_unavailable", "runtime_missing_protocol_1_1",
     "runtime_missing_visible_replay_v1", "runtime_missing_inspection_v1", "runtime_incompatible",
+    "runtime_missing_timeline_replay_v1",
     // Pack.
     "pack_invalid", "pack_trust_unverified", "pack_untrusted", "pack_open_failed",
     "pack_catalog_invalid", "pack_assets_unreadable", "pack_probe_unavailable",

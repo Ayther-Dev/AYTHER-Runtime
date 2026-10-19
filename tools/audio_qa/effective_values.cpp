@@ -160,6 +160,11 @@ EffectiveResult resolve_effective_request(const CheckOptions &options,
     for (std::size_t position = 0; position < options.takes.size(); ++position)
         builder.add("take[" + std::to_string(position) + "]", options.takes[position],
                     ValueSource::explicit_option);
+    // Spec 006 (RF-1.1, RF-1.2): explicit pad timelines, in order, after the takes.
+    request.timelines = options.timelines;
+    for (std::size_t index = 0; index < options.timelines.size(); ++index)
+        builder.add("timeline[" + std::to_string(index) + "]", options.timelines[index],
+                    ValueSource::explicit_option);
 
     // RF-1.3: no pack means no pack, never one from another source. «Sin pack» is the
     // selection made by leaving out --pack, so it is explicit too: no ROM, take or pack
@@ -191,6 +196,7 @@ EffectiveResult resolve_effective_request(const CheckOptions &options,
         builder.issues.push_back({"--request-id", "request_id_invalid"});
     request.language = options.language;
     request.presentation = options.presentation;
+    request.at_end = options.at_end;
     if (!options.play_manifest.empty()) {
         request.play_manifest = options.play_manifest;
         builder.add("play_manifest", options.play_manifest, ValueSource::explicit_option);
@@ -268,6 +274,7 @@ EffectiveResult resolve_effective_request(const CheckOptions &options,
     builder.add("language", options.language, origin("--language", options.language, "es"));
     builder.add("presentation", options.presentation,
                 origin("--presentation", options.presentation, "none"));
+    builder.add("at_end", options.at_end, origin("--at-end", options.at_end, "inspect"));
     builder.add("pack_mode", options.pack_mode, origin("--pack-mode", options.pack_mode, "hd"));
 
     if (!builder.issues.empty())

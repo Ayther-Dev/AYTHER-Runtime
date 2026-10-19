@@ -193,6 +193,9 @@ runtime_replay_arguments(const EffectiveRequest &request, const std::string_view
     arguments.push_back(std::to_wstring(take_position));
     if (last_take)
         arguments.emplace_back(L"--qa-last-take");
+    // Spec 006 (RF-7.3): the window closes itself after the confirmed natural end.
+    if (request.at_end == "close")
+        arguments.emplace_back(L"--qa-close-at-end");
     return arguments;
 }
 
@@ -244,7 +247,9 @@ CheckExecutionResult execute_check_replay(const EffectiveRequest &effective, con
             return CheckExecutionError::runtime_incompatible;
         // Contracts.md C1: visible replay negotiates 1.1; without presentation 1.1 is chosen
         // when offered and a 1.0 Runtime keeps working (RNF-6).
-        const auto protocol = negotiate_runtime_protocol(*offer, effective.presentation);
+        const auto protocol = negotiate_runtime_protocol(
+            *offer, ProtocolNeeds{effective.presentation, request.material_kind == "timeline",
+                                  effective.at_end == "close"});
         const auto *negotiated = std::get_if<ContractVersion>(&protocol);
         if (negotiated == nullptr)
             return CheckExecutionError::runtime_incompatible;

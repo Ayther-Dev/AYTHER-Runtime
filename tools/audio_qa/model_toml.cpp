@@ -126,6 +126,11 @@ EncodeResult to_toml(const Request &request) {
             require(*request.language == "es" || *request.language == "en");
             table.insert("language", *request.language);
         }
+        // Spec 006 (RF-4.4): only a timeline request names its material kind.
+        if (request.material_kind) {
+            require(*request.material_kind == "take" || *request.material_kind == "timeline");
+            table.insert("material_kind", *request.material_kind);
+        }
         return format(table);
     } catch (CodecError error) {
         return error;
@@ -165,12 +170,17 @@ DecodeResult<Request> request_from_toml(std::string_view text) {
     return parse<Request>(text, [](const toml::table &table) {
         document(table, "request",
                  {"schema_version", "schema_minor", "kind", "request_id", "session_id",
-                  "conditions_id", "take_ids", "admission", "language"});
+                  "conditions_id", "take_ids", "admission", "language", "material_kind"});
         Request request;
         if (const auto *language = table.get("language")) {
             const auto value = language->value<std::string>();
             require(value && (*value == "es" || *value == "en"));
             request.language = *value;
+        }
+        if (const auto *material = table.get("material_kind")) {
+            const auto value = material->value<std::string>();
+            require(value && (*value == "take" || *value == "timeline"));
+            request.material_kind = *value;
         }
         request.request_id = identity_field(table, "request_id");
         request.session_id = identity_field(table, "session_id");

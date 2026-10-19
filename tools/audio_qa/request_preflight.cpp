@@ -2,6 +2,7 @@
 
 #include "capability_gate.h"
 #include "capability_report.h"
+#include "pad_timeline.h"
 #include "recording_header.h"
 
 #include <algorithm>
@@ -98,9 +99,25 @@ std::optional<MaterialPin> pinned(std::vector<FieldIssue> &issues, MaterialPinRe
 
 } // namespace
 
+namespace {
+
+void append_at_position(std::vector<MaterialPin> &materials, const std::vector<MaterialPin> &pins,
+                        const std::size_t position) {
+    for (const auto &pin : pins)
+        if (pin.position == position)
+            materials.push_back(pin);
+}
+
+} // namespace
+
 std::vector<MaterialPin> material_pins(const PreflightPins &pins) {
     std::vector<MaterialPin> materials{pins.runtime, pins.rom, pins.core};
     materials.insert(materials.end(), pins.takes.begin(), pins.takes.end());
+    for (const auto &timeline : pins.timelines) {
+        materials.push_back(timeline);
+        append_at_position(materials, pins.timeline_states, timeline.position);
+        append_at_position(materials, pins.timeline_fm_sidecars, timeline.position);
+    }
     if (pins.pack)
         materials.push_back(*pins.pack);
     if (pins.trust_registry)
@@ -108,13 +125,12 @@ std::vector<MaterialPin> material_pins(const PreflightPins &pins) {
     return materials;
 }
 
-std::vector<MaterialPin> take_material_pins(const PreflightPins &pins, std::size_t position) {
+std::vector<MaterialPin> slot_material_pins(const PreflightPins &pins, std::size_t position) {
     std::vector<MaterialPin> materials{pins.runtime, pins.rom, pins.core};
-    const auto take =
-        std::find_if(pins.takes.begin(), pins.takes.end(),
-                     [position](const auto &pin) { return pin.position == position; });
-    if (take != pins.takes.end())
-        materials.push_back(*take);
+    append_at_position(materials, pins.takes, position);
+    append_at_position(materials, pins.timelines, position);
+    append_at_position(materials, pins.timeline_states, position);
+    append_at_position(materials, pins.timeline_fm_sidecars, position);
     if (pins.pack)
         materials.push_back(*pins.pack);
     if (pins.trust_registry)
@@ -125,6 +141,13 @@ std::vector<MaterialPin> take_material_pins(const PreflightPins &pins, std::size
 std::string take_field(std::size_t position) {
     std::string field{"--take["};
     field += std::to_string(position);
+    field += ']';
+    return field;
+}
+
+std::string timeline_field(std::size_t index) {
+    std::string field{"--timeline["};
+    field += std::to_string(index);
     field += ']';
     return field;
 }
@@ -182,6 +205,65 @@ RequestPreflight preflight_request(const EffectiveRequest &request) {
         take_facts.push_back(std::get<TakeFacts>(std::move(inspection)));
     }
 
+    // Spec 006 (RF-2, RF-3): each pad timeline is parsed and bounded from its pinned bytes;
+    // the bookmark it starts from and the `.fm` next to it are pinned with its position.
+    std::vector<MaterialPin> timelines;
+    std::vector<TimelineFacts> timeline_facts;
+    std::vector<MaterialPin> timeline_states;
+    std::vector<MaterialPin> timeline_fm_sidecars;
+    for (std::size_t index = 0; index < request.timelines.size(); ++index) {
+        const auto position = request.takes.size() + index;
+        const auto field = timeline_field(index);
+        auto content = pin_material_content(MaterialPinRole::timeline, field,
+                                            request.timelines[index], position, max_timeline_bytes);
+        if (const auto *issue = std::get_if<MaterialIssue>(&content)) {
+            add_issue(issues, field_issue(*issue));
+            continue;
+        }
+        auto &pinned_timeline = std::get<PinnedContent>(content);
+        auto inspection = inspect_timeline(pinned_timeline.bytes,
+                                           std::filesystem::path{request.timelines[index]});
+        if (const auto *rejected = std::get_if<TimelineInspectionIssue>(&inspection)) {
+            add_issue(issues, {field, rejected->code});
+            std::string diagnostic{"audio_qa_diagnostic: "};
+            diagnostic += rejected->code;
+            diagnostic += " field=";
+            diagnostic += field;
+            if (rejected->line != 0U) {
+                diagnostic += " line=";
+                diagnostic += std::to_string(rejected->line);
+            }
+            diagnostic += " reason=";
+            diagnostic += rejected->reason;
+            result.diagnostics.push_back(std::move(diagnostic));
+            continue;
+        }
+        auto &facts = std::get<TimelineFacts>(inspection);
+        if (facts.start == TimelineStartKind::state) {
+            auto state =
+                pin_material(MaterialPinRole::timeline_state, field, facts.state_path, position);
+            if (std::holds_alternative<MaterialIssue>(state)) {
+                add_issue(issues, {field, "timeline_state_unavailable"});
+                continue;
+            }
+            timeline_states.push_back(std::get<MaterialPin>(std::move(state)));
+            if (!facts.fm_sidecar.empty()) {
+                auto sidecar =
+                    pin_material_content(MaterialPinRole::timeline_fm_sidecar, field,
+                                         facts.fm_sidecar, position, timeline_fm_sidecar_bytes);
+                const auto *pinned_sidecar = std::get_if<PinnedContent>(&sidecar);
+                if (pinned_sidecar == nullptr ||
+                    pinned_sidecar->bytes.size() != timeline_fm_sidecar_bytes) {
+                    add_issue(issues, {field, "timeline_fm_sidecar_invalid"});
+                    continue;
+                }
+                timeline_fm_sidecars.push_back(pinned_sidecar->pin);
+            }
+        }
+        timelines.push_back(std::move(pinned_timeline.pin));
+        timeline_facts.push_back(std::move(facts));
+    }
+
     // The Runtime probes the core with the ROM and the pack (contracts.md C5).
     std::optional<RuntimeBinaryIdentity> identity;
     if (runtime) {
@@ -206,7 +288,9 @@ RequestPreflight preflight_request(const EffectiveRequest &request) {
         if (offer == nullptr || !gate.negotiate(*offer)) {
             add_issue(issues, {"--runtime", "runtime_incompatible"});
         } else {
-            auto chosen = negotiate_runtime_protocol(*offer, request.presentation);
+            auto chosen = negotiate_runtime_protocol(
+                *offer, ProtocolNeeds{request.presentation, !request.timelines.empty(),
+                                      request.at_end == "close"});
             if (auto *issue = std::get_if<FieldIssue>(&chosen))
                 add_issue(issues, std::move(*issue));
             else
@@ -267,21 +351,35 @@ RequestPreflight preflight_request(const EffectiveRequest &request) {
                 add_issue(issues, std::move(*issue));
             }
         }
+        // Spec 006 (RF-2.4): the timeline compiled with the timing of this core fits too.
+        for (std::size_t index = 0; index < timeline_facts.size(); ++index) {
+            if (auto issue = timeline_duration_issue(timeline_facts[index].timeline,
+                                                     core_probe->timing_fps)) {
+                if (issue->field == "--timeline")
+                    issue->field = timelines[index].field;
+                add_issue(issues, std::move(*issue));
+            }
+        }
     }
 
     if (!issues.empty())
         return result;
-    result.pins = PreflightPins{std::move(*runtime),
-                                std::move(*rom),
-                                std::move(*core),
-                                std::move(takes),
-                                std::move(take_facts),
-                                std::move(pack),
-                                std::move(trust_registry),
-                                std::move(*identity),
-                                std::move(*core_probe),
-                                std::move(pack_probe),
-                                *protocol};
+    PreflightPins pins{std::move(*runtime),
+                       std::move(*rom),
+                       std::move(*core),
+                       std::move(takes),
+                       std::move(take_facts),
+                       std::move(pack),
+                       std::move(trust_registry),
+                       std::move(*identity),
+                       std::move(*core_probe),
+                       std::move(pack_probe),
+                       *protocol};
+    pins.timelines = std::move(timelines);
+    pins.timeline_facts = std::move(timeline_facts);
+    pins.timeline_states = std::move(timeline_states);
+    pins.timeline_fm_sidecars = std::move(timeline_fm_sidecars);
+    result.pins = std::move(pins);
     return result;
 }
 

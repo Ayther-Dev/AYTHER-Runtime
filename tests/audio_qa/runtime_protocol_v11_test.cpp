@@ -71,6 +71,41 @@ void negotiation() {
     expect(std::holds_alternative<qa::FieldIssue>(legacy_visible) &&
                std::get<qa::FieldIssue>(legacy_visible).code == "runtime_missing_protocol_1_1",
            "C1: visible replay with a 1.0-only Runtime is rejected");
+    // Spec 006 (RF-4.4): a request with pad timelines needs timeline_replay_v1; one without
+    // them negotiates as before.
+    const auto with_timelines = qa::negotiate_runtime_protocol(
+        offer({v10, v11}, {"visible_replay_v1", "inspection_v1", "timeline_replay_v1"}), "none",
+        true);
+    expect(std::holds_alternative<qa::ContractVersion>(with_timelines) &&
+               std::get<qa::ContractVersion>(with_timelines) == v11,
+           "spec 006 RF-4.4: a timeline request negotiates 1.1 with timeline_replay_v1");
+    const auto missing_timelines = qa::negotiate_runtime_protocol(full, "none", true);
+    expect(std::holds_alternative<qa::FieldIssue>(missing_timelines) &&
+               std::get<qa::FieldIssue>(missing_timelines) ==
+                   qa::FieldIssue{"--runtime", "runtime_missing_timeline_replay_v1"},
+           "spec 006 RF-4.4: without timeline_replay_v1 the timeline request names it");
+    const auto takes_only = qa::negotiate_runtime_protocol(full, "none", false);
+    expect(std::holds_alternative<qa::ContractVersion>(takes_only) &&
+               std::get<qa::ContractVersion>(takes_only) == v11,
+           "spec 006 RNF-1: a take request ignores the timeline capability");
+    // Spec 006 (RF-7.3): closing the window at the end needs close_at_end_v1; keeping the
+    // inspection negotiates as before.
+    const auto closing = qa::negotiate_runtime_protocol(
+        offer({v10, v11}, {"visible_replay_v1", "inspection_v1", "close_at_end_v1"}),
+        qa::ProtocolNeeds{"visible", false, true});
+    expect(std::holds_alternative<qa::ContractVersion>(closing) &&
+               std::get<qa::ContractVersion>(closing) == v11,
+           "spec 006 RF-7.3: a request that closes at the end negotiates 1.1 with the capability");
+    const auto missing_closing =
+        qa::negotiate_runtime_protocol(full, qa::ProtocolNeeds{"visible", false, true});
+    expect(std::holds_alternative<qa::FieldIssue>(missing_closing) &&
+               std::get<qa::FieldIssue>(missing_closing) ==
+                   qa::FieldIssue{"--runtime", "runtime_missing_close_at_end_v1"},
+           "spec 006 RF-7.3: without close_at_end_v1 the request names it");
+    const auto inspecting =
+        qa::negotiate_runtime_protocol(full, qa::ProtocolNeeds{"visible", false, false});
+    expect(std::holds_alternative<qa::ContractVersion>(inspecting),
+           "spec 006 RF-7.3: a request that keeps the inspection ignores the capability");
     const auto legacy_none = qa::negotiate_runtime_protocol(offer({v10}, {}), "none");
     expect(std::holds_alternative<qa::ContractVersion>(legacy_none) &&
                std::get<qa::ContractVersion>(legacy_none) == v10,

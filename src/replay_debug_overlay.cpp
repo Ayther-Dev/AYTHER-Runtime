@@ -218,9 +218,11 @@ void ReplayDebugOverlay::scroll(replay_inspection::ScrollKey key,
 
 void ReplayDebugOverlay::render(const AcquiredFrame &frame, bool visible,
                                 const std::vector<replay_inspection::DebugLine> &lines,
-                                const std::string &notice) {
+                                const std::string &notice, const std::string &status,
+                                const std::vector<std::string> &events) {
     const auto framebuffer = frame.framebuffer(framebuffers_);
-    if (!imgui_ready_ || !framebuffer || (!visible && notice.empty()))
+    if (!imgui_ready_ || !framebuffer ||
+        (!visible && notice.empty() && status.empty() && events.empty()))
         return;
     const ContextScope scope{context_};
     ImGui_ImplVulkan_NewFrame();
@@ -235,6 +237,33 @@ void ReplayDebugOverlay::render(const AcquiredFrame &frame, bool visible,
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
                          ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav);
         ImGui::TextUnformatted(notice.c_str());
+        ImGui::End();
+    }
+    if (!status.empty()) {
+        // Spec 006 (RF-7.4): the status line of now sits at the bottom right.
+        ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + viewport->Size.x - 16.0F,
+                                       viewport->Pos.y + viewport->Size.y - 16.0F),
+                                ImGuiCond_Always, ImVec2(1.0F, 1.0F));
+        ImGui::SetNextWindowBgAlpha(0.6F);
+        ImGui::Begin("##status", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+                         ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav);
+        ImGui::TextUnformatted(status.c_str());
+        ImGui::End();
+    }
+    if (!events.empty()) {
+        // Spec 006 (RF-7.5): the timeline event history grows at the bottom left. Anchored
+        // there and auto-resizing, drawing oldest first puts the newest row at the corner and
+        // pushes the earlier ones up.
+        ImGui::SetNextWindowPos(
+            ImVec2(viewport->Pos.x + 16.0F, viewport->Pos.y + viewport->Size.y - 16.0F),
+            ImGuiCond_Always, ImVec2(0.0F, 1.0F));
+        ImGui::SetNextWindowBgAlpha(0.6F);
+        ImGui::Begin("##events", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+                         ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav);
+        for (const auto &event : events)
+            ImGui::TextUnformatted(event.c_str());
         ImGui::End();
     }
     if (visible) {

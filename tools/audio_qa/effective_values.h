@@ -48,6 +48,8 @@ struct EffectiveRequest {
     std::string rom;
     std::string core;
     std::vector<std::string> takes;
+    // Spec 006 (RF-1.1, RF-1.2): pad timelines, after the takes.
+    std::vector<std::string> timelines{};
     std::optional<std::string> pack; // nullopt: «Sin pack» (RF-1.3)
     std::string pack_mode;
     std::string trust_registry;
@@ -55,6 +57,8 @@ struct EffectiveRequest {
     std::string request_id;
     std::string language;
     std::string presentation;
+    // Spec 006 (RF-7.3): `inspect` or `close`; only the Runtime arguments carry it.
+    std::string at_end;
     std::optional<std::string> play_manifest;
     std::optional<std::string> reference;
     EffectiveConditions conditions;

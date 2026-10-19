@@ -67,7 +67,9 @@ std::string qa_capabilities_report() {
         report.push_back('"');
     }
     const auto &limits = ayther::audio_qa::required_limits;
-    report.append(R"(,"visible_replay_v1","inspection_v1")");
+    // Spec 006 (RF-4.4): pad timelines drive the game instead of a take; (RF-7.3): the
+    // window can close itself after the natural end.
+    report.append(R"(,"visible_replay_v1","inspection_v1","timeline_replay_v1","close_at_end_v1")");
     report.append(R"(],"limits":{"fact_bytes":)");
     report.append(std::to_string(limits.fact_bytes));
     report.append(R"(,"batch_bytes":)");
