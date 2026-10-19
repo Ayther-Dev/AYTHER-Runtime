@@ -1,6 +1,6 @@
 # Runtime–Engine compatibility contract
 
-AYTHER Runtime `0.1.0-beta.12` supports the installed AYTHER Engine package
+AYTHER Runtime `0.1.0-beta.13` supports the installed AYTHER Engine package
 range `>=0.1.0,<0.2.0`. Reproducible builds use the narrower locked artifact
 `v0.1.0-rc.19`, including its published checksum and SLSA provenance.
 

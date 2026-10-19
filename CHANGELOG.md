@@ -15,6 +15,8 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+## [0.1.0-beta.13] - 2026-10-19
+
 ### Changed
 
 - Engine locks (`dependencies/ayther-engine.lock.json` and the QA lock) move
