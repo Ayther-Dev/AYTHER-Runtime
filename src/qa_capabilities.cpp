@@ -10,7 +10,7 @@
 #include "capabilities.h"
 #include "contract_version.h"
 #if __has_include(<ayther/ayther_recording.h>)
-#include <ayther/ayther_recording.h>   // AYTHER_RECORDING_TAKE_ID (Engine spec 007)
+#include <ayther/ayther_recording.h> // AYTHER_RECORDING_TAKE_ID (Engine spec 007)
 #endif
 #endif
 

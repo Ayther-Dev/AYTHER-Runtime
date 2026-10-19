@@ -74,7 +74,8 @@ void negotiation() {
     // Engine spec 007: a v10 take needs take_format_v10; a v9 take does not.
     {
         const auto plain = offer({v10, v11}, {"visible_replay_v1", "inspection_v1"});
-        const auto with = offer({v10, v11}, {"visible_replay_v1", "inspection_v1", "take_format_v10"});
+        const auto with =
+            offer({v10, v11}, {"visible_replay_v1", "inspection_v1", "take_format_v10"});
         expect(std::holds_alternative<qa::FieldIssue>(qa::negotiate_runtime_protocol(
                    plain, qa::ProtocolNeeds{"none", false, false, 10U})) &&
                    std::get<qa::FieldIssue>(qa::negotiate_runtime_protocol(
