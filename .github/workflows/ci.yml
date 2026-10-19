@@ -82,13 +82,13 @@ jobs:
           restore-keys: |
             vcpkg-${{ runner.os }}-${{ github.job }}-${{ matrix.preset || 'default' }}-
 
-      - name: Bootstrap locked Engine rc.18
+      - name: Bootstrap locked Engine rc.19
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $lock = Get-Content dependencies/ayther-engine.lock.json -Raw | ConvertFrom-Json
-          if ($lock.release.tag -cne "v0.1.0-rc.18") {
-              throw "RF-18 requires Engine v0.1.0-rc.18; lock contains '$($lock.release.tag)'."
+          if ($lock.release.tag -cne "v0.1.0-rc.19") {
+              throw "RF-18 requires Engine v0.1.0-rc.19; lock contains '$($lock.release.tag)'."
           }
 
           Start-Transcript -Path artifacts/bootstrap.log
@@ -267,13 +267,13 @@ jobs:
           BASE_REVISION: ${{ github.event.pull_request.base.sha }}
         run: bash tools/run_clang_format_changed.sh "${BASE_REVISION}" HEAD
 
-      - name: Bootstrap locked Engine rc.18
+      - name: Bootstrap locked Engine rc.19
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $lock = Get-Content dependencies/ayther-engine.lock.json -Raw | ConvertFrom-Json
-          if ($lock.release.tag -cne "v0.1.0-rc.18") {
-              throw "RF-18 requires Engine v0.1.0-rc.18; lock contains '$($lock.release.tag)'."
+          if ($lock.release.tag -cne "v0.1.0-rc.19") {
+              throw "RF-18 requires Engine v0.1.0-rc.19; lock contains '$($lock.release.tag)'."
           }
 
           Start-Transcript -Path artifacts/bootstrap.log

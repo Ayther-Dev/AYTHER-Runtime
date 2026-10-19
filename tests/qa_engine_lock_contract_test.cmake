@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 # Spec 002, BR-174 (RNF-8): the QA lock of the Runtime names the published `engine-vpx` artifact
-# of AYTHER Engine v0.1.0-rc.18 by URL, with its SHA-256, the release checksums and the
+# of AYTHER Engine v0.1.0-rc.19 by URL, with its SHA-256, the release checksums and the
 # attestation of the release workflow, and no local path. The bootstrap requires the inspection
 # headers of contracts C3 and C4 in the extracted prefix.
 foreach(variable IN ITEMS LOCK BOOTSTRAP)
@@ -11,7 +11,7 @@ foreach(variable IN ITEMS LOCK BOOTSTRAP)
 endforeach()
 file(READ "${LOCK}" lock)
 
-set(tag "v0.1.0-rc.18")
+set(tag "v0.1.0-rc.19")
 set(root "ayther-engine-vpx-${tag}-windows-x86_64")
 set(download "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/${tag}")
 
@@ -35,12 +35,12 @@ expect_json("release" package kind)
 expect_json("ON" package officialRelease)
 expect_json("${tag}" release tag)
 expect_json("${download}/CHECKSUMS.sha256" release checksumsUrl)
-expect_json("21162e14cafc05149d23f5e36d38bdc089f928d05b740ebce67135ff50c9a6ba"
+expect_json("7fb387486b86616fff087df27262c740c90038d4d6ed6b6bb0ed63f716fcc7b8"
             release checksumsSha256)
 expect_json("engine-vpx" artifact variant)
 expect_json("${download}/${root}.zip" artifact url)
 expect_json("${root}" artifact archiveRoot)
-expect_json("9f62ba61b70a6dac3923a6f0dc8de99c72575f6c57f82bfe140b18adbd88eeca" artifact sha256)
+expect_json("377859807b1c4237df470a67d24fbdb02c21b362d5c3adad33c6d92deac2a280" artifact sha256)
 expect_json("Ayther-Dev/AYTHER-Engine" attestation repository)
 expect_json("Ayther-Dev/AYTHER-Engine/.github/workflows/release.yml" attestation signerWorkflow)
 expect_json("refs/tags/${tag}" attestation sourceRef)

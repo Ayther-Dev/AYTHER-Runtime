@@ -25,8 +25,8 @@ Assert-Condition (Test-Path -LiteralPath $Presets -PathType Leaf) `
     "CMake presets are missing: '$Presets'."
 
 $lock = Get-Content -LiteralPath $EngineLock -Raw | ConvertFrom-Json
-Assert-Condition ($lock.release.tag -ceq "v0.1.0-rc.18") `
-    "RF-18 requires the Engine v0.1.0-rc.18 lock."
+Assert-Condition ($lock.release.tag -ceq "v0.1.0-rc.19") `
+    "RF-18 requires the Engine v0.1.0-rc.19 lock."
 
 $workflowText = Get-Content -LiteralPath $Workflow -Raw
 $presetDocument = Get-Content -LiteralPath $Presets -Raw | ConvertFrom-Json
@@ -61,8 +61,8 @@ foreach ($match in $uses) {
 
 Assert-Condition ($workflowText -match 'tools/bootstrap_ayther_engine\.ps1') `
     "CI must use Runtime's locked Engine bootstrap."
-Assert-Condition ($workflowText -match 'v0.1.0-rc.18') `
-    "CI must reject any Engine lock other than v0.1.0-rc.18."
+Assert-Condition ($workflowText -match 'v0.1.0-rc.19') `
+    "CI must reject any Engine lock other than v0.1.0-rc.19."
 Assert-Condition ($workflowText -match 'cmake --preset') `
     "CI configuration must use CMake presets."
 Assert-Condition ($workflowText -match 'cmake --build --preset') `
