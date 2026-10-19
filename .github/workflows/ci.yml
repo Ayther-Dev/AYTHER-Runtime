@@ -4,6 +4,17 @@ on:
   pull_request:
     branches:
       - main
+  # On main (push and a weekly run, before Actions evicts a cache unused for
+  # seven days) the jobs only configure: they save main's vcpkg cache, which
+  # every pull request restores from its first push. Nothing is built or tested.
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '23 4 * * 1'
+
+env:
+  WARM_ONLY: ${{ github.event_name != 'pull_request' }}
 
 permissions:
   attestations: read
@@ -106,6 +117,7 @@ jobs:
           if ($exitCode -ne 0) { exit $exitCode }
 
       - name: Verify required CTest families
+        if: env.WARM_ONLY != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -119,6 +131,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build
+        if: env.WARM_ONLY != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
@@ -128,6 +141,7 @@ jobs:
           if ($exitCode -ne 0) { exit $exitCode }
 
       - name: Verify RF-18 CTest registration
+        if: env.WARM_ONLY != 'true'
         shell: pwsh
         run: |
           $listing = & ctest --preset $env:CI_PRESET -N -R "^music_(evidence_bundle|warning|three_consumer_semantics|product_flow)$" 2>&1 | Out-String
@@ -136,6 +150,7 @@ jobs:
           if ($count -ne 4) { throw "No RF-18 Runtime tests registered: expected 4, got $count" }
 
       - name: Verify build is up to date
+        if: env.WARM_ONLY != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
@@ -145,6 +160,7 @@ jobs:
           if ($exitCode -ne 0) { exit $exitCode }
 
       - name: Test
+        if: env.WARM_ONLY != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
@@ -245,7 +261,7 @@ jobs:
           sudo apt-get install --yes clang-format clang-tidy gcovr llvm
 
       - name: Check modified C++ formatting
-        if: ${{ matrix.preset == 'linux-quality' }}
+        if: env.WARM_ONLY != 'true' && matrix.preset == 'linux-quality'
         shell: bash
         env:
           BASE_REVISION: ${{ github.event.pull_request.base.sha }}
@@ -286,6 +302,7 @@ jobs:
           if ($exitCode -ne 0) { exit $exitCode }
 
       - name: Verify required CTest families
+        if: env.WARM_ONLY != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -298,6 +315,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build
+        if: env.WARM_ONLY != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
@@ -307,6 +325,7 @@ jobs:
           if ($exitCode -ne 0) { exit $exitCode }
 
       - name: Verify build is up to date
+        if: env.WARM_ONLY != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
@@ -316,6 +335,7 @@ jobs:
           if ($exitCode -ne 0) { exit $exitCode }
 
       - name: Test
+        if: env.WARM_ONLY != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
@@ -326,7 +346,7 @@ jobs:
           if ($exitCode -ne 0) { exit $exitCode }
 
       - name: Coverage report and floor
-        if: ${{ matrix.preset == 'linux-quality' }}
+        if: env.WARM_ONLY != 'true' && (matrix.preset == 'linux-quality')
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
