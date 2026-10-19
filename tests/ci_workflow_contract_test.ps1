@@ -55,7 +55,7 @@ $uses = [regex]::Matches($workflowText, '(?m)^\s*uses:\s+([^\s#]+)')
 Assert-Condition ($uses.Count -gt 0) "Workflow must use pinned actions."
 foreach ($match in $uses) {
     $action = $match.Groups[1].Value
-    Assert-Condition ($action -match '^actions/(checkout|upload-artifact)@[0-9a-f]{40}$') `
+    Assert-Condition ($action -match '^actions/(checkout|upload-artifact|cache)@[0-9a-f]{40}$') `
         "External action is not allowlisted and SHA-pinned: '$action'."
 }
 

@@ -31,7 +31,7 @@ Assert-Condition ($text -match '(?m)^    name: Windows / QA\s*$') 'The job needs
 Assert-Condition ($text -match 'runs-on:\s+windows-2025-vs2026') 'The QA job must use the Visual Studio 2026 runner.'
 
 foreach ($match in [regex]::Matches($text, '(?m)^\s*uses:\s+([^\s#]+)')) {
-    Assert-Condition ($match.Groups[1].Value -match '^actions/(checkout|upload-artifact)@[0-9a-f]{40}$') `
+    Assert-Condition ($match.Groups[1].Value -match '^actions/(checkout|upload-artifact|cache)@[0-9a-f]{40}$') `
         "External action is not allowlisted and SHA-pinned: '$($match.Groups[1].Value)'."
 }
 
