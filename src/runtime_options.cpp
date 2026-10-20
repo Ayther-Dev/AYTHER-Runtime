@@ -171,9 +171,9 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char *const argv
                 return RuntimeOptionsParseResult{std::move(*error)};
             }
             if (options.provider != "libretro" && options.provider != "tessera") {
-                return RuntimeOptionsParseResult{make_error(RuntimeOptionErrorCode::value_out_of_domain,
-                                                            argument, options.provider,
-                                                            static_cast<std::size_t>(index))};
+                return RuntimeOptionsParseResult{
+                    make_error(RuntimeOptionErrorCode::value_out_of_domain, argument,
+                               options.provider, static_cast<std::size_t>(index))};
             }
         } else if (argument == "--native-trace") {
             if (auto error = read_string(argument, options.native_trace_path)) {
@@ -323,9 +323,9 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char *const argv
                 return RuntimeOptionsParseResult{*error};
             options.native_input_mask = std::get<std::uint32_t>(parsed);
             if (options.native_input_mask > 255U)
-                return RuntimeOptionsParseResult{make_error(RuntimeOptionErrorCode::value_out_of_domain,
-                                                            argument, std::get<std::string_view>(value),
-                                                            static_cast<std::size_t>(index))};
+                return RuntimeOptionsParseResult{
+                    make_error(RuntimeOptionErrorCode::value_out_of_domain, argument,
+                               std::get<std::string_view>(value), static_cast<std::size_t>(index))};
         } else if (argument == "--native-deactivate-at" || argument == "--native-reactivate-at") {
             auto value = next_value(argument);
             if (const auto *error = std::get_if<RuntimeOptionError>(&value))
@@ -414,8 +414,7 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char *const argv
         options.rom_path = positional[1];
     }
     if (options.provider != "tessera" &&
-        (!options.native_trace_path.empty() || options.native_visible ||
-         options.native_gpu_probe ||
+        (!options.native_trace_path.empty() || options.native_visible || options.native_gpu_probe ||
          options.native_audio_device || options.native_input_mask != 0 ||
          options.native_deactivate_at != 0 || options.native_reactivate_at != 0)) {
         return RuntimeOptionsParseResult{make_error(RuntimeOptionErrorCode::value_out_of_domain,

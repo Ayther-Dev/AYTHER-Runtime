@@ -60,24 +60,21 @@ int main() {
     std::printf("== runtime_options_test (MAD-006) ==\n");
 
     {
-        const auto parsed = parse({"ayther_runtime", "--provider", "tessera", "--rom",
-                                   "fixture.md", "--pack", "fixture.ay", "--native-input-mask",
-                                   "255", "--native-deactivate-at", "2",
-                                   "--native-reactivate-at", "4"});
+        const auto parsed = parse({"ayther_runtime", "--provider", "tessera", "--rom", "fixture.md",
+                                   "--pack", "fixture.ay", "--native-input-mask", "255",
+                                   "--native-deactivate-at", "2", "--native-reactivate-at", "4"});
         const auto *options = parsed.options();
-        check(options != nullptr && options->provider == "tessera" &&
-                  options->core_path.empty() && options->rom_path == "fixture.md" &&
-                  options->pack_path == "fixture.ay" && options->native_input_mask == 255U &&
-                  options->native_deactivate_at == 2U && options->native_reactivate_at == 4U,
+        check(options != nullptr && options->provider == "tessera" && options->core_path.empty() &&
+                  options->rom_path == "fixture.md" && options->pack_path == "fixture.ay" &&
+                  options->native_input_mask == 255U && options->native_deactivate_at == 2U &&
+                  options->native_reactivate_at == 4U,
               "native provider accepts content and pack without a libretro core");
     }
     {
-        const auto parsed = parse({"ayther_runtime", "--provider", "tessera",
-                                   "--native-visible", "--native-audio-device",
-                                   "--native-gpu-probe"});
+        const auto parsed = parse({"ayther_runtime", "--provider", "tessera", "--native-visible",
+                                   "--native-audio-device", "--native-gpu-probe"});
         check(parsed.options() && parsed.options()->native_visible &&
-                  parsed.options()->native_audio_device &&
-                  parsed.options()->native_gpu_probe,
+                  parsed.options()->native_audio_device && parsed.options()->native_gpu_probe,
               "native presentation and audio devices are explicit");
     }
     expect_error({"ayther_runtime", "--provider", "unknown"},

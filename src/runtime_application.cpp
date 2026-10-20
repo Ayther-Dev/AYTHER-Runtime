@@ -152,7 +152,8 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
 #ifdef AYTHER_ENABLE_TESSERA_NATIVE
         return ayther::runtime::run_native_runtime(options);
 #else
-        std::fprintf(stderr, "[ayther_runtime] El proveedor Tessera no está incluido en este paquete.\n");
+        std::fprintf(stderr,
+                     "[ayther_runtime] El proveedor Tessera no está incluido en este paquete.\n");
         return ayther::runtime::runtime_cli_error_exit_code;
 #endif
     }
