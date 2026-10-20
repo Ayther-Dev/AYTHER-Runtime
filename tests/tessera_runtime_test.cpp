@@ -91,13 +91,25 @@ int main(int argc, char **argv) {
         const auto output = run(runtime, arguments, scratch, code);
         require(code == 0, "Native Runtime process failed: " + output);
         std::vector<std::map<std::string, std::string>> frames;
+        std::map<std::string, std::string> flow, events;
         std::istringstream lines(output);
         std::string line;
-        while (std::getline(lines, line))
+        while (std::getline(lines, line)) {
             if (line.starts_with("AYTHER_NATIVE_FRAME ")) frames.push_back(fields(line));
+            if (line.starts_with("AYTHER_NATIVE_FLOW ")) flow = fields(line);
+            if (line.starts_with("AYTHER_NATIVE_EVENTS ")) events = fields(line);
+        }
         require(frames.size() == 4 && output.find("AYTHER_NATIVE_DONE frames=4") !=
                                            std::string::npos,
                 "Native Runtime did not advance exactly four frames");
+        require(!flow.empty() && flow.at("frames") == "4" &&
+                    flow.at("composed_frames") == "2" &&
+                    flow.at("fallback_frames") == "2" &&
+                    flow.at("fallback_policy") == "2" &&
+                    std::stoull(flow.at("composed_copy")) == 2 * 320 * 224 * 4 &&
+                    !events.empty() && events.at("losses") == "0" &&
+                    events.at("emitted") == events.at("retained"),
+                "Native metric counts disagree with FX-03 presentation controls");
         for (std::size_t index = 0; index < frames.size(); ++index) {
             require(frames[index].at("frame") == std::to_string(index + 1),
                     "Frame identity is not consecutive");

@@ -1,4 +1,7 @@
 #include "native_runtime.h"
+#ifdef AYTHER_NATIVE_ALLOCATION_METRICS
+#include "native_allocation_metrics.hpp"
+#endif
 
 #include <ayther/ayther_core_ffi.h>
 #include <ayther/ayther_session.h>
@@ -149,6 +152,14 @@ std::uint64_t hash_bytes(std::span<const std::uint8_t> bytes) {
     return value;
 }
 
+std::uint64_t read_u64(std::span<const std::uint8_t> bytes, std::size_t at) {
+    if (at > bytes.size() || bytes.size() - at < 8) return 0;
+    std::uint64_t value = 0;
+    for (unsigned index = 0; index < 8; ++index)
+        value |= std::uint64_t{bytes[at + index]} << (8 * index);
+    return value;
+}
+
 double microseconds(std::chrono::steady_clock::time_point start,
                     std::chrono::steady_clock::time_point end) {
     return std::chrono::duration<double, std::micro>(end - start).count();
@@ -228,14 +239,22 @@ class NativeDevices final {
         while (SDL_PollEvent(&event))
             if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED)
                 return false;
+        const auto acquire_start = std::chrono::steady_clock::now();
         auto acquired = swapchain_.begin_frame(context_);
         if (!acquired) return false;
+        const auto record_start = std::chrono::steady_clock::now();
         renderer_.render(context_.engine_view(), acquired->command_buffer(),
                          frame, {}, false);
         VkPresent::blit_to_swapchain(context_, *acquired, renderer_.render_image());
         VkPresent::finalize(context_, *acquired);
+        const auto submit_start = std::chrono::steady_clock::now();
         if (!swapchain_.end_frame(context_, *acquired)) return false;
         const auto now = std::chrono::steady_clock::now();
+        gpu_acquire_cpu_.push_back(microseconds(acquire_start, record_start));
+        gpu_record_cpu_.push_back(microseconds(record_start, submit_start));
+        gpu_submit_cpu_.push_back(microseconds(submit_start, now));
+        gpu_staging_bytes_ += static_cast<std::uint64_t>(frame.fb_width) *
+                              frame.fb_height * 4;
         if (last_present_ != std::chrono::steady_clock::time_point{})
             intervals_.push_back(std::chrono::duration<double, std::milli>(
                 now - last_present_).count());
@@ -272,6 +291,7 @@ class NativeDevices final {
         if (!frame.pcm.empty() &&
             !SDL_PutAudioStreamData(audio_, frame.pcm.data(),
                                     static_cast<int>(frame.pcm.size()))) return false;
+        audio_stream_bytes_ += frame.pcm.size();
         for (std::size_t index = 0; index + 1 < frame.pcm.size(); index += 2) {
             const auto value = static_cast<std::int16_t>(
                 static_cast<std::uint16_t>(frame.pcm[index]) |
@@ -306,15 +326,23 @@ class NativeDevices final {
                 static_cast<unsigned long long>(presented_), intervals_.size(),
                 percentile(0.50), percentile(0.95), percentile(0.99),
                 ordered.empty() ? 0.0 : ordered.back(), context_.validation_error_count());
+            report_cost("gpu_acquire_cpu", gpu_acquire_cpu_);
+            report_cost("gpu_record_cpu", gpu_record_cpu_);
+            report_cost("gpu_submit_present_cpu", gpu_submit_cpu_);
         }
+        std::fprintf(stdout,
+            "AYTHER_NATIVE_DEVICE_BYTES gpu_staging=%llu audio_stream_queue=%llu scope=runtime_explicit_boundaries\n",
+            static_cast<unsigned long long>(gpu_staging_bytes_),
+            static_cast<unsigned long long>(audio_stream_bytes_));
         if (audio_) {
             const auto missing = missing_frames_.load();
             const auto max_episode = max_episode_frames_.load();
             std::fprintf(stdout,
-                "AYTHER_NATIVE_AUDIO device=%u source_frames=%llu source_peak=%d active_samples=%llu episodes=%llu missing_samples=%llu total_ms=%.3f max_ms=%.3f\n",
+                "AYTHER_NATIVE_AUDIO device=%u source_frames=%llu source_peak=%d active_samples=%llu callback_calls=%llu episodes=%llu missing_samples=%llu total_ms=%.3f max_ms=%.3f\n",
                 SDL_GetAudioStreamDevice(audio_),
                 static_cast<unsigned long long>(audio_frames_),
                 source_peak_, static_cast<unsigned long long>(active_samples_),
+                static_cast<unsigned long long>(callback_calls_.load()),
                 static_cast<unsigned long long>(episodes_.load()),
                 static_cast<unsigned long long>(missing),
                 static_cast<double>(missing) * 1000.0 / 48000.0,
@@ -327,6 +355,7 @@ class NativeDevices final {
                                        int) {
         auto &self = *static_cast<NativeDevices *>(user);
         if (!self.armed_.load()) return;
+        self.callback_calls_.fetch_add(1, std::memory_order_relaxed);
         if (additional <= 0) {
             self.episode_active_.store(false);
             self.current_episode_frames_.store(0);
@@ -352,8 +381,10 @@ class NativeDevices final {
     int source_peak_{};
     std::chrono::steady_clock::time_point last_present_{};
     std::vector<double> intervals_;
+    std::vector<double> gpu_acquire_cpu_, gpu_record_cpu_, gpu_submit_cpu_;
+    std::uint64_t gpu_staging_bytes_{}, audio_stream_bytes_{};
     std::atomic<bool> armed_{false}, episode_active_{false};
-    std::atomic<std::uint64_t> episodes_{0}, missing_frames_{0},
+    std::atomic<std::uint64_t> callback_calls_{0}, episodes_{0}, missing_frames_{0},
         current_episode_frames_{0}, max_episode_frames_{0};
 };
 
@@ -384,6 +415,10 @@ int run_native_runtime(const RuntimeOptions &options) {
         std::fprintf(stderr, "[native] Detección o preparación rechazada: %d\n", status.code);
         return 1;
     }
+    std::array<char, 65> config_digest{};
+    if (!ayther_sha256_hex(configuration.config.data(),
+                           configuration.config.size(), config_digest.data())) return 1;
+    std::fprintf(stdout, "AYTHER_NATIVE_CONFIG sha256=%s\n", config_digest.data());
     ayther::AytherSession::Config request;
     request.provider = ayther::EmulationProvider::tessera_native;
     request.native_config = std::move(configuration);
@@ -419,6 +454,9 @@ int run_native_runtime(const RuntimeOptions &options) {
         return 1;
     }
     std::uint64_t completed = 0;
+    std::uint64_t borrowed_video_bytes = 0, composed_copy_bytes = 0;
+    std::uint64_t composed_frames = 0, fallback_frames = 0;
+    std::array<std::uint64_t, 11> fallback_reasons{};
     std::vector<double> step_costs, hash_costs, device_costs;
     if (options.frames_limit > 0 && options.frames_limit <= 65536) {
         const auto reserve = static_cast<std::size_t>(options.frames_limit);
@@ -430,6 +468,9 @@ int run_native_runtime(const RuntimeOptions &options) {
     for (;;) {
         if (options.frames_limit != 0 && completed >= options.frames_limit)
             break;
+#ifdef AYTHER_NATIVE_ALLOCATION_METRICS
+        const auto allocation_before = allocation_metrics::snapshot();
+#endif
         const auto next = completed + 1;
         if (next == options.native_deactivate_at || next == options.native_reactivate_at) {
             status = session->native_submit_presentation_policy(
@@ -475,6 +516,15 @@ int run_native_runtime(const RuntimeOptions &options) {
         const auto presented = std::span<const std::uint8_t>{
             static_cast<const std::uint8_t *>(frame.fb_pixels),
             static_cast<std::size_t>(frame.fb_pitch) * frame.fb_height};
+        borrowed_video_bytes += frame.native_original.pixels.size();
+        if (frame.native_original_reason == ayther::NativeOriginalReason::none) {
+            ++composed_frames;
+            composed_copy_bytes += presented.size();
+        } else {
+            ++fallback_frames;
+            const auto reason = static_cast<std::size_t>(frame.native_original_reason);
+            if (reason < fallback_reasons.size()) ++fallback_reasons[reason];
+        }
         const auto hash_start = std::chrono::steady_clock::now();
         const auto original_hash = hash_bytes(frame.native_original.pixels);
         const auto presented_hash = hash_bytes(presented);
@@ -495,6 +545,14 @@ int run_native_runtime(const RuntimeOptions &options) {
             return 1;
         }
         const auto device_end = std::chrono::steady_clock::now();
+#ifdef AYTHER_NATIVE_ALLOCATION_METRICS
+        const auto allocation_after = allocation_metrics::snapshot();
+        std::fprintf(stdout,
+            "AYTHER_NATIVE_ALLOC frame=%llu calls=%llu bytes=%llu scope=executable_cpp_new\n",
+            static_cast<unsigned long long>(completed + 1),
+            static_cast<unsigned long long>(allocation_after.calls - allocation_before.calls),
+            static_cast<unsigned long long>(allocation_after.bytes - allocation_before.bytes));
+#endif
         step_costs.push_back(microseconds(step_start, step_end));
         hash_costs.push_back(microseconds(hash_start, hash_end));
         device_costs.push_back(microseconds(device_start, device_end));
@@ -504,6 +562,36 @@ int run_native_runtime(const RuntimeOptions &options) {
                 std::chrono::nanoseconds(16'688'754LL * static_cast<std::int64_t>(completed)));
     }
     devices.report();
+    std::fprintf(stdout,
+        "AYTHER_NATIVE_FLOW frames=%llu borrowed_video=%llu composed_frames=%llu composed_copy=%llu fallback_frames=%llu fallback_no_pack=%llu fallback_policy=%llu fallback_no_rule=%llu scope=engine_runtime_explicit_boundaries\n",
+        static_cast<unsigned long long>(completed),
+        static_cast<unsigned long long>(borrowed_video_bytes),
+        static_cast<unsigned long long>(composed_frames),
+        static_cast<unsigned long long>(composed_copy_bytes),
+        static_cast<unsigned long long>(fallback_frames),
+        static_cast<unsigned long long>(fallback_reasons[static_cast<std::size_t>(ayther::NativeOriginalReason::no_pack)]),
+        static_cast<unsigned long long>(fallback_reasons[static_cast<std::size_t>(ayther::NativeOriginalReason::policy_unconfirmed)]),
+        static_cast<unsigned long long>(fallback_reasons[static_cast<std::size_t>(ayther::NativeOriginalReason::no_matching_rule)]));
+    std::uint64_t event_required = 0, event_next = 0, loss_required = 0;
+    const auto event_probe = emulation->events(0, {}, event_required, event_next);
+    if (event_probe.code != static_cast<std::int32_t>(native::NativeStatus::buffer_too_small) ||
+        event_required < 24 || event_required > 16 * 1024 * 1024)
+        return 1;
+    Bytes event_batch(static_cast<std::size_t>(event_required));
+    if (emulation->events(0, event_batch, event_required, event_next).code != 0 ||
+        event_required != event_batch.size()) return 1;
+    const auto loss_probe = emulation->losses({}, loss_required);
+    if (loss_probe.code != static_cast<std::int32_t>(native::NativeStatus::buffer_too_small) ||
+        loss_required < 24 || loss_required > 4096) return 1;
+    Bytes loss_data(static_cast<std::size_t>(loss_required));
+    if (emulation->losses(loss_data, loss_required).code != 0 ||
+        loss_required != loss_data.size()) return 1;
+    std::fprintf(stdout,
+        "AYTHER_NATIVE_EVENTS emitted=%llu retained=%llu batch_bytes=%llu losses=%llu scope=post_run_engine_tessera_cursor\n",
+        static_cast<unsigned long long>(event_next),
+        static_cast<unsigned long long>(read_u64(event_batch, 16)),
+        static_cast<unsigned long long>(event_batch.size()),
+        static_cast<unsigned long long>(read_u64(loss_data, 16)));
     report_cost("engine_step", std::move(step_costs));
     report_cost("runtime_hash", std::move(hash_costs));
     report_cost("runtime_device", std::move(device_costs));
