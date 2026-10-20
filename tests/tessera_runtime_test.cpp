@@ -170,12 +170,14 @@ int main(int argc, char **argv) {
                 " --trust-registry " + quote(trust) +
                 " --frames 90 --native-visible --native-audio-device", scratch, code);
             require(code == 0, "Vulkan/audio Runtime process failed: " + device_output);
-            std::map<std::string, std::string> presentation, audio;
+            std::map<std::string, std::string> presentation, audio, gpu_timestamp;
             std::map<std::string, std::map<std::string, std::string>> costs;
             std::istringstream device_lines(device_output);
             while (std::getline(device_lines, line)) {
                 if (line.starts_with("AYTHER_NATIVE_PRESENT ")) presentation = fields(line);
                 if (line.starts_with("AYTHER_NATIVE_AUDIO ")) audio = fields(line);
+                if (line.starts_with("AYTHER_NATIVE_GPU_TIMESTAMP "))
+                    gpu_timestamp = fields(line);
                 if (line.starts_with("AYTHER_NATIVE_COST ")) {
                     auto item = fields(line);
                     costs.emplace(item.at("stage"), std::move(item));
@@ -183,6 +185,20 @@ int main(int argc, char **argv) {
             }
             require(!presentation.empty() && !audio.empty(),
                     "GPU or audio device metrics are absent");
+            require(!gpu_timestamp.empty() &&
+                    gpu_timestamp.at("supported") == "1" &&
+                    gpu_timestamp.at("samples") == "90" &&
+                    gpu_timestamp.at("scope") == "top_image_ready_bottom" &&
+                    std::stoul(gpu_timestamp.at("valid_bits")) > 0 &&
+                    std::stod(gpu_timestamp.at("period_ns")) > 0 &&
+                    costs.contains("gpu_execute") &&
+                    costs.contains("gpu_image_wait") &&
+                    costs.contains("gpu_command_span") &&
+                    costs.at("gpu_execute").at("count") == "60" &&
+                    costs.at("gpu_image_wait").at("count") == "60" &&
+                    costs.at("gpu_command_span").at("count") == "60" &&
+                    std::stod(costs.at("gpu_execute").at("p50")) > 0,
+                    "GPU execution timestamps are incomplete");
             require(presentation.at("frames") == "90" &&
                     presentation.at("intervals") == "89" &&
                     presentation.at("validation_errors") == "0" &&
@@ -196,6 +212,7 @@ int main(int argc, char **argv) {
                     "Presentation intervals are not valid monotonic percentiles");
             require(std::stoull(audio.at("device")) > 0 &&
                     std::stoull(audio.at("source_frames")) > 0 &&
+                    std::stoull(audio.at("callback_calls")) > 0 &&
                     audio.contains("episodes") && audio.contains("missing_samples") &&
                     audio.contains("total_ms") && audio.contains("max_ms"),
                     "Audio device or underrun coverage is incomplete");

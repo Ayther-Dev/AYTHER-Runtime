@@ -188,6 +188,10 @@ class NativeDevices final {
     ~NativeDevices() {
         armed_.store(false);
         if (audio_) SDL_DestroyAudioStream(audio_);
+        if (gpu_query_pool_ != VK_NULL_HANDLE && context_.device() != VK_NULL_HANDLE) {
+            (void)context_.wait_idle("vkDeviceWaitIdle [NativeDevices timestamps]");
+            vkDestroyQueryPool(context_.device(), gpu_query_pool_, nullptr);
+        }
         if (renderer_.is_ready()) renderer_.shutdown(context_.engine_view());
         swapchain_.shutdown();
         context_.shutdown();
@@ -223,6 +227,26 @@ class NativeDevices final {
                                 static_cast<std::uint32_t>(canvas.h),
                                 shader_directory.c_str())) return false;
             if (gpu_probe && !renderer_.readback_init(context_.engine_view())) return false;
+            std::uint32_t family_count = 0;
+            vkGetPhysicalDeviceQueueFamilyProperties(context_.physical_device(),
+                                                     &family_count, nullptr);
+            std::vector<VkQueueFamilyProperties> families(family_count);
+            vkGetPhysicalDeviceQueueFamilyProperties(context_.physical_device(),
+                                                     &family_count, families.data());
+            if (context_.graphics_family() < family_count) {
+                timestamp_valid_bits_ = families[context_.graphics_family()].timestampValidBits;
+                VkPhysicalDeviceProperties properties{};
+                vkGetPhysicalDeviceProperties(context_.physical_device(), &properties);
+                timestamp_period_ns_ = properties.limits.timestampPeriod;
+                if (timestamp_valid_bits_ != 0 && timestamp_period_ns_ > 0.0f) {
+                    VkQueryPoolCreateInfo query_info{};
+                    query_info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+                    query_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
+                    query_info.queryCount = 3 * VkSwapchain::kMaxFrames;
+                    if (vkCreateQueryPool(context_.device(), &query_info, nullptr,
+                                          &gpu_query_pool_) != VK_SUCCESS) return false;
+                }
+            }
         }
         if (audio_device) {
             const SDL_AudioSpec input{SDL_AUDIO_S16, 2, 48000};
@@ -242,13 +266,32 @@ class NativeDevices final {
         const auto acquire_start = std::chrono::steady_clock::now();
         auto acquired = swapchain_.begin_frame(context_);
         if (!acquired) return false;
+        const auto slot = static_cast<std::uint32_t>(presented_ % VkSwapchain::kMaxFrames);
+        if (gpu_query_pool_ != VK_NULL_HANDLE) {
+            if (!collect_gpu_query(slot)) return false;
+            vkCmdResetQueryPool(acquired->command_buffer(), gpu_query_pool_,
+                                slot * 3, 3);
+            vkCmdWriteTimestamp(acquired->command_buffer(),
+                                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                gpu_query_pool_, slot * 3);
+            // The submit waits for image_ready at COLOR_ATTACHMENT_OUTPUT.
+            // This timestamp enters that stage after the semaphore gate.
+            vkCmdWriteTimestamp(acquired->command_buffer(),
+                                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                gpu_query_pool_, slot * 3 + 1);
+        }
         const auto record_start = std::chrono::steady_clock::now();
         renderer_.render(context_.engine_view(), acquired->command_buffer(),
                          frame, {}, false);
         VkPresent::blit_to_swapchain(context_, *acquired, renderer_.render_image());
         VkPresent::finalize(context_, *acquired);
+        if (gpu_query_pool_ != VK_NULL_HANDLE)
+            vkCmdWriteTimestamp(acquired->command_buffer(),
+                                VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                gpu_query_pool_, slot * 3 + 2);
         const auto submit_start = std::chrono::steady_clock::now();
         if (!swapchain_.end_frame(context_, *acquired)) return false;
+        if (gpu_query_pool_ != VK_NULL_HANDLE) gpu_query_pending_[slot] = true;
         const auto now = std::chrono::steady_clock::now();
         gpu_acquire_cpu_.push_back(microseconds(acquire_start, record_start));
         gpu_record_cpu_.push_back(microseconds(record_start, submit_start));
@@ -310,8 +353,26 @@ class NativeDevices final {
         return true;
     }
 
-    void report() const {
+    void report() {
         if (window_) {
+            if (gpu_query_pool_ != VK_NULL_HANDLE) {
+                if (const auto failure = context_.wait_idle(
+                        "vkDeviceWaitIdle [NativeDevices timestamp report]")) {
+                    ayther::runtime::vulkan::log_vk_failure(*failure);
+                } else {
+                    for (std::uint32_t slot = 0; slot < VkSwapchain::kMaxFrames; ++slot)
+                        if (!collect_gpu_query(slot))
+                            std::fprintf(stderr, "[native] GPU timestamp read failed.\n");
+                }
+            }
+            std::fprintf(stdout,
+                "AYTHER_NATIVE_GPU_TIMESTAMP supported=%u valid_bits=%u period_ns=%.6f samples=%zu scope=top_image_ready_bottom\n",
+                gpu_query_pool_ != VK_NULL_HANDLE ? 1U : 0U,
+                timestamp_valid_bits_, static_cast<double>(timestamp_period_ns_),
+                gpu_execution_costs_.size());
+            report_cost("gpu_execute", gpu_execution_costs_);
+            report_cost("gpu_image_wait", gpu_image_wait_costs_);
+            report_cost("gpu_command_span", gpu_command_span_costs_);
             auto ordered = intervals_;
             std::sort(ordered.begin(), ordered.end());
             const auto percentile = [&ordered](double fraction) {
@@ -351,6 +412,28 @@ class NativeDevices final {
     }
 
   private:
+    bool collect_gpu_query(std::uint32_t slot) {
+        if (!gpu_query_pending_[slot]) return true;
+        std::array<std::uint64_t, 3> ticks{};
+        if (vkGetQueryPoolResults(context_.device(), gpu_query_pool_, slot * 3, 3,
+                                  sizeof(ticks), ticks.data(), sizeof(ticks[0]),
+                                  VK_QUERY_RESULT_64_BIT) != VK_SUCCESS) return false;
+        const std::uint64_t mask = timestamp_valid_bits_ == 64
+            ? std::numeric_limits<std::uint64_t>::max()
+            : (std::uint64_t{1} << timestamp_valid_bits_) - 1;
+        const auto wait_ticks = (ticks[1] - ticks[0]) & mask;
+        const auto execution_ticks = (ticks[2] - ticks[1]) & mask;
+        const auto span_ticks = (ticks[2] - ticks[0]) & mask;
+        gpu_execution_costs_.push_back(
+            static_cast<double>(execution_ticks) * timestamp_period_ns_ / 1000.0);
+        gpu_image_wait_costs_.push_back(
+            static_cast<double>(wait_ticks) * timestamp_period_ns_ / 1000.0);
+        gpu_command_span_costs_.push_back(
+            static_cast<double>(span_ticks) * timestamp_period_ns_ / 1000.0);
+        gpu_query_pending_[slot] = false;
+        return true;
+    }
+
     static void SDLCALL audio_callback(void *user, SDL_AudioStream *, int additional,
                                        int) {
         auto &self = *static_cast<NativeDevices *>(user);
@@ -382,6 +465,12 @@ class NativeDevices final {
     std::chrono::steady_clock::time_point last_present_{};
     std::vector<double> intervals_;
     std::vector<double> gpu_acquire_cpu_, gpu_record_cpu_, gpu_submit_cpu_;
+    std::vector<double> gpu_execution_costs_;
+    std::vector<double> gpu_image_wait_costs_, gpu_command_span_costs_;
+    VkQueryPool gpu_query_pool_{VK_NULL_HANDLE};
+    std::array<bool, VkSwapchain::kMaxFrames> gpu_query_pending_{};
+    std::uint32_t timestamp_valid_bits_{};
+    float timestamp_period_ns_{};
     std::uint64_t gpu_staging_bytes_{}, audio_stream_bytes_{};
     std::atomic<bool> armed_{false}, episode_active_{false};
     std::atomic<std::uint64_t> callback_calls_{0}, episodes_{0}, missing_frames_{0},
