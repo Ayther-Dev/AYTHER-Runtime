@@ -216,7 +216,7 @@ int main(int argc, char **argv) {
                     audio.contains("episodes") && audio.contains("missing_samples") &&
                     audio.contains("total_ms") && audio.contains("max_ms"),
                     "Audio device or underrun coverage is incomplete");
-            for (const char *stage : {"engine_step", "runtime_hash", "runtime_device"}) {
+            for (const char *stage : {"engine_step", "engine_frame", "runtime_hash", "runtime_device"}) {
                 require(costs.contains(stage) && costs.at(stage).at("unit") == "us" &&
                         costs.at(stage).at("warmup") == "30" &&
                         costs.at(stage).at("count") == "60" &&
