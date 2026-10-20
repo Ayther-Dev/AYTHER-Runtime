@@ -1,0 +1,15 @@
+{
+  "fixture_id": "FX-02-megadrive-audio-active-v1",
+  "version": 1,
+  "generator": "tests/backend_probe/main.cpp",
+  "generator_sha256": "eaf1e1f61ec820d1b59db388c4a0a19dca32b26ceee0cd5429616e8f2cb7ee90",
+  "rights": "Tessera-original-MIT",
+  "source": "Original local 68000 opcode emitter; no external ROM bytes",
+  "rom": {"generated_name": "program.md", "size_bytes": 32768, "sha256": "5296c4fa331fd8cb47663fc7ce3b0abef03364221b309a65f2966c6a8642225c"},
+  "trace_control": {"generated_name": "full-control.json", "frames": 3000, "sha256": "5730b38c9e1ef970bcd52347cb684249a7b418f717f3dbe2aa3143c626b87a9c"},
+  "trace_action": {"generated_name": "full-action.json", "frames": 3000, "pressed_control": "B", "pressed_first": 301, "pressed_last": 600, "sha256": "37b8cdf47c07b50e442f8689f83e979cd4001558b908a498944ccc36bc8de009"},
+  "oracle": {"generated_name": "expected.json", "sha256": "ad17ff3b8b0f38466a15c2aa2d0ac9a594494c7b342f886827afa7c2d6e024ee", "basis": "generator_source_before_emulation"},
+  "windows": {"neutral_first": [100, 200], "active": [350, 550], "neutral_last": [650, 850]},
+  "observable": {"ram_input_byte_neutral": 16, "ram_input_byte_active": 0, "vram_marker_neutral": 4951, "vram_marker_active": 9320, "cram_zero_neutral": 3584, "cram_zero_active": 14, "center_rgb_neutral": [0, 0, 255], "center_rgb_active": [255, 0, 0]},
+  "audio": {"sample_rate": 48000, "channels": 2, "encoding": "S16LE", "neutral_minimum": -2, "neutral_maximum": 2, "active_minimum_range": 17, "transition_check": "neutral-active-neutral"}
+}

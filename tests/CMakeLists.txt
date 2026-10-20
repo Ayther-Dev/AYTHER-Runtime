@@ -1085,3 +1085,41 @@ add_test(
 
 add_subdirectory(audio_qa)
 add_subdirectory(replay_inspection)
+
+if(AYTHER_ENABLE_TESSERA_NATIVE)
+set(AYTHER_TESSERA_TEST_FIXTURE_DIR "" CACHE PATH
+    "Locally generated Tessera/Engine fixtures, outside the source checkout")
+if(NOT EXISTS "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/roms/fx03_rom.md"
+        OR NOT EXISTS "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx03/fx03.ay"
+        OR NOT EXISTS "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx02/program.md")
+    message(FATAL_ERROR "Generate native fixtures before configuring Runtime tests")
+endif()
+add_executable(tessera_runtime_test tessera_runtime_test.cpp)
+set_target_properties(tessera_runtime_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+add_test(NAME tessera_runtime_native_headless
+    COMMAND tessera_runtime_test
+        "$<TARGET_FILE:ayther_runtime>"
+        "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx03/fx03_rom.md"
+        "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx03/fx03.ay"
+        "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx03/trust.toml")
+set_tests_properties(tessera_runtime_native_headless PROPERTIES
+    LABELS "integration;tessera;FX-03" TIMEOUT 45)
+if(AYTHER_ENABLE_GPU_TESTS)
+    add_test(NAME tessera_runtime_active_audio
+        COMMAND tessera_runtime_test --active-audio
+            "$<TARGET_FILE:ayther_runtime>"
+            "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx02/program.md")
+    set_tests_properties(tessera_runtime_active_audio PROPERTIES
+        LABELS "integration;tessera;FX-02;audio" TIMEOUT 120)
+    add_test(NAME tessera_runtime_gpu_audio
+        COMMAND tessera_runtime_test
+            "$<TARGET_FILE:ayther_runtime>"
+            "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx03/fx03_rom.md"
+            "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx03/fx03.ay"
+            "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx03/trust.toml"
+            --device)
+    set_tests_properties(tessera_runtime_gpu_audio PROPERTIES
+        LABELS "integration;tessera;FX-03;gpu;audio" TIMEOUT 120)
+endif()
+endif()

@@ -39,6 +39,9 @@
 #include "presentation_controller.h"
 #include "qa_capabilities.h"
 #include "runtime_options.h"
+#ifdef AYTHER_ENABLE_TESSERA_NATIVE
+#include "native_runtime.h"
+#endif
 #include "save_state_store.h"
 #include "session_controller.h"
 #include "sonic_telemetry.h" // Runtime-owned game-specific diagnostics
@@ -144,6 +147,15 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
         return ayther::runtime::runtime_cli_error_exit_code;
     }
     ayther::runtime::RuntimeOptions options = std::move(*parsed_options.options());
+
+    if (options.provider == "tessera") {
+#ifdef AYTHER_ENABLE_TESSERA_NATIVE
+        return ayther::runtime::run_native_runtime(options);
+#else
+        std::fprintf(stderr, "[ayther_runtime] El proveedor Tessera no está incluido en este paquete.\n");
+        return ayther::runtime::runtime_cli_error_exit_code;
+#endif
+    }
 
     if (options.qa_capabilities) {
         const std::string report = ayther::runtime::qa_capabilities_report();

@@ -187,6 +187,9 @@ if(AYTHER_ENABLE_FUZZING AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     message(FATAL_ERROR "AYTHER_ENABLE_FUZZING requires Clang/libFuzzer")
 endif()
 
+option(AYTHER_ENABLE_TESSERA_NATIVE
+    "Enable the native Engine-to-Tessera Runtime route and its integration tests" OFF)
+
 add_executable(ayther_runtime
     src/main.cpp
     src/runtime_application.cpp # MAD-039: process composition and orchestration
@@ -216,6 +219,10 @@ add_executable(ayther_runtime
     src/vulkan_backend/vk_present.cpp
     src/vulkan_backend/vk_postprocess.cpp
 )
+if(AYTHER_ENABLE_TESSERA_NATIVE)
+    target_sources(ayther_runtime PRIVATE src/native_runtime.cpp)
+    target_compile_definitions(ayther_runtime PRIVATE AYTHER_ENABLE_TESSERA_NATIVE=1)
+endif()
 
 if(WIN32)
     target_sources(ayther_runtime PRIVATE

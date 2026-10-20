@@ -166,7 +166,31 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char *const argv
             return std::nullopt;
         };
 
-        if (argument == "--core") {
+        if (argument == "--provider") {
+            if (auto error = read_string(argument, options.provider)) {
+                return RuntimeOptionsParseResult{std::move(*error)};
+            }
+            if (options.provider != "libretro" && options.provider != "tessera") {
+                return RuntimeOptionsParseResult{make_error(RuntimeOptionErrorCode::value_out_of_domain,
+                                                            argument, options.provider,
+                                                            static_cast<std::size_t>(index))};
+            }
+        } else if (argument == "--native-trace") {
+            if (auto error = read_string(argument, options.native_trace_path)) {
+                return RuntimeOptionsParseResult{std::move(*error)};
+            }
+            if (options.native_trace_path.empty()) {
+                return RuntimeOptionsParseResult{make_error(RuntimeOptionErrorCode::empty_value,
+                                                            argument, {},
+                                                            static_cast<std::size_t>(index))};
+            }
+        } else if (argument == "--native-visible") {
+            options.native_visible = true;
+        } else if (argument == "--native-audio-device") {
+            options.native_audio_device = true;
+        } else if (argument == "--native-gpu-probe") {
+            options.native_gpu_probe = true;
+        } else if (argument == "--core") {
             if (auto error = read_string(argument, options.core_path)) {
                 return RuntimeOptionsParseResult{std::move(*error)};
             }
@@ -289,6 +313,31 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char *const argv
             } else {
                 options.play_protocol_version = std::get<std::uint32_t>(parsed);
             }
+        } else if (argument == "--native-input-mask") {
+            auto value = next_value(argument);
+            if (const auto *error = std::get_if<RuntimeOptionError>(&value))
+                return RuntimeOptionsParseResult{*error};
+            auto parsed = parse_unsigned<std::uint32_t>(std::get<std::string_view>(value), argument,
+                                                        static_cast<std::size_t>(index));
+            if (const auto *error = std::get_if<RuntimeOptionError>(&parsed))
+                return RuntimeOptionsParseResult{*error};
+            options.native_input_mask = std::get<std::uint32_t>(parsed);
+            if (options.native_input_mask > 255U)
+                return RuntimeOptionsParseResult{make_error(RuntimeOptionErrorCode::value_out_of_domain,
+                                                            argument, std::get<std::string_view>(value),
+                                                            static_cast<std::size_t>(index))};
+        } else if (argument == "--native-deactivate-at" || argument == "--native-reactivate-at") {
+            auto value = next_value(argument);
+            if (const auto *error = std::get_if<RuntimeOptionError>(&value))
+                return RuntimeOptionsParseResult{*error};
+            auto parsed = parse_unsigned<std::uint64_t>(std::get<std::string_view>(value), argument,
+                                                        static_cast<std::size_t>(index), true);
+            if (const auto *error = std::get_if<RuntimeOptionError>(&parsed))
+                return RuntimeOptionsParseResult{*error};
+            if (argument == "--native-deactivate-at")
+                options.native_deactivate_at = std::get<std::uint64_t>(parsed);
+            else
+                options.native_reactivate_at = std::get<std::uint64_t>(parsed);
         } else if (argument == "--qa-take-position") {
             auto value = next_value(argument);
             if (const auto *error = std::get_if<RuntimeOptionError>(&value)) {
@@ -363,6 +412,15 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char *const argv
     }
     if (options.rom_path.empty() && positional.size() >= 2) {
         options.rom_path = positional[1];
+    }
+    if (options.provider != "tessera" &&
+        (!options.native_trace_path.empty() || options.native_visible ||
+         options.native_gpu_probe ||
+         options.native_audio_device || options.native_input_mask != 0 ||
+         options.native_deactivate_at != 0 || options.native_reactivate_at != 0)) {
+        return RuntimeOptionsParseResult{make_error(RuntimeOptionErrorCode::value_out_of_domain,
+                                                    "--provider", options.provider,
+                                                    static_cast<std::size_t>(argc))};
     }
     return RuntimeOptionsParseResult{std::move(options)};
 }
