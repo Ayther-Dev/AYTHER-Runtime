@@ -33,6 +33,33 @@ add_test(NAME trust_registry_cli COMMAND ${CMAKE_COMMAND}
 set_tests_properties(trust_registry_cli PROPERTIES ENVIRONMENT "SDL_VIDEO_DRIVER=dummy;SDL_AUDIO_DRIVER=dummy")
 if(AYTHER_PWSH_EXECUTABLE)
     add_test(
+        NAME native_engine_lock_contract
+        COMMAND ${AYTHER_PWSH_EXECUTABLE}
+                -NoProfile
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/native_engine_lock_contract_test.ps1
+                -FetchScript ${CMAKE_CURRENT_SOURCE_DIR}/../tools/fetch_ayther_engine.ps1
+                -ExistingLock ${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/ayther-engine.lock.json
+                -WorkDirectory ${CMAKE_CURRENT_BINARY_DIR}/native-engine-lock-contract
+    )
+    set_tests_properties(native_engine_lock_contract PROPERTIES LABELS "native;release" TIMEOUT 30)
+    add_test(
+        NAME native_engine_mvp_lock
+        COMMAND ${AYTHER_PWSH_EXECUTABLE}
+                -NoProfile
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/../tools/fetch_ayther_engine.ps1
+                -LockFile ${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/ayther-engine.native-mvp.lock.json
+                -ValidateOnly
+    )
+    set_tests_properties(native_engine_mvp_lock PROPERTIES LABELS "native;release" TIMEOUT 30)
+    add_test(
+        NAME native_tessera_mvp_lock
+        COMMAND ${AYTHER_PWSH_EXECUTABLE}
+                -NoProfile
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/../tools/verify_tessera_native_mvp.ps1
+                -ValidateOnly
+    )
+    set_tests_properties(native_tessera_mvp_lock PROPERTIES LABELS "native;release" TIMEOUT 30)
+    add_test(
         NAME ayther_engine_lock
         COMMAND ${AYTHER_PWSH_EXECUTABLE}
                 -NoProfile
@@ -1085,3 +1112,41 @@ add_test(
 
 add_subdirectory(audio_qa)
 add_subdirectory(replay_inspection)
+
+if(AYTHER_ENABLE_TESSERA_NATIVE)
+set(AYTHER_TESSERA_TEST_FIXTURE_DIR "" CACHE PATH
+    "Locally generated Tessera/Engine fixtures, outside the source checkout")
+if(NOT EXISTS "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/roms/fx03_rom.md"
+        OR NOT EXISTS "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx03/fx03.ay"
+        OR NOT EXISTS "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx02/program.md")
+    message(FATAL_ERROR "Generate native fixtures before configuring Runtime tests")
+endif()
+add_executable(tessera_runtime_test tessera_runtime_test.cpp)
+set_target_properties(tessera_runtime_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+add_test(NAME tessera_runtime_native_headless
+    COMMAND tessera_runtime_test
+        "$<TARGET_FILE:ayther_runtime>"
+        "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx03/fx03_rom.md"
+        "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx03/fx03.ay"
+        "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx03/trust.toml")
+set_tests_properties(tessera_runtime_native_headless PROPERTIES
+    LABELS "integration;tessera;FX-03" TIMEOUT 45)
+if(AYTHER_ENABLE_GPU_TESTS)
+    add_test(NAME tessera_runtime_active_audio
+        COMMAND tessera_runtime_test --active-audio
+            "$<TARGET_FILE:ayther_runtime>"
+            "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx02/program.md")
+    set_tests_properties(tessera_runtime_active_audio PROPERTIES
+        LABELS "integration;tessera;FX-02;audio" TIMEOUT 120)
+    add_test(NAME tessera_runtime_gpu_audio
+        COMMAND tessera_runtime_test
+            "$<TARGET_FILE:ayther_runtime>"
+            "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx03/fx03_rom.md"
+            "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx03/fx03.ay"
+            "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx03/trust.toml"
+            --device)
+    set_tests_properties(tessera_runtime_gpu_audio PROPERTIES
+        LABELS "integration;tessera;FX-03;gpu;audio" TIMEOUT 120)
+endif()
+endif()

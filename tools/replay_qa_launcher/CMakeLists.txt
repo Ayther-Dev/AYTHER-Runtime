@@ -51,7 +51,7 @@ if(AYTHER_ENABLE_GPU_TESTS)
         LABELS "qa;gpu;launcher" TIMEOUT 90 RUN_SERIAL TRUE)
     # Spec 002, BR-172 (RF-1.1, RF-2.1): the launcher opens, shows the errors of the required
     # fields, starts a visible request with the synthetic core, cancels it and shows the result.
-    if(TARGET ayther_runtime AND TARGET synthetic_libretro_core)
+    if(AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE AND TARGET ayther_runtime AND TARGET synthetic_libretro_core)
         add_test(NAME replay_qa_launcher_interface_smoke
             COMMAND ayther_replay_qa --self-test
                 --runtime "$<TARGET_FILE:ayther_runtime>"

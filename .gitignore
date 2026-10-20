@@ -84,3 +84,7 @@ Desktop.ini
 
 # Runtime-generated development artifacts
 /tile_catalog.toml
+/tests/fixtures/tessera-fx02/program.md
+/tests/fixtures/tessera-fx03/fx03_rom.md
+/tests/fixtures/tessera-fx03/fx03.ay
+/tests/fixtures/tessera-fx03/trust.toml

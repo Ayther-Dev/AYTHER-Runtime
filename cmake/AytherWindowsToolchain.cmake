@@ -211,7 +211,13 @@ function(ayther_verify_windows_engine_link)
     set(_probe_cmake_flags
         "-DAyther_DIR:PATH=${Ayther_DIR}"
         "-DCMAKE_BUILD_TYPE:STRING=Release"
+        "-DCMAKE_TRY_COMPILE_CONFIGURATION:STRING=RelWithDebInfo"
+        "-DCMAKE_CONFIGURATION_TYPES:STRING=RelWithDebInfo"
     )
+    if(CMAKE_MSVC_RUNTIME_LIBRARY)
+        list(APPEND _probe_cmake_flags
+            "-DCMAKE_MSVC_RUNTIME_LIBRARY:STRING=${CMAKE_MSVC_RUNTIME_LIBRARY}")
+    endif()
     if(CMAKE_TOOLCHAIN_FILE)
         list(APPEND _probe_cmake_flags
             "-DCMAKE_TOOLCHAIN_FILE:FILEPATH=${CMAKE_TOOLCHAIN_FILE}")
@@ -230,6 +236,7 @@ function(ayther_verify_windows_engine_link)
             "-DCMAKE_PREFIX_PATH:STRING=${_probe_prefix_path}")
     endif()
 
+    set(CMAKE_TRY_COMPILE_CONFIGURATION RelWithDebInfo)
     try_compile(
         AYTHER_WINDOWS_ENGINE_LINK_COMPATIBLE
         "${_probe_binary_dir}"

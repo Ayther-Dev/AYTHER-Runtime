@@ -1,0 +1,175 @@
+{
+  "status": "Engine-Tessera-Runtime presentation oracles verified locally; CI pending",
+  "game_id": "crc32:2af4a80d",
+  "tile_hash": "0x6a56a02d82cba6a1",
+  "rom_sha256": "92478b869fc61dcd7a8d457b52ac6e08661c27956c774babf4768f32497d1077",
+  "pack_sha256": "669550f27ed28b2897265a15828987a968335dc6e2d69e4a83f3252928199abf",
+  "trust_sha256": "61001a6c985632255146d87e202557548190abda8b33bba14bcb244a8cb51beb",
+  "assets": {
+    "first.png": "3b62ceab4381672d4e6531c7d606e7a9bfba8fa4d041a0019256489cc1fdd531",
+    "second.png": "b20603f7363b6b25b2b9ecdf3c74e31718e7b33f907fa13fc8360986c4372180"
+  },
+  "catalog_winner": "assets/first.png",
+  "runtime_override_winner": "assets/second.png",
+  "catalog_expected_rgba": [
+    255,
+    0,
+    255,
+    255
+  ],
+  "override_expected_rgba": [
+    0,
+    255,
+    255,
+    255
+  ],
+  "candidate_masks": [
+    {
+      "x": 32,
+      "y": 32,
+      "width": 8,
+      "height": 8
+    },
+    {
+      "x": 96,
+      "y": 64,
+      "width": 8,
+      "height": 8
+    }
+  ],
+  "original_pixel_oracles": [
+    {
+      "x": 97,
+      "y": 68,
+      "rgba": [
+        255,
+        0,
+        0,
+        255
+      ],
+      "winner": "plane_a_priority_1"
+    },
+    {
+      "x": 101,
+      "y": 68,
+      "rgba": [
+        255,
+        0,
+        0,
+        255
+      ],
+      "winner": "plane_a_over_sprite_0"
+    },
+    {
+      "x": 105,
+      "y": 68,
+      "rgba": [
+        0,
+        255,
+        0,
+        255
+      ],
+      "winner": "sat_slot_0_over_slot_1"
+    },
+    {
+      "x": 109,
+      "y": 68,
+      "rgba": [
+        0,
+        0,
+        255,
+        255
+      ],
+      "winner": "sat_slot_1"
+    }
+  ],
+  "presentation_oracles": {
+    "catalog": [
+      {
+        "x": 36,
+        "y": 36,
+        "rgba": [
+          255,
+          0,
+          255,
+          255
+        ]
+      },
+      {
+        "x": 100,
+        "y": 68,
+        "rgba": [
+          255,
+          0,
+          255,
+          255
+        ]
+      },
+      {
+        "x": 105,
+        "y": 68,
+        "rgba": [
+          0,
+          255,
+          0,
+          255
+        ]
+      },
+      {
+        "x": 109,
+        "y": 68,
+        "rgba": [
+          0,
+          0,
+          255,
+          255
+        ]
+      }
+    ],
+    "override": [
+      {
+        "x": 36,
+        "y": 36,
+        "rgba": [
+          0,
+          255,
+          255,
+          255
+        ]
+      },
+      {
+        "x": 100,
+        "y": 68,
+        "rgba": [
+          0,
+          255,
+          255,
+          255
+        ]
+      },
+      {
+        "x": 105,
+        "y": 68,
+        "rgba": [
+          0,
+          255,
+          0,
+          255
+        ]
+      },
+      {
+        "x": 109,
+        "y": 68,
+        "rgba": [
+          0,
+          0,
+          255,
+          255
+        ]
+      }
+    ],
+    "outside_candidate_masks": "byte-identical to original RGBA frame"
+  },
+  "license": "CC0-1.0",
+  "author": "AYTHER Tessera"
+}

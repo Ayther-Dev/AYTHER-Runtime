@@ -16,7 +16,7 @@ set(AYTHER_RUNTIME_PROJECT_VERSION "0.1.0")
 set(AYTHER_ENGINE_MIN_VERSION "0.1.0")
 set(AYTHER_ENGINE_MAX_VERSION_EXCLUSIVE "0.2.0")
 # Spec 002, BR-174: the QA build uses the engine-vpx artifact of the same release.
-set(AYTHER_ENGINE_LOCKED_RELEASE "v0.1.0-rc.19")
+set(AYTHER_ENGINE_LOCKED_RELEASE "v0.1.0-rc.19" CACHE STRING "Engine release tag recorded in Runtime package metadata")
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     cmake_minimum_required(VERSION 3.21)
@@ -187,6 +187,11 @@ if(AYTHER_ENABLE_FUZZING AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     message(FATAL_ERROR "AYTHER_ENABLE_FUZZING requires Clang/libFuzzer")
 endif()
 
+option(AYTHER_ENABLE_TESSERA_NATIVE
+    "Enable the native Engine-to-Tessera Runtime route and its integration tests" OFF)
+option(AYTHER_NATIVE_ALLOCATION_METRICS
+    "Count C++ new allocations in the native Runtime benchmark path" OFF)
+
 add_executable(ayther_runtime
     src/main.cpp
     src/runtime_application.cpp # MAD-039: process composition and orchestration
@@ -216,6 +221,14 @@ add_executable(ayther_runtime
     src/vulkan_backend/vk_present.cpp
     src/vulkan_backend/vk_postprocess.cpp
 )
+if(AYTHER_ENABLE_TESSERA_NATIVE)
+    target_sources(ayther_runtime PRIVATE src/native_runtime.cpp)
+    target_compile_definitions(ayther_runtime PRIVATE AYTHER_ENABLE_TESSERA_NATIVE=1)
+    if(AYTHER_NATIVE_ALLOCATION_METRICS)
+        target_sources(ayther_runtime PRIVATE src/native_allocation_metrics.cpp)
+        target_compile_definitions(ayther_runtime PRIVATE AYTHER_NATIVE_ALLOCATION_METRICS=1)
+    endif()
+endif()
 
 if(WIN32)
     target_sources(ayther_runtime PRIVATE
