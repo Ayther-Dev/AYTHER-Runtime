@@ -33,6 +33,16 @@ add_test(NAME trust_registry_cli COMMAND ${CMAKE_COMMAND}
 set_tests_properties(trust_registry_cli PROPERTIES ENVIRONMENT "SDL_VIDEO_DRIVER=dummy;SDL_AUDIO_DRIVER=dummy")
 if(AYTHER_PWSH_EXECUTABLE)
     add_test(
+        NAME native_engine_lock_contract
+        COMMAND ${AYTHER_PWSH_EXECUTABLE}
+                -NoProfile
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/native_engine_lock_contract_test.ps1
+                -FetchScript ${CMAKE_CURRENT_SOURCE_DIR}/../tools/fetch_ayther_engine.ps1
+                -ExistingLock ${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/ayther-engine.lock.json
+                -WorkDirectory ${CMAKE_CURRENT_BINARY_DIR}/native-engine-lock-contract
+    )
+    set_tests_properties(native_engine_lock_contract PROPERTIES LABELS "native;release" TIMEOUT 30)
+    add_test(
         NAME ayther_engine_lock
         COMMAND ${AYTHER_PWSH_EXECUTABLE}
                 -NoProfile
