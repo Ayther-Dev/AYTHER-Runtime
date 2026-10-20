@@ -79,4 +79,3 @@ void operator delete(void *pointer, std::size_t, std::align_val_t) noexcept {
 void operator delete[](void *pointer, std::size_t, std::align_val_t) noexcept {
   free_aligned(pointer);
 }
-

@@ -9,4 +9,3 @@ struct Snapshot {
 };
 Snapshot snapshot() noexcept;
 } // namespace ayther::runtime::allocation_metrics
-
