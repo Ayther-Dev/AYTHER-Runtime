@@ -546,10 +546,11 @@ int run_native_runtime(const RuntimeOptions &options) {
     std::uint64_t borrowed_video_bytes = 0, composed_copy_bytes = 0;
     std::uint64_t composed_frames = 0, fallback_frames = 0;
     std::array<std::uint64_t, 11> fallback_reasons{};
-    std::vector<double> step_costs, hash_costs, device_costs;
+    std::vector<double> step_costs, frame_costs, hash_costs, device_costs;
     if (options.frames_limit > 0 && options.frames_limit <= 65536) {
         const auto reserve = static_cast<std::size_t>(options.frames_limit);
         step_costs.reserve(reserve);
+        frame_costs.reserve(reserve);
         hash_costs.reserve(reserve);
         device_costs.reserve(reserve);
     }
@@ -572,7 +573,7 @@ int run_native_runtime(const RuntimeOptions &options) {
         }
         const auto step_start = std::chrono::steady_clock::now();
         if (!trace.empty()) {
-            status = emulation->replay_next();
+            status = session->native_replay_next();
         } else {
             native::NativeSessionInfo current;
             status = emulation->info(current);
@@ -602,6 +603,7 @@ int run_native_runtime(const RuntimeOptions &options) {
             std::fprintf(stderr, "[native] Frame original ausente.\n");
             return 1;
         }
+        const auto frame_end = std::chrono::steady_clock::now();
         const auto presented = std::span<const std::uint8_t>{
             static_cast<const std::uint8_t *>(frame.fb_pixels),
             static_cast<std::size_t>(frame.fb_pitch) * frame.fb_height};
@@ -643,6 +645,7 @@ int run_native_runtime(const RuntimeOptions &options) {
             static_cast<unsigned long long>(allocation_after.bytes - allocation_before.bytes));
 #endif
         step_costs.push_back(microseconds(step_start, step_end));
+        frame_costs.push_back(microseconds(step_end, frame_end));
         hash_costs.push_back(microseconds(hash_start, hash_end));
         device_costs.push_back(microseconds(device_start, device_end));
         ++completed;
@@ -682,6 +685,7 @@ int run_native_runtime(const RuntimeOptions &options) {
         static_cast<unsigned long long>(event_batch.size()),
         static_cast<unsigned long long>(read_u64(loss_data, 16)));
     report_cost("engine_step", std::move(step_costs));
+    report_cost("engine_frame", std::move(frame_costs));
     report_cost("runtime_hash", std::move(hash_costs));
     report_cost("runtime_device", std::move(device_costs));
     std::fprintf(stdout, "AYTHER_NATIVE_DONE frames=%llu\n",
