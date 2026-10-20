@@ -162,15 +162,33 @@ int main(int argc, char **argv) {
                 run(runtime, arguments + " --native-visible --native-gpu-probe", scratch, code);
             require(code == 0, "Vulkan readback failed: " + probe_output);
             std::vector<std::map<std::string, std::string>> gpu_frames;
+            std::vector<std::map<std::string, std::string>> probe_native_frames;
             std::istringstream probe_lines(probe_output);
-            while (std::getline(probe_lines, line))
+            while (std::getline(probe_lines, line)) {
                 if (line.starts_with("AYTHER_NATIVE_GPU_FRAME "))
                     gpu_frames.push_back(fields(line));
-            require(gpu_frames.size() == 4 && std::stoull(gpu_frames[0].at("magenta_pixels")) > 0 &&
+                if (line.starts_with("AYTHER_NATIVE_FRAME "))
+                    probe_native_frames.push_back(fields(line));
+            }
+            require(probe_native_frames.size() == frames.size(),
+                    "GPU path changed the number of native frames");
+            for (std::size_t index = 0; index < frames.size(); ++index) {
+                require(probe_native_frames[index].at("original") == frames[index].at("original") &&
+                            probe_native_frames[index].at("pcm") == frames[index].at("pcm") &&
+                            probe_native_frames[index].at("presented") ==
+                                frames[index].at("presented"),
+                        "GPU path changed original video, audio, or composition");
+            }
+            require(gpu_frames.size() == 4 &&
+                        gpu_frames[0].at("magenta_pixels") == "1224" &&
+                        gpu_frames[3].at("magenta_pixels") == "1224" &&
                         gpu_frames[0].at("hash") == gpu_frames[3].at("hash") &&
                         gpu_frames[0].at("hash") != gpu_frames[1].at("hash") &&
                         gpu_frames[1].at("hash") == gpu_frames[2].at("hash") &&
-                        gpu_frames[1].at("magenta_pixels") == "0",
+                        gpu_frames[1].at("magenta_pixels") == "0" &&
+                        gpu_frames[2].at("magenta_pixels") == "0" &&
+                        gpu_frames[0].at("cyan_pixels") == "0" &&
+                        gpu_frames[3].at("cyan_pixels") == "0",
                     "GPU pixels did not follow the FX-03 activation and fallback policy");
             const auto device_output =
                 run(runtime,
