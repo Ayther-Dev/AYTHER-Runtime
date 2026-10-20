@@ -179,8 +179,7 @@ int main(int argc, char **argv) {
                                 frames[index].at("presented"),
                         "GPU path changed original video, audio, or composition");
             }
-            require(gpu_frames.size() == 4 &&
-                        gpu_frames[0].at("magenta_pixels") == "1224" &&
+            require(gpu_frames.size() == 4 && gpu_frames[0].at("magenta_pixels") == "1224" &&
                         gpu_frames[3].at("magenta_pixels") == "1224" &&
                         gpu_frames[0].at("hash") == gpu_frames[3].at("hash") &&
                         gpu_frames[0].at("hash") != gpu_frames[1].at("hash") &&
