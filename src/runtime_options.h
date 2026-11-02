@@ -36,6 +36,14 @@ struct RuntimeOptionError {
 class RuntimeOptionsParseResult;
 
 struct RuntimeOptions {
+    std::string provider = "libretro";
+    std::string native_trace_path;
+    std::uint32_t native_input_mask{};
+    std::uint64_t native_deactivate_at{};
+    std::uint64_t native_reactivate_at{};
+    bool native_visible{};
+    bool native_audio_device{};
+    bool native_gpu_probe{};
     std::string core_path;
     std::string rom_path;
     std::string pack_path;
