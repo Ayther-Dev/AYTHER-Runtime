@@ -61,7 +61,8 @@ $packageToPort = @{
     tomlplusplus = "tomlplusplus"
     zstd = "zstd"
 }
-$systemPackages = @("Threads", "PkgConfig")
+# Tessera is an installed CMake package supplied alongside Engine, not a vcpkg port.
+$nonVcpkgPackages = @("Threads", "PkgConfig", "Tessera")
 $configText = Get-Content -LiteralPath $configPath -Raw
 $packageMatches = [regex]::Matches(
     $configText,
@@ -71,7 +72,7 @@ $enginePorts = [System.Collections.Generic.HashSet[string]]::new(
 
 foreach ($match in $packageMatches) {
     $package = $match.Groups[1].Value
-    if ($package -in $systemPackages) {
+    if ($package -in $nonVcpkgPackages) {
         continue
     }
     if (-not $packageToPort.ContainsKey($package)) {

@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 2,
+  "dependency": "AYTHER Engine",
+  "repository": "https://github.com/Ayther-Dev/AYTHER-Engine",
+  "release": {
+    "tag": "native-v0.1.0-rc.22",
+    "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/tag/native-v0.1.0-rc.22",
+    "checksums": {
+      "fileName": "CHECKSUMS.sha256",
+      "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/native-v0.1.0-rc.22/CHECKSUMS.sha256",
+      "sha256": "0da7437f81029aeb0265b8e2fb718303e1b8cf30bc5fb92766228f7a48e14f4b"
+    }
+  },
+  "attestation": {
+    "repository": "Ayther-Dev/AYTHER-Engine",
+    "signerWorkflow": "Ayther-Dev/AYTHER-Engine/.github/workflows/native-release.yml",
+    "sourceRef": "refs/tags/native-v0.1.0-rc.22",
+    "predicateType": "https://slsa.dev/provenance/v1"
+  },
+  "artifacts": [
+    {
+      "platform": "windows",
+      "architecture": "x86_64",
+      "variant": "engine-vpx",
+      "vpx": true,
+      "fileName": "ayther-engine-vpx-native-v0.1.0-rc.22-windows-x86_64.zip",
+      "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/native-v0.1.0-rc.22/ayther-engine-vpx-native-v0.1.0-rc.22-windows-x86_64.zip",
+      "sha256": "4f17c34cde082b39a21c4a5216d77bc53e161df896487f1f9e50ab8a3fc1bdf2"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "dependency": "AYTHER Tessera",
+  "repository": "https://github.com/Ayther-Dev/AYTHER-Tessera",
+  "sourceCommit": "c69b9a313e5b18a0001124487a2bac0f0306377c",
+  "release": {
+    "tag": "v0.1.0-mvp.2",
+    "url": "https://github.com/Ayther-Dev/AYTHER-Tessera/releases/tag/v0.1.0-mvp.2",
+    "checksums": {
+      "fileName": "CHECKSUMS.sha256",
+      "url": "https://github.com/Ayther-Dev/AYTHER-Tessera/releases/download/v0.1.0-mvp.2/CHECKSUMS.sha256",
+      "sha256": "639ea54a7b3dd9def7c50130ba9b440f2b29a63478fc689f9a57749e3cba6cd6"
+    }
+  },
+  "attestation": {
+    "repository": "Ayther-Dev/AYTHER-Tessera",
+    "signerWorkflow": "Ayther-Dev/AYTHER-Tessera/.github/workflows/native-release.yml",
+    "sourceRef": "refs/tags/v0.1.0-mvp.2",
+    "predicateType": "https://slsa.dev/provenance/v1"
+  },
+  "artifact": {
+    "platform": "windows",
+    "architecture": "x86_64",
+    "fileName": "tessera-v0.1.0-mvp.2-windows-x86_64.zip",
+    "url": "https://github.com/Ayther-Dev/AYTHER-Tessera/releases/download/v0.1.0-mvp.2/tessera-v0.1.0-mvp.2-windows-x86_64.zip",
+    "sha256": "40ae6447b3a5dd7ca4bd4aaed2fccc436118fd53bec6c97deeb6c2593bed5a8f"
+  }
+}

@@ -46,5 +46,8 @@ LICENSE text eol=lf
 *.exe binary
 *.pdb binary
 
+# Keep generated fixture identity exact across checkouts.
+tests/fixtures/tessera-fx03/manifest.json -text
+
 # Improve GitHub language statistics for committed shader artifacts.
 *.spv linguist-detectable=false
