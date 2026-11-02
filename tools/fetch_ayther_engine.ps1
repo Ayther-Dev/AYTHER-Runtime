@@ -100,9 +100,10 @@ function Read-AytherEngineLock {
     if ($lock.repository -ne "https://github.com/Ayther-Dev/AYTHER-Engine") {
         throw "Unexpected AYTHER Engine repository: $($lock.repository)"
     }
-    if ($lock.release.tag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$') {
+    if ($lock.release.tag -notmatch '^(native-)?v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$') {
         throw "Invalid pinned release tag: $($lock.release.tag)"
     }
+    $nativeMvp = $lock.release.tag.StartsWith('native-', [StringComparison]::Ordinal)
     $expectedReleaseUrl = "$($lock.repository)/releases/tag/$($lock.release.tag)"
     if ($lock.release.url -cne $expectedReleaseUrl) {
         throw "Release URL does not match repository and tag: $($lock.release.url)"
@@ -124,7 +125,8 @@ function Read-AytherEngineLock {
     if ($lock.attestation.repository -cne $repositorySlug) {
         throw "Attestation repository does not match the release repository."
     }
-    $expectedWorkflow = "$repositorySlug/.github/workflows/release.yml"
+    $workflowFile = if ($nativeMvp) { 'native-release.yml' } else { 'release.yml' }
+    $expectedWorkflow = "$repositorySlug/.github/workflows/$workflowFile"
     if ($lock.attestation.signerWorkflow -cne $expectedWorkflow) {
         throw "Unexpected attestation signer workflow: $($lock.attestation.signerWorkflow)"
     }
@@ -135,12 +137,15 @@ function Read-AytherEngineLock {
         throw "Unexpected attestation predicate: $($lock.attestation.predicateType)"
     }
 
-    $expectedKeys = @(
-        "linux/x86_64/engine",
-        "windows/x86_64/engine",
-        "linux/x86_64/engine-vpx",
-        "windows/x86_64/engine-vpx"
-    )
+    $expectedKeys = @("windows/x86_64/engine-vpx")
+    if (-not $nativeMvp) {
+        $expectedKeys = @(
+            "linux/x86_64/engine",
+            "windows/x86_64/engine",
+            "linux/x86_64/engine-vpx",
+            "windows/x86_64/engine-vpx"
+        )
+    }
     $actualKeys = [System.Collections.Generic.List[string]]::new()
     $fileNames = [System.Collections.Generic.HashSet[string]]::new(
         [System.StringComparer]::Ordinal)
@@ -181,7 +186,7 @@ function Read-AytherEngineLock {
     }
 
     if ($actualKeys.Count -ne $expectedKeys.Count) {
-        throw "The AYTHER Engine lock must contain exactly four supported artifacts."
+        throw "The AYTHER Engine lock must contain exactly $($expectedKeys.Count) supported artifact(s)."
     }
     foreach ($expectedKey in $expectedKeys) {
         if (@($actualKeys | Where-Object { $_ -eq $expectedKey }).Count -ne 1) {
