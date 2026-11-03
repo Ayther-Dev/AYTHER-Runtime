@@ -15,6 +15,14 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+### Changed
+
+- Engine locks (`dependencies/ayther-engine.lock.json` and the QA lock) move
+  to `v0.1.0-rc.21` (core C ABI revision 9). The Engine renames the former
+  Object/Prop identity to Drawing in its public headers (`MatchRank::Drawing`;
+  `MatchRank::Prop` stays as a deprecated alias) and writes `type = "drawing"`
+  in `plane_sets.toml`; packs baked with `utileria` still read.
+
 ## [0.1.0-beta.13] - 2026-10-19
 
 ### Changed
