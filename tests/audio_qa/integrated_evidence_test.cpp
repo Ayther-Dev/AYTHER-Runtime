@@ -212,12 +212,25 @@ int main() {
         //  - the campaign one: the run directory fits in MAX_PATH (260) but its fragments do
         //    not (`br190\failure-sequence-rejected-state`, 263 and 270 characters);
         //  - a destination that is itself longer than MAX_PATH.
+        //
+        // `padded_root` returns a path of exactly `length` characters whatever the working
+        // directory is. Each segment adds a separator plus at least one character, so a
+        // path one character short of `length` cannot be completed: that is avoided by
+        // never leaving exactly one character for the last segment, and, when the fixture
+        // itself starts one short, by lengthening the leaf name.
         const auto padded_root = [&](const char *name, const std::size_t length) {
             auto root = fixture / name;
+            if (root.native().size() + 1U == length) {
+                root = fixture / (std::string{name} + 'x');
+            }
             std::size_t part{};
-            while (root.native().size() + 1U < length) {
-                const auto room = length - root.native().size() - 1U;
-                root /= std::string((std::min)(room, std::size_t{40U}), char('a' + part % 26U));
+            while (root.native().size() < length) {
+                const auto remaining = length - root.native().size();
+                auto chars = (std::min)(remaining - 1U, std::size_t{40U});
+                if (remaining - (chars + 1U) == 1U) {
+                    --chars;
+                }
+                root /= std::string(chars, char('a' + part % 26U));
                 ++part;
             }
             return root;
