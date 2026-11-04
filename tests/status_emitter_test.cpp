@@ -172,6 +172,34 @@ int main(const int argc, char *argv[]) {
               "emitted bytes exactly match the formatted record");
     }
 
+    // Spec 008 (TP-008.9, RF-6.1): the ready record says which emulator the
+    // session runs. The fields are additive (protocol version unchanged) and
+    // absent when the Engine does not report a generation.
+    {
+        const std::string with_generation = StatusEmitter::format_line(
+            ReadyStatus{"sonic2", true, "pack/manifest.toml", "gpgx", "1.7.5-r4", 1U});
+        check(with_generation.find("\"emulator_id\":\"gpgx\"") != std::string::npos,
+              "ready record carries emulator_id");
+        check(with_generation.find("\"emulator_version\":\"1.7.5-r4\"") != std::string::npos,
+              "ready record carries emulator_version");
+        check(with_generation.find("\"determinism_contract\":1") != std::string::npos,
+              "ready record carries determinism_contract");
+        check(with_generation.starts_with("AYTHER_STATUS {\"protocol_version\":1,"),
+              "adding the generation does not change the protocol version");
+
+        const std::string tessera = StatusEmitter::format_line(
+            ReadyStatus{"sonic2", false, "", "tessera", hostile_text(), 1U});
+        check(tessera.find("\"emulator_id\":\"tessera\"") != std::string::npos &&
+                  std::count(tessera.begin(), tessera.end(), '\n') == 1,
+              "a hostile emulator_version is escaped and cannot split the record");
+
+        const std::string legacy =
+            StatusEmitter::format_line(ReadyStatus{"sonic2", true, "pack/manifest.toml"});
+        check(legacy.find("emulator") == std::string::npos &&
+                  legacy.find("determinism_contract") == std::string::npos,
+              "without a generation the ready record is byte-for-byte the old one");
+    }
+
     check(status_protocol_compatibility(status_protocol_version) ==
               StatusProtocolCompatibility::compatible,
           "the current protocol version is compatible");

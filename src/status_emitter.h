@@ -63,6 +63,12 @@ struct ReadyStatus {
     std::string game_id;
     bool has_pack{};
     std::string manifest;
+    // Spec 008 (RF-6.1): emulator generation of the session (`AytherSession::
+    // emulation_generation()`). Empty `emulator_id` = the Engine reported none,
+    // and the fields are left out of the record.
+    std::string emulator_id{};
+    std::string emulator_version{};
+    std::uint32_t determinism_contract{};
 };
 
 struct NowPlayingStatus {
