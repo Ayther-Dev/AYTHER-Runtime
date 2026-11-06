@@ -111,6 +111,19 @@ protocol framing.
 Indicates that the session exists. It does not guarantee that Vulkan
 post-processing or every optional subsystem initialized successfully.
 
+When the Engine reports the emulator generation of the session (spec 008), the
+record also carries it, after `manifest`. The fields are additive within
+protocol v1 and are left out when the Engine reports none:
+
+```json
+{"protocol_version":1,"event":"ready","game_id":"...","has_pack":false,"manifest":"...","emulator_id":"gpgx","emulator_version":"...","determinism_contract":1}
+```
+
+`emulator_id` is `gpgx` for Genesis Plus GX (or the slug of another libretro
+core's name) and `tessera` for the native provider; `emulator_version` is the
+core's version or backend build id; `determinism_contract` is a number.
+Consumers must ignore fields they do not know.
+
 ### `now-playing`
 
 ```json

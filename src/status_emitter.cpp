@@ -158,6 +158,11 @@ class JsonObject final {
                 json.field("game_id", status.game_id);
                 json.field("has_pack", status.has_pack);
                 json.field("manifest", status.manifest);
+                if (!status.emulator_id.empty()) {
+                    json.field("emulator_id", status.emulator_id);
+                    json.field("emulator_version", status.emulator_version);
+                    json.field("determinism_contract", status.determinism_contract);
+                }
             } else if constexpr (std::is_same_v<Status, NowPlayingStatus>) {
                 json.field("event", "now-playing");
                 json.field("game_id", status.game_id);

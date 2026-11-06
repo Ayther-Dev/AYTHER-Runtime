@@ -658,7 +658,13 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
     // proceso vivo y su `launch.toml`: sin el, Play tiene un archivo en el disco
     // y un proceso corriendo sin manera de saber que son la misma partida — que
     // es justo lo que hace falta para detectar sesiones huerfanas (#601).
-    emit_status(ayther::runtime::ReadyStatus{sess->game_id(), sess->has_pack(), manifest_path});
+    // Spec 008 (TP-008.9): el `ready` dice también qué emulador corre la sesión.
+    // Con `id` vacío (sin generación) el emisor omite los campos.
+    const auto &generation = sess->emulation_generation();
+    ayther::runtime::ReadyStatus ready{sess->game_id(),    sess->has_pack(),
+                                       manifest_path,      generation.id,
+                                       generation.version, generation.determinism_contract};
+    emit_status(ready);
     // #600: «que se esta jugando», para el overlay de Play. Va aparte del
     // `ready` porque responden preguntas distintas: `ready` dice que la sesion
     // arranco —el overlay se cierra— y este dice QUE arranco, que es lo que se
