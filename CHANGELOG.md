@@ -19,9 +19,8 @@ once stable compatibility guarantees are defined.
 
 - The `ready` status record can carry `emulator_id`, `emulator_version` and
   `determinism_contract` (spec 008). The fields are additive within protocol v1
-  and absent when the Engine reports no emulator generation. The serializer
-  supports them now; the session call that fills them needs the Engine release
-  that publishes `AytherSession::emulation_generation()`.
+  and absent when the Engine reports no emulator generation. Runtime fills them from
+  `AytherSession::emulation_generation()` (Engine `v0.1.0-rc.22`).
 
 ### Changed
 
