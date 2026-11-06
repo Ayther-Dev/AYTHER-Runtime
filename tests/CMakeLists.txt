@@ -43,15 +43,6 @@ if(AYTHER_PWSH_EXECUTABLE)
     )
     set_tests_properties(native_engine_lock_contract PROPERTIES LABELS "native;release" TIMEOUT 30)
     add_test(
-        NAME native_engine_mvp_lock
-        COMMAND ${AYTHER_PWSH_EXECUTABLE}
-                -NoProfile
-                -File ${CMAKE_CURRENT_SOURCE_DIR}/../tools/fetch_ayther_engine.ps1
-                -LockFile ${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/ayther-engine.native-mvp.lock.json
-                -ValidateOnly
-    )
-    set_tests_properties(native_engine_mvp_lock PROPERTIES LABELS "native;release" TIMEOUT 30)
-    add_test(
         NAME native_tessera_mvp_lock
         COMMAND ${AYTHER_PWSH_EXECUTABLE}
                 -NoProfile

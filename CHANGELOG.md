@@ -17,6 +17,9 @@ once stable compatibility guarantees are defined.
 
 ### Changed
 
+- The native Tessera MVP route uses the regular Engine `v0.1.0-rc.22` VPX package from the
+  normal lock instead of the Engine-only `native-v0.1.0-rc.22` pre-release;
+  `dependencies/ayther-engine.native-mvp.lock.json` is removed.
 - Engine locks (`dependencies/ayther-engine.lock.json` and the QA lock) move
   to `v0.1.0-rc.22` (core C ABI revision 9). The Engine take format is `.arp`
   v11 with emulator provenance, and the core probe contract is v2.

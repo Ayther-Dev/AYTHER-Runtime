@@ -21,16 +21,16 @@ the contract.
 
 ## Optional native MVP pair (Windows x64)
 
-The Tessera provider uses two exact software releases:
-`dependencies/ayther-engine.native-mvp.lock.json` pins the Engine VPX ZIP,
-checksum manifest, tag and attestation; `dependencies/tessera.native-mvp.lock.json`
-pins the Tessera ZIP, its source commit, checksum manifest and attestation.
-The normal `ayther-engine.lock.json` remains at rc.22 for the existing product CI.
+The Tessera provider uses two exact software releases: the Engine VPX ZIP pinned
+by the normal `dependencies/ayther-engine.lock.json` (release `v0.1.0-rc.22`, the
+same one the product CI uses), and `dependencies/tessera.native-mvp.lock.json`,
+which pins the Tessera ZIP, its source commit, checksum manifest and attestation.
+The former Engine-only `native-v0.1.0-rc.22` pre-release is no longer locked.
 Both native packages must be extracted and supplied in `CMAKE_PREFIX_PATH`.
 Build with `AYTHER_ENABLE_TESSERA_NATIVE=ON` and
-`AYTHER_ENGINE_LOCKED_RELEASE=native-v0.1.0-rc.22` so Runtime records the selected
-Engine release. The Engine bootstrap accepts the native lock with
-`-LockFile dependencies/ayther-engine.native-mvp.lock.json -Variant engine-vpx`;
+`AYTHER_ENGINE_LOCKED_RELEASE=v0.1.0-rc.22` so Runtime records the selected
+Engine release. The Engine bootstrap prepares it with
+`-Variant engine-vpx`;
 it verifies SHA-256, the release manifest and the signed workflow provenance.
 Run `tools/verify_tessera_native_mvp.ps1 -ArchivePath <ZIP> -ChecksumsPath <CHECKSUMS.sha256>` before using the Tessera prefix; it checks the lock, ZIP, checksum manifest, source metadata, excluded fixtures and signed provenance.
 
