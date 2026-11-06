@@ -3,30 +3,30 @@
   "dependency": "AYTHER Engine",
   "selection": "qa-release",
   "package": {
-    "id": "ayther-engine-vpx-v0.1.0-rc.21-windows-x86_64",
+    "id": "ayther-engine-vpx-v0.1.0-rc.22-windows-x86_64",
     "kind": "release",
     "officialRelease": true,
     "productVersion": "0.1.0",
     "audioObservationContract": "1.0"
   },
   "release": {
-    "tag": "v0.1.0-rc.21",
-    "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/tag/v0.1.0-rc.21",
-    "checksumsUrl": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/v0.1.0-rc.21/CHECKSUMS.sha256",
-    "checksumsSha256": "c0ea043ac0b7df1432e13a2bb546caab145acd4a496b5ec77077e8e3e875d032"
+    "tag": "v0.1.0-rc.22",
+    "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/tag/v0.1.0-rc.22",
+    "checksumsUrl": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/v0.1.0-rc.22/CHECKSUMS.sha256",
+    "checksumsSha256": "56c4d41d0d5fdf7a57f85bdd51181a3de6b835d9590a9cd2e56ffed9b6db9b9d"
   },
   "artifact": {
     "platform": "windows",
     "architecture": "x86_64",
     "variant": "engine-vpx",
-    "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/v0.1.0-rc.21/ayther-engine-vpx-v0.1.0-rc.21-windows-x86_64.zip",
-    "archiveRoot": "ayther-engine-vpx-v0.1.0-rc.21-windows-x86_64",
-    "sha256": "e8cf65e646da25769e2f49dfc0d997a734b26635d68818a738431d6fabb31209"
+    "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/v0.1.0-rc.22/ayther-engine-vpx-v0.1.0-rc.22-windows-x86_64.zip",
+    "archiveRoot": "ayther-engine-vpx-v0.1.0-rc.22-windows-x86_64",
+    "sha256": "2a2c11be526da6a6e189b24ff17d18e0bcb1c16ce5abf6513d0ec920c93eb0f1"
   },
   "attestation": {
     "repository": "Ayther-Dev/AYTHER-Engine",
     "signerWorkflow": "Ayther-Dev/AYTHER-Engine/.github/workflows/release.yml",
-    "sourceRef": "refs/tags/v0.1.0-rc.21",
+    "sourceRef": "refs/tags/v0.1.0-rc.22",
     "predicateType": "https://slsa.dev/provenance/v1"
   }
 }

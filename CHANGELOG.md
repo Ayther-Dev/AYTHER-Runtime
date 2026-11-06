@@ -18,6 +18,9 @@ once stable compatibility guarantees are defined.
 ### Changed
 
 - Engine locks (`dependencies/ayther-engine.lock.json` and the QA lock) move
+  to `v0.1.0-rc.22` (core C ABI revision 9). The Engine take format is `.arp`
+  v11 with emulator provenance, and the core probe contract is v2.
+- Engine locks (`dependencies/ayther-engine.lock.json` and the QA lock) moved
   to `v0.1.0-rc.21` (core C ABI revision 9). The Engine renames the former
   Object/Prop identity to Drawing in its public headers (`MatchRank::Drawing`;
   `MatchRank::Prop` stays as a deprecated alias) and writes `type = "drawing"`
