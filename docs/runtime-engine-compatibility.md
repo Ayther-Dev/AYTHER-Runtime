@@ -2,7 +2,7 @@
 
 AYTHER Runtime `0.1.0-beta.13` supports the installed AYTHER Engine package
 range `>=0.1.0,<0.2.0`. Reproducible builds use the narrower locked artifact
-`v0.1.0-rc.21`, including its published checksum and SLSA provenance.
+`v0.1.0-rc.22`, including its published checksum and SLSA provenance.
 
 | Platform | Architecture | Compiler/ABI | C++ runtime |
 | --- | --- | --- | --- |
@@ -25,7 +25,7 @@ The Tessera provider uses two exact software releases:
 `dependencies/ayther-engine.native-mvp.lock.json` pins the Engine VPX ZIP,
 checksum manifest, tag and attestation; `dependencies/tessera.native-mvp.lock.json`
 pins the Tessera ZIP, its source commit, checksum manifest and attestation.
-The normal `ayther-engine.lock.json` remains at rc.21 for the existing product CI.
+The normal `ayther-engine.lock.json` remains at rc.22 for the existing product CI.
 Both native packages must be extracted and supplied in `CMAKE_PREFIX_PATH`.
 Build with `AYTHER_ENABLE_TESSERA_NATIVE=ON` and
 `AYTHER_ENGINE_LOCKED_RELEASE=native-v0.1.0-rc.22` so Runtime records the selected
