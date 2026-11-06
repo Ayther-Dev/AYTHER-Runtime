@@ -661,9 +661,9 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
     // Spec 008 (TP-008.9): el `ready` dice también qué emulador corre la sesión.
     // Con `id` vacío (sin generación) el emisor omite los campos.
     const auto &generation = sess->emulation_generation();
-    ayther::runtime::ReadyStatus ready{sess->game_id(), sess->has_pack(), manifest_path,
-                                       generation.id, generation.version,
-                                       generation.determinism_contract};
+    ayther::runtime::ReadyStatus ready{sess->game_id(),    sess->has_pack(),
+                                       manifest_path,      generation.id,
+                                       generation.version, generation.determinism_contract};
     emit_status(ready);
     // #600: «que se esta jugando», para el overlay de Play. Va aparte del
     // `ready` porque responden preguntas distintas: `ready` dice que la sesion
