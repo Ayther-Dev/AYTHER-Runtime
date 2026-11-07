@@ -15,12 +15,18 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+## [0.1.0-beta.14] - 2026-11-06
+
 ### Added
 
 - The `ready` status record can carry `emulator_id`, `emulator_version` and
   `determinism_contract` (spec 008). The fields are additive within protocol v1
   and absent when the Engine reports no emulator generation. Runtime fills them from
   `AytherSession::emulation_generation()` (Engine `v0.1.0-rc.22`).
+- Optional native Tessera route (`AYTHER_ENABLE_TESSERA_NATIVE`, Windows x64): Runtime
+  consumes the native Engine–Tessera session to present frames and audio on the device,
+  keeping the hashes of the original frame. Off by default; its integration tests need
+  local fixtures and a GPU.
 
 ### Changed
 

@@ -2,7 +2,7 @@
 
 ## Current maturity
 
-AYTHER Runtime `0.1.0-beta.13` is an internal, pre-release product under active
+AYTHER Runtime `0.1.0-beta.14` is an internal, pre-release product under active
 separation from the AYTHER monorepo. It is suitable for engineering integration
 and focused testing. It is **not** presented as production-ready, generally
 available, or backward compatible.
@@ -14,7 +14,7 @@ configuration, or save-state formats.
 
 There are currently:
 
-- no supported stable release line; `v0.1.0-beta.13` is for internal evaluation;
+- no supported stable release line; `v0.1.0-beta.14` is for internal evaluation;
 - no stable Runtime/Engine ABI or package surface;
 - one stable launcher protocol version (v1), with future breaking changes
   requiring a new protocol version;
@@ -48,6 +48,16 @@ toolset. PowerShell 7.5.2 enabled the complete test inventory, and CTest passed
 local smoke log is retained at
 `build-mad001-d924f4b/mad-001-smoke.log` (995,642 bytes; SHA-256
 `014338932bb1f8c1cea012598f522d5adb538348286fd307f5302d77950a7ab0`).
+
+On 2026-11-06, the `0.1.0-beta.14` release candidate was validated against the
+published Engine lock `v0.1.0-rc.22`. The bootstrap verified the Windows x86-64
+`engine-vpx` archive against the locked and published SHA-256 values and its SLSA
+provenance. The `windows-ci` preset built the RelWithDebInfo configuration and CTest
+passed 226/226 tests; the QA variant (`windows-qa`, against the published QA lock)
+passed 248/249. The remaining test, `audio_qa_check_runner_integration`, fails only
+in a checkout whose path leaves its 180-character destination one character short
+(a test-helper defect fixed in pull request #64, where it passes), not in the
+product. The GPU tests and the native Tessera integration tests were not run.
 
 On 2026-10-19, the `0.1.0-beta.13` release candidate was validated against the
 published Engine lock `v0.1.0-rc.19`. The bootstraps verified the Windows x86-64
