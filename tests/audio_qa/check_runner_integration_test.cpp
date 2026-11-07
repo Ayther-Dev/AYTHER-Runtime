@@ -159,9 +159,19 @@ void failure_stops_the_request(const Paths &paths) {
 // MAX_PATH (263 and 270 characters) while their run directories do not; the finished take A
 // lost its facts (`fact_publication_failed`). Every finished take keeps its evidence.
 void long_destination_keeps_every_take(const Paths &paths) {
+    // Each segment adds a separator plus at least one character, so a path one character
+    // short of 180 cannot be completed: never leave exactly one character for the last
+    // segment and, when the root itself starts one short, lengthen the leaf name.
     auto root = paths.root / "long";
-    for (char part = 'a'; root.native().size() + 1U < 180U; ++part)
-        root /= std::string((std::min)(std::size_t{40U}, 180U - root.native().size() - 1U), part);
+    if (root.native().size() + 1U == 180U)
+        root = paths.root / "longx";
+    for (char part = 'a'; root.native().size() < 180U; ++part) {
+        const auto remaining = 180U - root.native().size();
+        auto chars = (std::min)(remaining - 1U, std::size_t{40U});
+        if (remaining - (chars + 1U) == 1U)
+            --chars;
+        root /= std::string(chars, part);
+    }
     std::filesystem::create_directories(root);
     expect(root.native().size() == 180U, "D-12: the campaign destination length is reproduced");
     Recorder observer;
