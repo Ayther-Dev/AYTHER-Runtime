@@ -15,6 +15,8 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+## [0.1.0-beta.15] - 2026-11-13
+
 ### Added
 
 - `--provider external|tessera` (spec 008, RF-5.3). With `tessera` the game runs

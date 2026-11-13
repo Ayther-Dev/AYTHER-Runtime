@@ -49,6 +49,15 @@ local smoke log is retained at
 `build-mad001-d924f4b/mad-001-smoke.log` (995,642 bytes; SHA-256
 `014338932bb1f8c1cea012598f522d5adb538348286fd307f5302d77950a7ab0`).
 
+On 2026-11-13, the `0.1.0-beta.15` release candidate was validated against the
+published Engine lock `v0.1.0-rc.23`. Built against the regular rc.23 VPX package
+(RelWithDebInfo, Visual Studio 2026 v145), CTest passed 230 of 236 tests; the six
+failures are the `tessera_runtime_*` integration tests, which need the native
+package. Built with the Tessera route against the published `native-v0.1.0-rc.23`
+package (bootstrap with SHA-256, release manifest and `native-release.yml`
+provenance) and Tessera `v0.2.0-rc.9`, CTest passed 236/236, including the GPU
+presentation and device-audio tests. The QA variant (`windows-qa`) was not run.
+
 On 2026-11-06, the `0.1.0-beta.14` release candidate was validated against the
 published Engine lock `v0.1.0-rc.22`. The bootstrap verified the Windows x86-64
 `engine-vpx` archive against the locked and published SHA-256 values and its SLSA
