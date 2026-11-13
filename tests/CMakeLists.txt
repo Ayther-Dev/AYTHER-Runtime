@@ -1140,6 +1140,24 @@ add_test(NAME tessera_runtime_native_headless
         "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx03/trust.toml")
 set_tests_properties(tessera_runtime_native_headless PROPERTIES
     LABELS "integration;tessera;FX-03" TIMEOUT 45)
+# Spec 008 (TP-304.2): the live SDL gamepad drives the Tessera session through
+# GameInput and set_input, as the Runtime loop does. A virtual gamepad stands
+# in for the controller: no window, no hardware.
+add_executable(tessera_live_input_tests
+    tessera_live_input_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/input_map.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/game_input.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/native_session_config.cpp)
+target_include_directories(tessera_live_input_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+target_link_libraries(tessera_live_input_tests PRIVATE
+    Ayther::engine SDL3::SDL3 tomlplusplus::tomlplusplus)
+set_target_properties(tessera_live_input_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+add_test(NAME tessera_runtime_live_input
+    COMMAND tessera_live_input_tests "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx02/program.md"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set_tests_properties(tessera_runtime_live_input PROPERTIES
+    LABELS "integration;tessera;FX-02;input" TIMEOUT 60)
 if(AYTHER_ENABLE_GPU_TESTS)
     add_test(NAME tessera_runtime_active_audio
         COMMAND tessera_runtime_test --active-audio
