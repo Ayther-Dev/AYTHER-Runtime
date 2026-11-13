@@ -27,6 +27,12 @@ static_assert(ayther::runtime::error_reason(
                   ayther::runtime::RuntimeErrorCode::cli_invalid_argument) ==
               "cli.invalid_argument"sv);
 static_assert(ayther::runtime::error_reason(
+                  ayther::runtime::RuntimeErrorCode::args_provider_conflict) ==
+              "args.provider_conflict"sv);
+static_assert(ayther::runtime::error_domain(
+                  ayther::runtime::RuntimeErrorCode::args_provider_conflict) ==
+              ayther::runtime::ErrorDomain::cli);
+static_assert(ayther::runtime::error_reason(
                   ayther::runtime::RuntimeErrorCode::core_load_failed) ==
               "core.load_failed"sv);
 static_assert(ayther::runtime::error_reason(

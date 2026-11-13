@@ -44,6 +44,7 @@ enum class ErrorSeverity {
 // messages may change or be translated without changing these values.
 enum class RuntimeErrorCode {
     cli_invalid_argument,
+    args_provider_conflict,
     core_load_failed,
     core_invalid,
     pack_rejected,
@@ -68,6 +69,8 @@ enum class RuntimeErrorCode {
     switch (code) {
     case RuntimeErrorCode::cli_invalid_argument:
         return "cli.invalid_argument";
+    case RuntimeErrorCode::args_provider_conflict:
+        return "args.provider_conflict";
     case RuntimeErrorCode::core_load_failed:
         return "core.load_failed";
     case RuntimeErrorCode::core_invalid:
@@ -111,6 +114,7 @@ enum class RuntimeErrorCode {
 [[nodiscard]] constexpr ErrorDomain error_domain(const RuntimeErrorCode code) noexcept {
     switch (code) {
     case RuntimeErrorCode::cli_invalid_argument:
+    case RuntimeErrorCode::args_provider_conflict:
         return ErrorDomain::cli;
     case RuntimeErrorCode::core_load_failed:
     case RuntimeErrorCode::core_invalid:

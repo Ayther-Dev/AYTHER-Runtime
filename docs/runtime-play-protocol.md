@@ -66,6 +66,7 @@ be used for branching.
 | Domain | Stable reasons | Severity / recovery |
 | --- | --- | --- |
 | CLI | `cli.invalid_argument` | Fatal; fix invocation. |
+| CLI | `args.provider_conflict` | Fatal; `--provider tessera` was given a `--core`, which the native provider does not load. Exit 64, as a `warning` event like every CLI reason. |
 | Core | `core.load_failed`, `core.invalid` | Fatal for the requested launch. |
 | Pack | `pack.rejected` | Recoverable only for a pack discovered by convention, without explicit `--pack`. |
 | Pack | `pack.open_failed` | Fatal; requested pack unavailable, incompatible or rejected by Engine trust policy. |

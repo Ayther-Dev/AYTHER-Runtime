@@ -3,6 +3,9 @@ if(NOT DEFINED RUNTIME_EXE OR RUNTIME_EXE STREQUAL "")
 endif()
 
 function(assert_cli_error case_name expected_diagnostic)
+    if(NOT DEFINED expected_reason)
+        set(expected_reason "cli.invalid_argument")
+    endif()
     execute_process(
         COMMAND "${RUNTIME_EXE}" ${ARGN}
         RESULT_VARIABLE actual_code
@@ -22,10 +25,10 @@ function(assert_cli_error case_name expected_diagnostic)
             "${case_name}: stderr does not identify '${expected_diagnostic}'\n"
             "stderr:\n${actual_stderr}")
     endif()
-    string(FIND "${actual_stdout}" "\"reason\":\"cli.invalid_argument\"" reason_at)
+    string(FIND "${actual_stdout}" "\"reason\":\"${expected_reason}\"" reason_at)
     if(reason_at EQUAL -1)
         message(FATAL_ERROR
-            "${case_name}: stdout lacks stable cli.invalid_argument reason\n"
+            "${case_name}: stdout lacks stable ${expected_reason} reason\n"
             "stdout:\n${actual_stdout}")
     endif()
 
@@ -48,3 +51,9 @@ assert_cli_error(frames_overflow "--frames" --frames 18446744073709551616)
 assert_cli_error(frames_trailing_text "--frames" --frames 12foo)
 assert_cli_error(capture_malformed "--capture-at" --capture-at 1,,2)
 assert_cli_error(required_session_arguments "Usage:")
+
+# Spec 008 (RF-5.3): the native provider loads no libretro core.
+set(expected_reason "args.provider_conflict")
+assert_cli_error(provider_conflict "--core"
+    --provider tessera --core x.dll --rom r.md)
+unset(expected_reason)

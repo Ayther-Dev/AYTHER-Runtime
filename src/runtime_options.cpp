@@ -108,6 +108,8 @@ using CaptureListResult = std::variant<std::vector<std::uint64_t>, RuntimeOption
         return "la lista esta malformada";
     case RuntimeOptionErrorCode::malformed_core_option:
         return "se esperaba clave=valor con una clave no vacia";
+    case RuntimeOptionErrorCode::provider_conflict:
+        return "--provider tessera no carga un core libretro; quite --core";
     }
     return "el valor no es valido";
 }
@@ -407,10 +409,20 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char *const argv
         }
     }
 
-    if (options.core_path.empty() && !positional.empty()) {
+    if (options.provider == "tessera" && !options.core_path.empty()) {
+        return RuntimeOptionsParseResult{make_error(RuntimeOptionErrorCode::provider_conflict,
+                                                    "--core", options.core_path,
+                                                    static_cast<std::size_t>(argc))};
+    }
+    if (options.provider == "tessera") {
+        // The native provider has no core: a single positional is the ROM.
+        if (options.rom_path.empty() && !positional.empty()) {
+            options.rom_path = positional[0];
+        }
+    } else if (options.core_path.empty() && !positional.empty()) {
         options.core_path = positional[0];
     }
-    if (options.rom_path.empty() && positional.size() >= 2) {
+    if (options.provider != "tessera" && options.rom_path.empty() && positional.size() >= 2) {
         options.rom_path = positional[1];
     }
     if (options.provider != "tessera" &&

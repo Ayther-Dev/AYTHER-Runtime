@@ -80,6 +80,19 @@ int main() {
     expect_error({"ayther_runtime", "--provider", "unknown"},
                  RuntimeOptionErrorCode::value_out_of_domain, "--provider",
                  "unknown provider is rejected");
+    expect_error({"ayther_runtime", "--provider", "tessera", "--core", "x.dll", "--rom", "r.md"},
+                 RuntimeOptionErrorCode::provider_conflict, "--core",
+                 "--core with --provider tessera is a provider conflict (RF-5.3)");
+    expect_error({"ayther_runtime", "--core", "x.dll", "--provider", "tessera", "--rom", "r.md"},
+                 RuntimeOptionErrorCode::provider_conflict, "--core",
+                 "the conflict does not depend on argument order");
+    {
+        const auto parsed = parse({"ayther_runtime", "--provider", "tessera", "positional.md"});
+        check(parsed.options() && parsed.options()->rom_path == "positional.md" &&
+                  parsed.options()->core_path.empty() && parsed.options()->frames_limit == 0U &&
+                  parsed.options()->native_trace_path.empty(),
+              "with tessera a lone positional is the ROM and --frames/--native-trace are optional");
+    }
     expect_error({"ayther_runtime", "--native-input-mask", "256"},
                  RuntimeOptionErrorCode::value_out_of_domain, "--native-input-mask",
                  "native input mask cannot exceed the eight-control contract");

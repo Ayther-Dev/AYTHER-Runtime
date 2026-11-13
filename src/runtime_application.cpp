@@ -143,7 +143,10 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
         const std::string diagnostic = ayther::runtime::describe(*error);
         std::fprintf(stderr, "[ayther_runtime] %s\n", diagnostic.c_str());
         emit_status(ayther::runtime::WarningStatus{
-            ayther::runtime::RuntimeErrorCode::cli_invalid_argument, diagnostic});
+            error->code == ayther::runtime::RuntimeOptionErrorCode::provider_conflict
+                ? ayther::runtime::RuntimeErrorCode::args_provider_conflict
+                : ayther::runtime::RuntimeErrorCode::cli_invalid_argument,
+            diagnostic});
         return ayther::runtime::runtime_cli_error_exit_code;
     }
     ayther::runtime::RuntimeOptions options = std::move(*parsed_options.options());
