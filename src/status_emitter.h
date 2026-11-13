@@ -59,6 +59,20 @@ struct ProbeFailedStatus {
     std::string message;
 };
 
+// Spec 008 (RF-9.3, TP-304.5): the probe contract v2 line, serialized by the
+// Engine (`ProbeReport::serialize`), extended with the Libretro metadata and the
+// ROM probe Play and the audio QA tools read. Fields are only added: every
+// field of the contract keeps its name and value.
+struct ProbeReportStatus {
+    std::string report_json;
+    bool loaded{};
+    bool has_libretro_info{};
+    std::string valid_extensions;
+    bool need_fullpath{};
+    bool block_extract{};
+    std::optional<ProbeGameStatus> game;
+};
+
 struct ReadyStatus {
     std::string game_id;
     bool has_pack{};
@@ -93,7 +107,8 @@ struct ExitStatus {
 };
 
 using StatusEvent =
-    std::variant<ProbeSucceededStatus, ProbeFailedStatus, ReadyStatus, NowPlayingStatus,
+    std::variant<ProbeSucceededStatus, ProbeFailedStatus, ProbeReportStatus, ReadyStatus,
+                 NowPlayingStatus,
                  WarningStatus, AudioWarningStatus, CrashTestStatus, ExitStatus>;
 
 class StatusEmitter final {

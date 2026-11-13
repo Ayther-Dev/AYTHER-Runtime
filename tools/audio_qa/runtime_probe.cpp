@@ -61,7 +61,11 @@ std::optional<CoreProbe> parse_core_probe(std::string_view output) {
     const auto fields = parse_json_fields(*line);
     if (!fields || fields->string("event") != "probe")
         return std::nullopt;
-    const auto loaded = fields->boolean("ok");
+    // Probe contract v2 (spec 008): `ok` is the verdict, `loaded` says the
+    // Libretro entry points answered. A Runtime before v2 only has `ok`.
+    auto loaded = fields->boolean("loaded");
+    if (!loaded)
+        loaded = fields->boolean("ok");
     if (!loaded)
         return std::nullopt;
     CoreProbe probe;
@@ -81,7 +85,10 @@ std::optional<CoreProbe> parse_core_probe(std::string_view output) {
 
 std::optional<std::string> core_issue(const CoreProbe &probe, const std::filesystem::path &rom) {
     if (!probe.loaded)
-        return probe.reason == "core.load_failed" ? "core_load_failed" : "core_invalid";
+        return probe.reason == "core.load_failed" || probe.reason == "core.missing" ||
+                       probe.reason == "core.wrong_architecture"
+                   ? "core_load_failed"
+                   : "core_invalid";
     if (!probe.extensions.empty()) {
         auto extension = lowercase(rom.extension().string());
         if (!extension.empty() && extension.front() == '.')

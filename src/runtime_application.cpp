@@ -283,33 +283,34 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
     // otra arquitectura, el que muere es este proceso desechable y Play se
     // entera por el codigo de salida, en vez de llevarse el launcher puesto.
     // -----------------------------------------------------------------------
+    // Spec 008 (RF-9.3, TP-304.5): contrato de sonda v2. El veredicto, la
+    // linea y el codigo de salida (0 ok, 2 archivo/arquitectura, 3 no es core,
+    // 4 ABI o capacidades) son los del Engine; el Runtime solo AGREGA los
+    // metadatos Libretro y la sonda de ROM que Play y audio_qa leen.
     if (!probe_core.empty()) {
-        auto probed = ayther::engine::probe_core(probe_core);
-        if (!probed) {
-            const bool invalid_core = probed.error.code == ayther::ErrorCode::BadFormat;
-            std::fprintf(stderr, "[core-probe] %s\n", probed.error.message.c_str());
-            emit_status(ayther::runtime::ProbeFailedStatus{
-                invalid_core ? ayther::runtime::RuntimeErrorCode::core_invalid
-                             : ayther::runtime::RuntimeErrorCode::core_load_failed,
-                probed.error.message});
-            return ayther::runtime::exit_code(
-                invalid_core ? ayther::runtime::RuntimeExitCode::invalid_core
-                             : ayther::runtime::RuntimeExitCode::core_load_failed);
+        const ayther::engine::ProbeReport report = ayther::engine::probe_core_v2(probe_core);
+        if (!report.ok() && !report.message.empty())
+            std::fprintf(stderr, "[core-probe] %s\n", report.message.c_str());
+        ayther::runtime::ProbeReportStatus probe_status;
+        probe_status.report_json = report.serialize();
+        probe_status.loaded = report.loaded;
+        if (report.loaded) {
+            // Runtime copia el modelo publico del Engine a su evento tipado; no
+            // interpreta ni conserva punteros Libretro prestados.
+            if (auto probed = ayther::engine::probe_core(probe_core)) {
+                const ayther::engine::CoreInfo &info = probed->info();
+                probe_status.has_libretro_info = true;
+                probe_status.valid_extensions = info.valid_extensions;
+                probe_status.need_fullpath = info.need_fullpath;
+                probe_status.block_extract = info.block_extract;
+            }
+            // Spec 002: con --probe-rom el core tambien carga la ROM, sin
+            // ejecutar ningun frame, y el evento dice si la cargo y con que timing.
+            if (!options.probe_rom.empty())
+                probe_status.game = probe_game(options);
         }
-
-        // Runtime copia el modelo publico del Engine a su evento tipado; no
-        // interpreta ni conserva punteros Libretro prestados.
-        const ayther::engine::CoreInfo &info = probed->info();
-        ayther::runtime::ProbeSucceededStatus probe_status{
-            info.api_version,      info.library_name,  info.library_version,
-            info.valid_extensions, info.need_fullpath, info.block_extract,
-        };
-        // Spec 002: con --probe-rom el core tambien carga la ROM, sin ejecutar ningun
-        // frame, y el evento dice si la cargo y con que timing.
-        if (!options.probe_rom.empty())
-            probe_status.game = probe_game(options);
         emit_status(probe_status);
-        return 0;
+        return ayther::engine::verdict_exit_code(report.verdict);
     }
 
     if (core_path_str.empty() || rom_path_str.empty()) {

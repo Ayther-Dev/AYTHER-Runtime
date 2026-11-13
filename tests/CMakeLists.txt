@@ -1113,6 +1113,8 @@ add_test(
             "-DCORE_DLL=$<TARGET_FILE:synthetic_libretro_core>"
             "-DNON_CORE_DLL=$<TARGET_FILE:non_libretro_library>"
             "-DROM_FILE=${CMAKE_CURRENT_SOURCE_DIR}/audio_qa/fixtures/public-synthetic.aytest"
+            "-DPROBE_VECTORS_DIR=${_ayther_engine_prefix}/share/ayther/probe-vectors"
+            "-DLIBRARY_SUFFIX=${CMAKE_SHARED_LIBRARY_SUFFIX}"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/probe_core_test.cmake
 )
 
