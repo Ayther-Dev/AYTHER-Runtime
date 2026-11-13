@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <ios>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <span>
@@ -42,6 +43,7 @@
 #ifdef AYTHER_ENABLE_TESSERA_NATIVE
 #include "native_runtime.h"
 #endif
+#include "native_session_config.h"
 #include "save_state_store.h"
 #include "session_controller.h"
 #include "sonic_telemetry.h" // Runtime-owned game-specific diagnostics
@@ -151,7 +153,17 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
     }
     ayther::runtime::RuntimeOptions options = std::move(*parsed_options.options());
 
-    if (options.provider == "tessera") {
+    // Spec 008 (RF-5.3, TP-304.2): --provider tessera runs the same session,
+    // window, input, overlay, shaders, hd_compose and capture as libretro. The
+    // direct NativeEmulation driver stays as the QA mode, selected by its own
+    // flags (--native-trace and the other --native-* options).
+    const bool native_qa_mode =
+        options.provider == "tessera" &&
+        (!options.native_trace_path.empty() || options.native_visible ||
+         options.native_gpu_probe || options.native_audio_device ||
+         options.native_input_mask != 0 || options.native_deactivate_at != 0 ||
+         options.native_reactivate_at != 0);
+    if (native_qa_mode) {
 #ifdef AYTHER_ENABLE_TESSERA_NATIVE
         return ayther::runtime::run_native_runtime(options);
 #else
@@ -313,9 +325,11 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
         return ayther::engine::verdict_exit_code(report.verdict);
     }
 
-    if (core_path_str.empty() || rom_path_str.empty()) {
+    const bool tessera_provider = options.provider == "tessera";
+    if (rom_path_str.empty() || (!tessera_provider && core_path_str.empty())) {
         emit_status(ayther::runtime::WarningStatus{
-            ayther::runtime::RuntimeErrorCode::cli_invalid_argument, "faltan --core y/o --rom"});
+            ayther::runtime::RuntimeErrorCode::cli_invalid_argument,
+            tessera_provider ? "falta --rom" : "faltan --core y/o --rom"});
         std::fprintf(stderr,
                      "ayther_runtime — the Ayther game-session host (spawned by Ayther Play).\n"
                      "Usage: ayther_runtime --core <libretro.dll> --rom <rom>\n"
@@ -334,6 +348,33 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
                      "         Sondea el core y emite un evento probe. Con --probe-rom\n"
                      "         carga ademas la ROM, sin ejecutar ningun frame.\n");
         return ayther::runtime::runtime_cli_error_exit_code;
+    }
+
+    // Spec 008 (TP-304.2): the Tessera configuration is built before SDL, so a
+    // ROM of another system or an Engine without Tessera ends here.
+    ayther::engine::NativeConfig native_config;
+    if (tessera_provider) {
+        std::vector<std::uint8_t> rom_bytes;
+        {
+            std::ifstream rom_file(rom_path_str, std::ios::binary);
+            rom_bytes.assign(std::istreambuf_iterator<char>{rom_file},
+                             std::istreambuf_iterator<char>{});
+            if (!rom_file.good() && !rom_file.eof())
+                rom_bytes.clear();
+        }
+        auto prepared = ayther::runtime::megadrive_session_config(std::move(rom_bytes), {});
+        if (!prepared.ok) {
+            const bool unsupported = prepared.reason == "core.unsupported_system";
+            std::fprintf(stderr, "[ayther_runtime] %s\n", prepared.message.c_str());
+            emit_status(ayther::runtime::WarningStatus{
+                unsupported ? ayther::runtime::RuntimeErrorCode::core_unsupported_system
+                            : ayther::runtime::RuntimeErrorCode::core_load_failed,
+                prepared.message});
+            return ayther::runtime::exit_code(
+                unsupported ? ayther::runtime::RuntimeExitCode::invalid_core
+                            : ayther::runtime::RuntimeExitCode::core_load_failed);
+        }
+        native_config = std::move(prepared.config);
     }
 
     std::unique_ptr<ayther::runtime::FileReservation> rom_reservation;
@@ -517,7 +558,7 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
     // pre-rebrand). Kept here because the Runtime-owned reload policy and its
     // typed watcher share the exact path.
     std::string pack_path = pack_path_arg;
-    if (pack_path.empty()) {
+    if (pack_path.empty() && !core_path_str.empty()) {
         const auto dot = core_path_str.rfind('.');
         const auto stem = (dot != std::string::npos) ? core_path_str.substr(0, dot) : core_path_str;
         pack_path = stem + ".ay";
@@ -576,6 +617,10 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
     ayther::AytherSession::Config scfg;
     scfg.core_path = core_path_str;
     scfg.rom_path = rom_path_str;
+    if (tessera_provider) {
+        scfg.provider = ayther::EmulationProvider::tessera_native;
+        scfg.native_config = std::move(native_config);
+    }
     scfg.pack_path = pack_path;                // explicit → watcher shares this exact path
     scfg.trust_registry = trust_registry.path; // Engine retains it for reload_pack().
     scfg.enable_audio = true;

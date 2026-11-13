@@ -47,6 +47,7 @@ enum class RuntimeErrorCode {
     args_provider_conflict,
     core_load_failed,
     core_invalid,
+    core_unsupported_system,
     pack_rejected,
     pack_open_failed,
     trust_registry_invalid,
@@ -76,6 +77,8 @@ enum class RuntimeErrorCode {
         return "core.load_failed";
     case RuntimeErrorCode::core_invalid:
         return "core.invalid";
+    case RuntimeErrorCode::core_unsupported_system:
+        return "core.unsupported_system";
     case RuntimeErrorCode::pack_rejected:
         return "pack.rejected";
     case RuntimeErrorCode::pack_open_failed:
@@ -121,6 +124,7 @@ enum class RuntimeErrorCode {
         return ErrorDomain::cli;
     case RuntimeErrorCode::core_load_failed:
     case RuntimeErrorCode::core_invalid:
+    case RuntimeErrorCode::core_unsupported_system:
         return ErrorDomain::core;
     case RuntimeErrorCode::pack_rejected:
     case RuntimeErrorCode::pack_no_active_subsystems:

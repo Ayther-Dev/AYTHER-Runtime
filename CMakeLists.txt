@@ -208,6 +208,7 @@ add_executable(ayther_runtime
     src/capture.cpp             # #300: synchronized comparison capture
     src/capture_service.cpp     # MAD-041: transactional capture boundary
     src/save_state_store.cpp    # MAD-039: transactional persistence boundary
+    src/native_session_config.cpp # spec 008: Tessera megadrive session config
     src/diagnostics.cpp         # #302: audiovisual diagnostics assistant
     src/pack_layers.cpp         # #561: pack overlay-layer stack
     src/sonic_telemetry.cpp     # Runtime-only game RAM diagnostics

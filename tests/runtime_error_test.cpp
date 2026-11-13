@@ -39,6 +39,9 @@ static_assert(ayther::runtime::error_reason(
                   ayther::runtime::RuntimeErrorCode::core_invalid) ==
               "core.invalid"sv);
 static_assert(ayther::runtime::error_reason(
+                  ayther::runtime::RuntimeErrorCode::core_unsupported_system) ==
+              "core.unsupported_system"sv);
+static_assert(ayther::runtime::error_reason(
                   ayther::runtime::RuntimeErrorCode::pack_rejected) ==
               "pack.rejected"sv);
 static_assert(ayther::runtime::error_reason(
