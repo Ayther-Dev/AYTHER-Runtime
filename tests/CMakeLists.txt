@@ -1166,6 +1166,25 @@ if(AYTHER_ENABLE_GPU_TESTS)
             "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx02/program.md")
     set_tests_properties(tessera_runtime_present PROPERTIES
         LABELS "integration;tessera;FX-02;gpu" TIMEOUT 120)
+    # Spec 008 (TP-304.6): a pack baked with gpgx on FX-03, played with Tessera.
+    # The pack comes from the Engine's parity_bench (`cross-pack bake
+    # --provider libretro --core <gpgx> --rom fx03_rom.md --frames 60`), so the
+    # directory is local, like the rest of the native fixtures.
+    set(AYTHER_TESSERA_CROSS_PACK_DIR "" CACHE PATH
+        "Directory with gpgx.ay and gpgx.toml baked by parity_bench cross-pack")
+    set(AYTHER_TESSERA_GPGX_CORE "" CACHE FILEPATH
+        "Optional gpgx fork core for the reference run of tessera_runtime_pack")
+    if(EXISTS "${AYTHER_TESSERA_CROSS_PACK_DIR}/gpgx.ay")
+        add_test(NAME tessera_runtime_pack
+            COMMAND tessera_runtime_test --cross-pack
+                "$<TARGET_FILE:ayther_runtime>"
+                "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx03/fx03_rom.md"
+                "${AYTHER_TESSERA_CROSS_PACK_DIR}/gpgx.ay"
+                "${AYTHER_TESSERA_CROSS_PACK_DIR}/gpgx.toml"
+                ${AYTHER_TESSERA_GPGX_CORE})
+        set_tests_properties(tessera_runtime_pack PROPERTIES
+            LABELS "integration;tessera;FX-03;gpu;pack" TIMEOUT 120)
+    endif()
     add_test(NAME tessera_runtime_active_audio
         COMMAND tessera_runtime_test --active-audio
             "$<TARGET_FILE:ayther_runtime>"

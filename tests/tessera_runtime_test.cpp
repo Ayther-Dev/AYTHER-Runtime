@@ -97,9 +97,98 @@ int present_variants(const std::string &runtime, const std::string &rom) {
     return 0;
 }
 
+struct CrossRun {
+    std::string output, original, composed;
+};
+
+/// One Runtime run of the FX-03 ROM with `provider_args`, the pack and its
+/// registry, capturing frame 30 without the post-process into its own APPDATA.
+CrossRun cross_run(const std::string &runtime, const std::string &provider_args,
+                   const std::string &rom, const std::string &pack, const std::string &registry,
+                   const std::filesystem::path &data) {
+    std::filesystem::create_directories(data);
+    _putenv_s("APPDATA", data.string().c_str());
+    int code = -1;
+    CrossRun result;
+    result.output = run(runtime,
+                        provider_args + " --rom " + quote(rom) + " --pack " + quote(pack) +
+                            " --trust-registry " + quote(registry) +
+                            " --frames 40 --capture-at 30 --no-shaders",
+                        data / "output.txt", code);
+    require(code == 0, "Runtime failed: " + result.output);
+    std::filesystem::path stem;
+    for (const auto &entry :
+         std::filesystem::directory_iterator(data / "Ayther" / "runtime" / "capturas"))
+        if (entry.path().extension() == ".json")
+            stem = entry.path().parent_path() / entry.path().stem();
+    require(!stem.empty(), "no capture written");
+    result.original = slurp(stem.string() + "-original.png");
+    result.composed = slurp(stem.string() + "-ayther.png");
+    return result;
+}
+
+/// "N/N resident, 0 over budget, 0 missing" of the session-start prewarm.
+std::string prewarm_counts(const std::string &output) {
+    const auto at = output.find("HD textures prewarmed (session start): ");
+    if (at == std::string::npos)
+        return {};
+    const auto begin = at + std::string("HD textures prewarmed (session start): ").size();
+    const auto end = output.find(" missing", begin);
+    return end == std::string::npos ? std::string{} : output.substr(begin, end - begin);
+}
+
+/// Spec 008 (TP-304.6, RF-10.3): a pack baked with gpgx plays with Tessera in
+/// the Runtime. The pack loads, every HD texture is resident and the composed
+/// frame differs from the original. With the gpgx core, the original frames
+/// of both providers are byte-identical and the prewarm counts agree. The
+/// composed images are not compared byte for byte: two runs of the SAME
+/// provider already differ there (time-dependent composition), and the
+/// FrameView parity of the crossed play is ayther.integration.
+/// parity_bench_cross_pack's job in the Engine.
+int cross_pack(const std::string &runtime, const std::string &rom, const std::string &pack,
+               const std::string &registry, const std::string &gpgx_core) {
+    const auto root = std::filesystem::temp_directory_path() /
+                      ("ayther-tessera-cross-" +
+                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto tessera =
+        cross_run(runtime, "--provider tessera", rom, pack, registry, root / "tessera");
+    require(tessera.output.find("\"emulator_id\":\"tessera\"") != std::string::npos &&
+                tessera.output.find("has_pack=1") != std::string::npos,
+            "The gpgx pack is not active in the Tessera session: " + tessera.output);
+    const auto counts = prewarm_counts(tessera.output);
+    require(!counts.empty() && counts.ends_with(" 0") && !counts.starts_with("0/"),
+            "HD textures of the gpgx pack are not all resident with Tessera: " + counts);
+    require(!tessera.original.empty() && tessera.composed != tessera.original,
+            "The gpgx pack did not change the Tessera presentation");
+    if (!gpgx_core.empty()) {
+        const auto gpgx =
+            cross_run(runtime, "--core " + quote(gpgx_core), rom, pack, registry, root / "gpgx");
+        require(gpgx.output.find("\"emulator_id\":\"gpgx\"") != std::string::npos,
+                "The reference session is not gpgx");
+        require(gpgx.original == tessera.original,
+                "The original frame 30 differs between gpgx and Tessera");
+        require(prewarm_counts(gpgx.output) == counts,
+                "The HD textures resident differ between gpgx and Tessera");
+    }
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+    std::cout << "Native Runtime gpgx-baked pack with Tessera passed"
+              << (gpgx_core.empty() ? " (no gpgx reference)" : " (gpgx reference compared)")
+              << '\n';
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
+    if ((argc == 6 || argc == 7) && std::string(argv[1]) == "--cross-pack") {
+        try {
+            return cross_pack(argv[2], argv[3], argv[4], argv[5], argc == 7 ? argv[6] : "");
+        } catch (const std::exception &error) {
+            std::cerr << error.what() << '\n';
+            return 1;
+        }
+    }
     if (argc == 4 && std::string(argv[1]) == "--present") {
         try {
             return present_variants(argv[2], argv[3]);
