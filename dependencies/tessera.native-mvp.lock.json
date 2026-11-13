@@ -2,27 +2,27 @@
   "schemaVersion": 1,
   "dependency": "AYTHER Tessera",
   "repository": "https://github.com/Ayther-Dev/AYTHER-Tessera",
-  "sourceCommit": "c69b9a313e5b18a0001124487a2bac0f0306377c",
+  "sourceCommit": "d29385a4863aebe1102158db7357cc5463023f48",
   "release": {
-    "tag": "v0.1.0-mvp.2",
-    "url": "https://github.com/Ayther-Dev/AYTHER-Tessera/releases/tag/v0.1.0-mvp.2",
+    "tag": "v0.2.0-rc.9",
+    "url": "https://github.com/Ayther-Dev/AYTHER-Tessera/releases/tag/v0.2.0-rc.9",
     "checksums": {
       "fileName": "CHECKSUMS.sha256",
-      "url": "https://github.com/Ayther-Dev/AYTHER-Tessera/releases/download/v0.1.0-mvp.2/CHECKSUMS.sha256",
-      "sha256": "639ea54a7b3dd9def7c50130ba9b440f2b29a63478fc689f9a57749e3cba6cd6"
+      "url": "https://github.com/Ayther-Dev/AYTHER-Tessera/releases/download/v0.2.0-rc.9/CHECKSUMS.sha256",
+      "sha256": "98ec5765ff7f30138f8d1f650ef55ae08c186a86e72252723c7668b00f157400"
     }
   },
   "attestation": {
     "repository": "Ayther-Dev/AYTHER-Tessera",
     "signerWorkflow": "Ayther-Dev/AYTHER-Tessera/.github/workflows/native-release.yml",
-    "sourceRef": "refs/tags/v0.1.0-mvp.2",
+    "sourceRef": "refs/tags/v0.2.0-rc.9",
     "predicateType": "https://slsa.dev/provenance/v1"
   },
   "artifact": {
     "platform": "windows",
     "architecture": "x86_64",
-    "fileName": "tessera-v0.1.0-mvp.2-windows-x86_64.zip",
-    "url": "https://github.com/Ayther-Dev/AYTHER-Tessera/releases/download/v0.1.0-mvp.2/tessera-v0.1.0-mvp.2-windows-x86_64.zip",
-    "sha256": "40ae6447b3a5dd7ca4bd4aaed2fccc436118fd53bec6c97deeb6c2593bed5a8f"
+    "fileName": "tessera-v0.2.0-rc.9-windows-x86_64.zip",
+    "url": "https://github.com/Ayther-Dev/AYTHER-Tessera/releases/download/v0.2.0-rc.9/tessera-v0.2.0-rc.9-windows-x86_64.zip",
+    "sha256": "8008a1fceb26424f7cc93303d4c503703eb7ca9fed0598d19c8224e660854a08"
   }
 }
