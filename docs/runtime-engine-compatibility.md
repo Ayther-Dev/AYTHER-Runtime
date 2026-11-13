@@ -27,8 +27,11 @@ pins the Tessera ZIP, its source commit, checksum manifest and attestation.
 The regular `v0.1.0-rc.23` VPX package pinned by `dependencies/ayther-engine.lock.json`
 does not carry the native provider: with it, detection under Tessera returns -6 and
 the six `tessera_runtime_*` tests fail. The native route needs the Engine-only
-`native-v0.1.0-rc.23` package (same headers; the libraries differ), which is still a
-draft. No lock pins it until it is published.
+`native-v0.1.0-rc.23` package (same headers; the libraries differ), pinned by
+`dependencies/ayther-engine.native-mvp.lock.json` and prepared with
+`./tools/bootstrap_ayther_engine.ps1 -LockFile dependencies/ayther-engine.native-mvp.lock.json -Variant engine-vpx`
+(SHA-256, release manifest and `native-release.yml` provenance). The
+`native_engine_lock_contract` test requires its tag to be `native-` plus the regular lock's tag.
 Both native packages must be extracted and supplied in `CMAKE_PREFIX_PATH`.
 Build with `AYTHER_ENABLE_TESSERA_NATIVE=ON` and
 `AYTHER_ENGINE_LOCKED_RELEASE=native-v0.1.0-rc.23` so Runtime records the selected
@@ -37,7 +40,8 @@ Engine release. Verify the native ZIP against its release `CHECKSUMS.sha256` and
 the regular package. The bootstrap verifies SHA-256, the release manifest and the signed workflow provenance.
 Run `tools/verify_tessera_native_mvp.ps1 -ArchivePath <ZIP> -ChecksumsPath <CHECKSUMS.sha256>` before using the Tessera prefix; it checks the lock, ZIP, checksum manifest, source metadata, excluded fixtures and signed provenance.
 
-The downloaded draft ZIP pair was consumed by an out-of-tree executable and
+The published `native-v0.1.0-rc.23` package passes the six `tessera_runtime_*` tests
+locally. The downloaded draft ZIP pair was consumed by an out-of-tree executable and
 Runtime's three local native tests, including GPU presentation and device audio.
 The physical GPU/audio CI acceptance gate remains pending by user decision;
 local passes do not satisfy that gate.

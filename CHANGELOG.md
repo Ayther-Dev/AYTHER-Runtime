@@ -15,6 +15,22 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+### Added
+
+- `--provider external|tessera` (spec 008, RF-5.3). With `tessera` the game runs
+  through `AytherSession` on the Engine's native `megadrive` machine, without
+  `--core`; live input, overlay, shaders, `hd_compose`, capture and packs work as
+  with the external core, and a pack baked with gpgx plays under Tessera.
+  `--core` together with `--provider tessera` is `args.provider_conflict`
+  (exit 64).
+- Save states carry the emulator generation (`SaveStateStore` v2); a state from
+  another generation is refused with exit 65. A state without the header counts
+  as gpgx.
+- `--probe-core` answers the Engine's probe contract v2 (exit 0/2/3/4).
+- `dependencies/ayther-engine.native-mvp.lock.json` pins the Engine-only
+  `native-v0.1.0-rc.23` package for the native route, next to the Tessera
+  `v0.2.0-rc.9` lock.
+
 ### Changed
 
 - Engine locks (`dependencies/ayther-engine.lock.json` and the QA lock) move

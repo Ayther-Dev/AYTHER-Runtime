@@ -9,6 +9,22 @@ $ErrorActionPreference = 'Stop'
 
 & $FetchScript -LockFile $ExistingLock -ValidateOnly | Out-Null
 
+# The pinned native lock (Tessera route) must validate and be signed by the
+# native release workflow for a native-* tag.
+$pinned = Join-Path (Split-Path -Parent $ExistingLock) 'ayther-engine.native-mvp.lock.json'
+& $FetchScript -LockFile $pinned -ValidateOnly | Out-Null
+$native = Get-Content -LiteralPath $pinned -Raw | ConvertFrom-Json
+if ($native.release.tag -notmatch '^native-v' -or
+    $native.attestation.signerWorkflow -ne 'Ayther-Dev/AYTHER-Engine/.github/workflows/native-release.yml' -or
+    $native.attestation.sourceRef -ne "refs/tags/$($native.release.tag)" -or
+    @($native.artifacts).Count -ne 1) {
+    throw "Pinned native Engine lock is not a single native-release artifact: $pinned"
+}
+$regular = Get-Content -LiteralPath $ExistingLock -Raw | ConvertFrom-Json
+if ($native.release.tag -ne "native-$($regular.release.tag)") {
+    throw "Native Engine lock $($native.release.tag) does not match the regular lock $($regular.release.tag)."
+}
+
 $lock = Get-Content -LiteralPath $ExistingLock -Raw | ConvertFrom-Json
 $tag = 'native-v0.1.0-rc.21'
 $base = 'https://github.com/Ayther-Dev/AYTHER-Engine/releases'
