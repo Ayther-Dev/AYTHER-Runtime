@@ -2,7 +2,9 @@
 
 #include <filesystem>
 #include <fstream>
+#include <cstdint>
 #include <iterator>
+#include <string>
 #include <vector>
 
 int main() {
@@ -36,7 +38,8 @@ int main() {
     const auto loaded = store.load(saved.path);
     if (!loaded.loaded() || loaded.format_version !=
             ayther::runtime::save_state_format_version ||
-        loaded.bytes != state) {
+        loaded.bytes != state ||
+        loaded.generation != ayther::runtime::SaveStateGeneration{}) {
         std::filesystem::remove_all(root, error);
         return 3;
     }
@@ -66,7 +69,8 @@ int main() {
     }
     const auto legacy = store.load(legacy_path);
     if (!legacy.loaded() || legacy.format_version != 0U ||
-        legacy.bytes != state) {
+        legacy.bytes != state ||
+        legacy.generation != ayther::runtime::SaveStateGeneration{"gpgx", 1U}) {
         std::filesystem::remove_all(root, error);
         return 6;
     }
@@ -102,14 +106,75 @@ int main() {
     }
 
     auto future = encoded;
-    future[8] = 2U;
+    future[8] = 3U;
     future[9] = future[10] = future[11] = 0U;
-    const auto future_path = root / "future-v2.bin";
+    const auto future_path = root / "future-v3.bin";
     write_bytes(future_path, future);
     if (store.load(future_path).status !=
         SaveStateStatus::unsupported_version) {
         std::filesystem::remove_all(root, error);
         return 9;
+    }
+
+    // Spec 008 (RF-4.1, TP-304.4): version 2 carries the generation.
+    const ayther::runtime::SaveStateGeneration tessera{"tessera", 1U};
+    const auto native = store.save(root, "game", "profile", "rev", state,
+                                   "20260101T040000Z", tessera);
+    const auto native_loaded = store.load(native.path);
+    if (!native || !native_loaded.loaded() || native_loaded.generation != tessera ||
+        native_loaded.bytes != state) {
+        std::filesystem::remove_all(root, error);
+        return 12;
+    }
+
+    // A version 1 file (no generation fields) was written by gpgx.
+    std::vector<std::uint8_t> v1{'A', 'Y', 'T', 'H', 'S', 'T', 'A', 'T', 1, 0, 0, 0};
+    for (int index = 0; index < 8; ++index) {
+        v1.push_back(index == 0 ? static_cast<std::uint8_t>(state.size()) : 0U);
+    }
+    std::uint32_t hash = 2166136261U;
+    for (const auto byte : state) {
+        hash ^= byte;
+        hash *= 16777619U;
+    }
+    for (int index = 0; index < 4; ++index) {
+        v1.push_back(static_cast<std::uint8_t>(hash >> (index * 8)));
+    }
+    v1.insert(v1.end(), state.begin(), state.end());
+    const auto v1_path = root / "legacy-v1.bin";
+    write_bytes(v1_path, v1);
+    const auto v1_loaded = store.load(v1_path);
+    if (!v1_loaded.loaded() || v1_loaded.format_version != 1U ||
+        v1_loaded.generation != ayther::runtime::SaveStateGeneration{"gpgx", 1U} ||
+        v1_loaded.bytes != state) {
+        std::filesystem::remove_all(root, error);
+        return 13;
+    }
+
+    // The emulator id is bounded and printable, on write and on read.
+    if (store.save(root, "game", "profile", "rev", state, "20260101T050000Z",
+                   {"", 1U}).status != SaveStateStatus::invalid ||
+        store.save(root, "game", "profile", "rev", state, "20260101T050001Z",
+                   {std::string(33, 'x'), 1U}).status != SaveStateStatus::invalid) {
+        std::filesystem::remove_all(root, error);
+        return 14;
+    }
+    std::ifstream native_input(native.path, std::ios::binary);
+    std::vector<std::uint8_t> native_bytes{
+        std::istreambuf_iterator<char>{native_input}, std::istreambuf_iterator<char>{}};
+    native_input.close();
+    auto bad_id = native_bytes;
+    bad_id[14] = 0x01U; // first byte of "tessera"
+    const auto bad_id_path = root / "bad-id-v2.bin";
+    write_bytes(bad_id_path, bad_id);
+    auto long_id = native_bytes;
+    long_id[12] = 200U; // id length beyond 32
+    const auto long_id_path = root / "long-id-v2.bin";
+    write_bytes(long_id_path, long_id);
+    if (store.load(bad_id_path).status != SaveStateStatus::invalid ||
+        store.load(long_id_path).status != SaveStateStatus::invalid) {
+        std::filesystem::remove_all(root, error);
+        return 15;
     }
 
     const ayther::runtime::SaveStateStore disk_full{

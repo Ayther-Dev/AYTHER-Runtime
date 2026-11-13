@@ -608,6 +608,29 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
             "Engine no activo el pack solicitado; la sesion se cancela"});
         return ayther::runtime::exit_code(ayther::runtime::RuntimeExitCode::pack_open_failed);
     }
+    // Spec 008 (RF-4.1): a state written by another emulator generation would
+    // restore garbage. The session does not start; Play offers to start
+    // without the state (exit 65, state.generation_mismatch).
+    std::optional<ayther::runtime::SaveStateLoadResult> loaded_state;
+    if (!load_state_arg.empty()) {
+        loaded_state = save_state_store.load(load_state_arg);
+        const auto &session_generation = sess->emulation_generation();
+        if (loaded_state->loaded() && !session_generation.id.empty() &&
+            (loaded_state->generation.emulator_id != session_generation.id ||
+             loaded_state->generation.determinism_contract !=
+                 session_generation.determinism_contract)) {
+            const std::string diagnostic =
+                "el guardado es de " + loaded_state->generation.emulator_id + " / " +
+                std::to_string(loaded_state->generation.determinism_contract) +
+                " y la sesion corre " + session_generation.id + " / " +
+                std::to_string(session_generation.determinism_contract);
+            std::fprintf(stderr, "[main] %s\n", diagnostic.c_str());
+            emit_status(ayther::runtime::WarningStatus{
+                ayther::runtime::RuntimeErrorCode::state_generation_mismatch, diagnostic});
+            return ayther::runtime::exit_code(
+                ayther::runtime::RuntimeExitCode::protocol_incompatible);
+        }
+    }
     sess->enable_rewind(true, 10); // R6: 10 s rewind window (Backspace to rewind)
 
     // #293: el perfil pedido. Sin `--profile`, el pack ya arrancó en el suyo
@@ -956,13 +979,12 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
     // a alguien creyendo que perdio la partida cuando el archivo sigue ahi; y
     // negarse a arrancar convertiria un guardado ilegible en un juego que no se
     // puede jugar.
-    if (!load_state_arg.empty()) {
-        auto loaded_state = save_state_store.load(load_state_arg);
+    if (loaded_state) {
         const bool state_restored =
-            loaded_state.loaded() && sess && sess->unserialize(loaded_state.bytes);
+            loaded_state->loaded() && sess && sess->unserialize(loaded_state->bytes);
         if (state_restored) {
             std::fprintf(stdout, "[main] reanudado desde %s (%zu bytes)\n", load_state_arg.c_str(),
-                         loaded_state.bytes.size());
+                         loaded_state->bytes.size());
         } else {
             emit_status(ayther::runtime::WarningStatus{
                 ayther::runtime::RuntimeErrorCode::state_restore_failed,
@@ -1559,8 +1581,15 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
     std::string savestate_path;
     std::vector<std::uint8_t> state_data;
     if (sess && sess->serialize(state_data)) {
-        const auto saved = save_state_store.save(runtime_config.saves_directory(), sess->game_id(),
-                                                 sess->active_profile(), rom_crc32_arg, state_data);
+        const auto &session_generation = sess->emulation_generation();
+        ayther::runtime::SaveStateGeneration state_generation;
+        if (!session_generation.id.empty()) {
+            state_generation = {session_generation.id, session_generation.determinism_contract};
+        }
+        const auto saved =
+            save_state_store.save(runtime_config.saves_directory(), sess->game_id(),
+                                  sess->active_profile(), rom_crc32_arg, state_data, {},
+                                  state_generation);
         if (saved) {
             savestate_path = saved.path.string();
             std::fprintf(stdout, "[main] guardado: %zu bytes -> %s\n", state_data.size(),

@@ -56,6 +56,12 @@ static_assert(ayther::runtime::error_reason(
                   ayther::runtime::RuntimeErrorCode::state_save_failed) ==
               "state.save_failed"sv);
 static_assert(ayther::runtime::error_reason(
+                  ayther::runtime::RuntimeErrorCode::state_generation_mismatch) ==
+              "state.generation_mismatch"sv);
+static_assert(ayther::runtime::error_domain(
+                  ayther::runtime::RuntimeErrorCode::state_generation_mismatch) ==
+              ayther::runtime::ErrorDomain::state);
+static_assert(ayther::runtime::error_reason(
                   ayther::runtime::RuntimeErrorCode::vulkan_unavailable) ==
               "vulkan.unavailable"sv);
 static_assert(ayther::runtime::error_reason(

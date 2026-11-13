@@ -73,6 +73,7 @@ be used for branching.
 | Pack | `pack.trust_registry_invalid` | Fatal; fix the missing, unreadable or malformed registry. |
 | Pack | `pack.no_active_subsystems` | Warning; continue original. |
 | State | `state.restore_failed` | Recoverable; start from the beginning. |
+| State | `state.generation_mismatch` | Fatal before the first frame; the state was written by another emulator generation (save state v2 header: `emulator_id`, `determinism_contract`; files without the header or in v1 are `gpgx / 1`). Exit 65; Play offers to start without the state. |
 | State | `state.save_failed` | Recoverable for the session; save was not published. |
 | Vulkan | `vulkan.unavailable` | Recoverable; headless/original path. |
 | Vulkan | `vulkan.initialization_failed`, `vulkan.frame_failed` | Fatal for GPU presentation. |

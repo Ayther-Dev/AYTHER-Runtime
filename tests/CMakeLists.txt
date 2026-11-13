@@ -407,6 +407,21 @@ add_test(
             -DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cli_error_test.cmake
 )
+# Spec 008 (TP-304.4): exit 65 for a state of another emulator generation,
+# with the deterministic test core the Engine package ships.
+get_filename_component(_ayther_engine_prefix "${Ayther_DIR}/../../.." ABSOLUTE)
+add_test(
+    NAME    state_generation_mismatch
+    COMMAND ${CMAKE_COMMAND}
+            -DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>
+            -DTEST_CORE=${_ayther_engine_prefix}/share/ayther/probe-vectors/ayther_test_core${CMAKE_SHARED_LIBRARY_SUFFIX}
+            -DSTATE_FIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/state-v2-tessera.bin
+            -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/state-generation
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/state_generation_test.cmake
+)
+set_tests_properties(state_generation_mismatch PROPERTIES
+    SKIP_RETURN_CODE 77
+    ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy")
 add_test(
     NAME    runtime_package_smoke
     COMMAND ${CMAKE_COMMAND}

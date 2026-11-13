@@ -14,9 +14,20 @@ namespace {
 
 constexpr std::array<std::uint8_t, 8> save_state_magic{
     'A', 'Y', 'T', 'H', 'S', 'T', 'A', 'T'};
-constexpr std::size_t save_state_header_size =
+// magic, version, payload size, checksum (version 1)
+constexpr std::size_t save_state_v1_header_size =
     save_state_magic.size() + sizeof(std::uint32_t) +
     sizeof(std::uint64_t) + sizeof(std::uint32_t);
+// magic, version, id length (u16), id, contract (u32), size, checksum
+constexpr std::size_t save_state_v2_fixed_size =
+    save_state_magic.size() + sizeof(std::uint32_t) + sizeof(std::uint16_t) +
+    sizeof(std::uint32_t) + sizeof(std::uint64_t) + sizeof(std::uint32_t);
+
+[[nodiscard]] bool printable_ascii(const std::string_view value) noexcept {
+    return std::all_of(value.begin(), value.end(), [](const char character) {
+        return character >= 0x20 && character <= 0x7e;
+    });
+}
 
 [[nodiscard]] std::uint32_t checksum(
     const std::span<const std::uint8_t> bytes) noexcept {
@@ -48,11 +59,18 @@ template <typename Integer>
 }
 
 [[nodiscard]] std::vector<std::uint8_t> encode_state(
-    const std::span<const std::uint8_t> payload) {
+    const std::span<const std::uint8_t> payload,
+    const SaveStateGeneration& generation) {
     std::vector<std::uint8_t> encoded;
-    encoded.reserve(save_state_header_size + payload.size());
+    encoded.reserve(save_state_v2_fixed_size + generation.emulator_id.size() +
+                    payload.size());
     encoded.insert(encoded.end(), save_state_magic.begin(), save_state_magic.end());
     append_little_endian(encoded, save_state_format_version);
+    append_little_endian(encoded,
+                         static_cast<std::uint16_t>(generation.emulator_id.size()));
+    encoded.insert(encoded.end(), generation.emulator_id.begin(),
+                   generation.emulator_id.end());
+    append_little_endian(encoded, generation.determinism_contract);
     append_little_endian(encoded, static_cast<std::uint64_t>(payload.size()));
     append_little_endian(encoded, checksum(payload));
     encoded.insert(encoded.end(), payload.begin(), payload.end());
@@ -96,7 +114,7 @@ SaveStateLoadResult SaveStateStore::load(
     if (!std::filesystem::exists(path, filesystem_error)) {
         return {filesystem_error ? SaveStateStatus::io_error
                                  : SaveStateStatus::missing,
-                0U, {}, RuntimeErrorCode::state_restore_failed,
+                0U, {}, {}, RuntimeErrorCode::state_restore_failed,
                 filesystem_error ? filesystem_error.message()
                                  : "state file does not exist"};
     }
@@ -105,7 +123,7 @@ SaveStateLoadResult SaveStateStore::load(
         size > static_cast<std::uintmax_t>(SIZE_MAX) ||
         size > static_cast<std::uintmax_t>(
                    std::numeric_limits<std::streamsize>::max())) {
-        return {SaveStateStatus::invalid, 0U, {},
+        return {SaveStateStatus::invalid, 0U, {}, {},
                 RuntimeErrorCode::state_restore_failed,
                 filesystem_error ? filesystem_error.message()
                                  : "state file has an invalid size"};
@@ -116,18 +134,18 @@ SaveStateLoadResult SaveStateStore::load(
     if (!input.read(reinterpret_cast<char*>(bytes.data()),
                     static_cast<std::streamsize>(bytes.size())) ||
         input.peek() != std::ifstream::traits_type::eof()) {
-        return {SaveStateStatus::io_error, 0U, {},
+        return {SaveStateStatus::io_error, 0U, {}, {},
                 RuntimeErrorCode::state_restore_failed,
                 "could not read the complete state file"};
     }
     const bool has_magic = bytes.size() >= save_state_magic.size() &&
         std::equal(save_state_magic.begin(), save_state_magic.end(), bytes.begin());
     if (!has_magic) {
-        return {SaveStateStatus::loaded, 0U, std::move(bytes),
+        return {SaveStateStatus::loaded, 0U, {}, std::move(bytes),
                 RuntimeErrorCode::state_restore_failed, {}};
     }
-    if (bytes.size() < save_state_header_size) {
-        return {SaveStateStatus::invalid, 0U, {},
+    if (bytes.size() < save_state_magic.size() + sizeof(std::uint32_t)) {
+        return {SaveStateStatus::invalid, 0U, {}, {},
                 RuntimeErrorCode::state_restore_failed,
                 "versioned state header is truncated"};
     }
@@ -136,10 +154,39 @@ SaveStateLoadResult SaveStateStore::load(
     std::size_t offset = save_state_magic.size();
     const auto version = read_little_endian<std::uint32_t>(encoded, offset);
     offset += sizeof(std::uint32_t);
-    if (version != save_state_format_version) {
-        return {SaveStateStatus::unsupported_version, version, {},
+    if (version != 1U && version != save_state_format_version) {
+        return {SaveStateStatus::unsupported_version, version, {}, {},
                 RuntimeErrorCode::state_restore_failed,
                 "save-state format version is unsupported"};
+    }
+    const std::size_t fixed =
+        version == 1U ? save_state_v1_header_size : save_state_v2_fixed_size;
+    if (bytes.size() < fixed) {
+        return {SaveStateStatus::invalid, version, {}, {},
+                RuntimeErrorCode::state_restore_failed,
+                "versioned state header is truncated"};
+    }
+    SaveStateGeneration generation;
+    if (version == save_state_format_version) {
+        const auto id_size = read_little_endian<std::uint16_t>(encoded, offset);
+        offset += sizeof(std::uint16_t);
+        if (id_size == 0U || id_size > save_state_max_emulator_id ||
+            bytes.size() < fixed + id_size) {
+            return {SaveStateStatus::invalid, version, {}, {},
+                    RuntimeErrorCode::state_restore_failed,
+                    "save-state emulator id is invalid"};
+        }
+        generation.emulator_id.assign(
+            reinterpret_cast<const char*>(bytes.data() + offset), id_size);
+        offset += id_size;
+        if (!printable_ascii(generation.emulator_id)) {
+            return {SaveStateStatus::invalid, version, {}, {},
+                    RuntimeErrorCode::state_restore_failed,
+                    "save-state emulator id is invalid"};
+        }
+        generation.determinism_contract =
+            read_little_endian<std::uint32_t>(encoded, offset);
+        offset += sizeof(std::uint32_t);
     }
     const auto payload_size = read_little_endian<std::uint64_t>(encoded, offset);
     offset += sizeof(std::uint64_t);
@@ -147,18 +194,18 @@ SaveStateLoadResult SaveStateStore::load(
         read_little_endian<std::uint32_t>(encoded, offset);
     offset += sizeof(std::uint32_t);
     if (payload_size != bytes.size() - offset) {
-        return {SaveStateStatus::invalid, version, {},
+        return {SaveStateStatus::invalid, version, {}, {},
                 RuntimeErrorCode::state_restore_failed,
                 "save-state payload length is invalid"};
     }
     const std::span<const std::uint8_t> payload{bytes.data() + offset,
                                                 bytes.size() - offset};
     if (checksum(payload) != expected_checksum) {
-        return {SaveStateStatus::invalid, version, {},
+        return {SaveStateStatus::invalid, version, {}, {},
                 RuntimeErrorCode::state_restore_failed,
                 "save-state checksum mismatch"};
     }
-    return {SaveStateStatus::loaded, version,
+    return {SaveStateStatus::loaded, version, std::move(generation),
             std::vector<std::uint8_t>{payload.begin(), payload.end()},
             RuntimeErrorCode::state_restore_failed, {}};
 }
@@ -167,7 +214,15 @@ SaveStateWriteResult SaveStateStore::save(
     const std::filesystem::path& root, const std::string_view game_id,
     const std::string_view profile, const std::string_view rom_revision,
     const std::span<const std::uint8_t> bytes,
-    const std::string_view timestamp_utc) const {
+    const std::string_view timestamp_utc,
+    const SaveStateGeneration& generation) const {
+    if (generation.emulator_id.empty() ||
+        generation.emulator_id.size() > save_state_max_emulator_id ||
+        !printable_ascii(generation.emulator_id)) {
+        return {SaveStateStatus::invalid, {},
+                RuntimeErrorCode::state_save_failed,
+                "emulator id must be 1 to 32 printable ASCII bytes"};
+    }
     if (root.empty() || bytes.empty()) {
         return {SaveStateStatus::invalid, {},
                 RuntimeErrorCode::state_save_failed,
@@ -210,7 +265,7 @@ SaveStateWriteResult SaveStateStore::save(
                 "state destination already exists"};
     }
 
-    const auto encoded = encode_state(bytes);
+    const auto encoded = encode_state(bytes, generation);
     bool written = false;
     {
         std::ofstream output(temporary, std::ios::binary | std::ios::trunc);

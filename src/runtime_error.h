@@ -53,6 +53,7 @@ enum class RuntimeErrorCode {
     pack_no_active_subsystems,
     state_restore_failed,
     state_save_failed,
+    state_generation_mismatch,
     vulkan_unavailable,
     vulkan_initialization_failed,
     vulkan_frame_failed,
@@ -87,6 +88,8 @@ enum class RuntimeErrorCode {
         return "state.restore_failed";
     case RuntimeErrorCode::state_save_failed:
         return "state.save_failed";
+    case RuntimeErrorCode::state_generation_mismatch:
+        return "state.generation_mismatch";
     case RuntimeErrorCode::vulkan_unavailable:
         return "vulkan.unavailable";
     case RuntimeErrorCode::vulkan_initialization_failed:
@@ -126,6 +129,7 @@ enum class RuntimeErrorCode {
         return ErrorDomain::pack;
     case RuntimeErrorCode::state_restore_failed:
     case RuntimeErrorCode::state_save_failed:
+    case RuntimeErrorCode::state_generation_mismatch:
         return ErrorDomain::state;
     case RuntimeErrorCode::vulkan_unavailable:
     case RuntimeErrorCode::vulkan_initialization_failed:
