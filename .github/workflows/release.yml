@@ -168,11 +168,16 @@ jobs:
           }
           & (Join-Path $bin.FullName "ayther_audio_qa.exe") options --format toml | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "The packaged ayther_audio_qa does not run." }
-          $core = Get-ChildItem out/build/windows-qa -Recurse -File `
-              -Filter synthetic_libretro_core.dll | Select-Object -First 1
-          if (-not $core) { throw "The synthetic test core was not built." }
-          & (Join-Path $bin.FullName "ayther_runtime.exe") --probe-core $core.FullName | Out-Host
-          if ($LASTEXITCODE -ne 0) { throw "The packaged Runtime cannot probe a core." }
+          # Probe contract v2: only a core with the full AYTHER observation is
+          # `ok` (exit 0). The Engine package ships one for the probe vectors;
+          # the synthetic libretro core has no AYTHER ABI and answers abi_missing.
+          $core = Join-Path $env:AYTHER_ENGINE_PREFIX "share/ayther/probe-vectors/ayther_test_core.dll"
+          if (-not (Test-Path -LiteralPath $core -PathType Leaf)) { throw "The Engine package lacks the probe test core: $core" }
+          $probe = & (Join-Path $bin.FullName "ayther_runtime.exe") --probe-core $core
+          $probe | Out-Host
+          if ($LASTEXITCODE -ne 0 -or ($probe -join "") -notmatch '"verdict":"ok"') {
+              throw "The packaged Runtime cannot probe a core."
+          }
 
           $archives | ForEach-Object {
               $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
