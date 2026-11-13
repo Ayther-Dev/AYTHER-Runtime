@@ -15,6 +15,13 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+### Changed
+
+- Engine locks (`dependencies/ayther-engine.lock.json` and the QA lock) move
+  to `v0.1.0-rc.23` (core C ABI revision 9). The regular rc.23 VPX package does
+  not carry the native Tessera provider; the native route needs the Engine-only
+  `native-v0.1.0-rc.23` package, documented in `docs/runtime-engine-compatibility.md`.
+
 ## [0.1.0-beta.14] - 2026-11-06
 
 ### Added
