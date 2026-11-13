@@ -41,9 +41,73 @@ std::map<std::string, std::string> fields(const std::string &line) {
     return result;
 }
 
+std::string slurp(const std::filesystem::path &path) {
+    std::ifstream input(path, std::ios::binary);
+    return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+}
+
+/// Spec 008 (TP-304.3): the session path of --provider tessera presents through
+/// the same Vulkan swapchain, post-process shaders, hd_compose and F12 capture
+/// as libretro. Each variant captures frame 20 of FX-02 into its own APPDATA;
+/// the original image does not depend on the shaders or on hd_compose.
+int present_variants(const std::string &runtime, const std::string &rom) {
+    const auto root = std::filesystem::temp_directory_path() /
+                      ("ayther-tessera-present-" +
+                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const std::array<std::pair<const char *, const char *>, 3> variants{{
+        {"shaders", ""},
+        {"no_shaders", " --no-shaders"},
+        {"hd_compose", " --hd-compose"},
+    }};
+    std::vector<std::string> originals;
+    for (const auto &[name, extra] : variants) {
+        const auto data = root / name;
+        std::filesystem::create_directories(data);
+        _putenv_s("APPDATA", data.string().c_str());
+        int code = -1;
+        const auto output =
+            run(runtime,
+                "--provider tessera --rom " + quote(rom) + " --frames 30 --capture-at 20" + extra,
+                root / (std::string(name) + ".txt"), code);
+        require(code == 0, std::string(name) + ": Runtime failed: " + output);
+        require(output.find("\"emulator_id\":\"tessera\"") != std::string::npos,
+                std::string(name) + ": the session is not Tessera");
+        require(output.find("[PlayerOverlay] ready") != std::string::npos,
+                std::string(name) + ": the overlay did not start");
+        const auto captures = data / "Ayther" / "runtime" / "capturas";
+        std::filesystem::path stem;
+        for (const auto &entry : std::filesystem::directory_iterator(captures))
+            if (entry.path().extension() == ".json")
+                stem = entry.path().parent_path() / entry.path().stem();
+        require(!stem.empty(), std::string(name) + ": no capture written");
+        for (const char *suffix : {"-original.png", "-ayther.png", "-split.png"})
+            require(std::filesystem::file_size(stem.string() + suffix) > 0,
+                    std::string(name) + ": capture image missing: " + suffix);
+        require(slurp(stem.string() + ".json").find("\"capture\": \"ayther.compare\"") !=
+                    std::string::npos,
+                std::string(name) + ": capture metadata is not ayther.compare");
+        originals.push_back(slurp(stem.string() + "-original.png"));
+    }
+    require(originals[0] == originals[1] && originals[0] == originals[2],
+            "The original capture changed with the shaders or hd_compose");
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+    std::cout << "Native Runtime Tessera presentation (shaders, no shaders, hd_compose, capture) "
+                 "passed\n";
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
+    if (argc == 4 && std::string(argv[1]) == "--present") {
+        try {
+            return present_variants(argv[2], argv[3]);
+        } catch (const std::exception &error) {
+            std::cerr << error.what() << '\n';
+            return 1;
+        }
+    }
     if (argc == 4 && std::string(argv[1]) == "--active-audio") {
         try {
             const auto scratch =

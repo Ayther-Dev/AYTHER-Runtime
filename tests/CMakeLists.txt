@@ -1159,6 +1159,13 @@ add_test(NAME tessera_runtime_live_input
 set_tests_properties(tessera_runtime_live_input PROPERTIES
     LABELS "integration;tessera;FX-02;input" TIMEOUT 60)
 if(AYTHER_ENABLE_GPU_TESTS)
+    # Spec 008 (TP-304.3): shaders, no shaders and hd_compose with F12 capture.
+    add_test(NAME tessera_runtime_present
+        COMMAND tessera_runtime_test --present
+            "$<TARGET_FILE:ayther_runtime>"
+            "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx02/program.md")
+    set_tests_properties(tessera_runtime_present PROPERTIES
+        LABELS "integration;tessera;FX-02;gpu" TIMEOUT 120)
     add_test(NAME tessera_runtime_active_audio
         COMMAND tessera_runtime_test --active-audio
             "$<TARGET_FILE:ayther_runtime>"
