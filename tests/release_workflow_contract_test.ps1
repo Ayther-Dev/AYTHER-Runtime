@@ -73,6 +73,7 @@ Assert-Condition ($workflowText -match 'CPACK_COMPONENTS_ALL="Runtime;qa"' -and
 Assert-Condition ($workflowText -match '--qa-capabilities' -and
     $workflowText -match 'options --format toml' -and
     $workflowText -match '--probe-core' -and
+    $workflowText -match 'probe-vectors/ayther_test_core\.dll' -and
     $workflowText -match 'ayther_replay_qa\.exe') `
     "The QA package must smoke-test its Runtime and QA tools from the archive."
 Assert-Condition ($workflowText -match 'SHA256SUMS-windows-qa') `
