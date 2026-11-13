@@ -11,12 +11,12 @@
 #   cmake -S . -B build_rt -DCMAKE_PREFIX_PATH=<Engine bootstrap prefix>
 #   cmake --build build_rt
 # ---------------------------------------------------------------------------
-set(AYTHER_RUNTIME_VERSION "0.1.0-beta.14")
+set(AYTHER_RUNTIME_VERSION "0.1.0-beta.15")
 set(AYTHER_RUNTIME_PROJECT_VERSION "0.1.0")
 set(AYTHER_ENGINE_MIN_VERSION "0.1.0")
 set(AYTHER_ENGINE_MAX_VERSION_EXCLUSIVE "0.2.0")
 # Spec 002, BR-174: the QA build uses the engine-vpx artifact of the same release.
-set(AYTHER_ENGINE_LOCKED_RELEASE "v0.1.0-rc.22" CACHE STRING "Engine release tag recorded in Runtime package metadata")
+set(AYTHER_ENGINE_LOCKED_RELEASE "v0.1.0-rc.23" CACHE STRING "Engine release tag recorded in Runtime package metadata")
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     cmake_minimum_required(VERSION 3.21)
@@ -208,6 +208,7 @@ add_executable(ayther_runtime
     src/capture.cpp             # #300: synchronized comparison capture
     src/capture_service.cpp     # MAD-041: transactional capture boundary
     src/save_state_store.cpp    # MAD-039: transactional persistence boundary
+    src/native_session_config.cpp # spec 008: Tessera megadrive session config
     src/diagnostics.cpp         # #302: audiovisual diagnostics assistant
     src/pack_layers.cpp         # #561: pack overlay-layer stack
     src/sonic_telemetry.cpp     # Runtime-only game RAM diagnostics

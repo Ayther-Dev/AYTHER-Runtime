@@ -2,7 +2,7 @@
 
 > [!IMPORTANT]
 > The Runtime–Play wire protocol v1 is stable. AYTHER Runtime remains the
-> separate `0.1.0-beta.14` product; stability here does not extend to its
+> separate `0.1.0-beta.15` product; stability here does not extend to its
 > package, Engine ABI, configuration, or save-state formats.
 
 ## Invocation modes
@@ -87,19 +87,29 @@ only for older launchers, which must inspect the first status record.
 
 ### `probe`
 
-Successful probe:
+The probe follows the Engine's core probe contract v2 (spec 008, RF-9.3): the
+record is `ProbeReport::serialize()` of `engine::probe_core_v2`, so it carries
+`"protocol_version":2`, `ok`, `verdict`, `reason` (absent when `ok`),
+`architecture`, `ayther_abi`, `ayther_build_id`, `capabilities`,
+`required_capabilities` and `missing_capabilities`. The exit code is the
+contract's: 0 `ok`, 2 `missing_file` or `wrong_architecture`, 3 `not_a_core`,
+4 `abi_missing` or `capabilities_incomplete`. A supervising parent adds
+`timeout` (5) and `crashed` (6).
 
 ```json
-{"protocol_version":1,"event":"probe","ok":true,"api":1,"library_name":"...","library_version":"...","valid_extensions":"...","need_fullpath":false,"block_extract":false}
+{"protocol_version":2,"event":"probe","ok":true,"verdict":"ok","api":1,"library_name":"...","library_version":"...","architecture":"x64","ayther_abi":"1.10","ayther_build_id":"...","capabilities":"0xEFFFF","required_capabilities":"0xEFFFF","missing_capabilities":[],"loaded":true,"valid_extensions":"...","need_fullpath":false,"block_extract":false}
 ```
 
-Failure reasons are stable machine identifiers: `core.load_failed` for a
-library-load failure and `core.invalid` when required Libretro symbols are
-missing. Optional `message` text is human-readable and MUST NOT drive logic.
+Runtime only appends fields after the contract's: `loaded` (the Libretro entry
+points answered, even when the verdict is not `ok`), the Libretro metadata
+`valid_extensions`, `need_fullpath` and `block_extract` when `loaded`, and,
+with `--probe-rom`, the `game_*` fields of the ROM probe. Reasons are stable
+machine identifiers (`core.missing`, `core.wrong_architecture`, `core.invalid`,
+`core.abi_missing`, `core.capabilities_incomplete`). Optional `message` text is
+human-readable and MUST NOT drive logic.
 
 Engine owns the temporary dynamic-library handle and copies the Libretro
-metadata. Runtime transfers those owned values into `ProbeSucceededStatus`; the
-same Runtime serializer used by every other event performs JSON encoding and
+metadata; the same Runtime serializer used by every other event performs the
 protocol framing.
 
 ### `ready`

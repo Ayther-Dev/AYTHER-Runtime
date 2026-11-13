@@ -41,9 +41,162 @@ std::map<std::string, std::string> fields(const std::string &line) {
     return result;
 }
 
+std::string slurp(const std::filesystem::path &path) {
+    std::ifstream input(path, std::ios::binary);
+    return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+}
+
+/// Spec 008 (TP-304.3): the session path of --provider tessera presents through
+/// the same Vulkan swapchain, post-process shaders, hd_compose and F12 capture
+/// as libretro. Each variant captures frame 20 of FX-02 into its own APPDATA;
+/// the original image does not depend on the shaders or on hd_compose.
+int present_variants(const std::string &runtime, const std::string &rom) {
+    const auto root = std::filesystem::temp_directory_path() /
+                      ("ayther-tessera-present-" +
+                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const std::array<std::pair<const char *, const char *>, 3> variants{{
+        {"shaders", ""},
+        {"no_shaders", " --no-shaders"},
+        {"hd_compose", " --hd-compose"},
+    }};
+    std::vector<std::string> originals;
+    for (const auto &[name, extra] : variants) {
+        const auto data = root / name;
+        std::filesystem::create_directories(data);
+        _putenv_s("APPDATA", data.string().c_str());
+        int code = -1;
+        const auto output =
+            run(runtime,
+                "--provider tessera --rom " + quote(rom) + " --frames 30 --capture-at 20" + extra,
+                root / (std::string(name) + ".txt"), code);
+        require(code == 0, std::string(name) + ": Runtime failed: " + output);
+        require(output.find("\"emulator_id\":\"tessera\"") != std::string::npos,
+                std::string(name) + ": the session is not Tessera");
+        require(output.find("[PlayerOverlay] ready") != std::string::npos,
+                std::string(name) + ": the overlay did not start");
+        const auto captures = data / "Ayther" / "runtime" / "capturas";
+        std::filesystem::path stem;
+        for (const auto &entry : std::filesystem::directory_iterator(captures))
+            if (entry.path().extension() == ".json")
+                stem = entry.path().parent_path() / entry.path().stem();
+        require(!stem.empty(), std::string(name) + ": no capture written");
+        for (const char *suffix : {"-original.png", "-ayther.png", "-split.png"})
+            require(std::filesystem::file_size(stem.string() + suffix) > 0,
+                    std::string(name) + ": capture image missing: " + suffix);
+        require(slurp(stem.string() + ".json").find("\"capture\": \"ayther.compare\"") !=
+                    std::string::npos,
+                std::string(name) + ": capture metadata is not ayther.compare");
+        originals.push_back(slurp(stem.string() + "-original.png"));
+    }
+    require(originals[0] == originals[1] && originals[0] == originals[2],
+            "The original capture changed with the shaders or hd_compose");
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+    std::cout << "Native Runtime Tessera presentation (shaders, no shaders, hd_compose, capture) "
+                 "passed\n";
+    return 0;
+}
+
+struct CrossRun {
+    std::string output, original, composed;
+};
+
+/// One Runtime run of the FX-03 ROM with `provider_args`, the pack and its
+/// registry, capturing frame 30 without the post-process into its own APPDATA.
+CrossRun cross_run(const std::string &runtime, const std::string &provider_args,
+                   const std::string &rom, const std::string &pack, const std::string &registry,
+                   const std::filesystem::path &data) {
+    std::filesystem::create_directories(data);
+    _putenv_s("APPDATA", data.string().c_str());
+    int code = -1;
+    CrossRun result;
+    result.output = run(runtime,
+                        provider_args + " --rom " + quote(rom) + " --pack " + quote(pack) +
+                            " --trust-registry " + quote(registry) +
+                            " --frames 40 --capture-at 30 --no-shaders",
+                        data / "output.txt", code);
+    require(code == 0, "Runtime failed: " + result.output);
+    std::filesystem::path stem;
+    for (const auto &entry :
+         std::filesystem::directory_iterator(data / "Ayther" / "runtime" / "capturas"))
+        if (entry.path().extension() == ".json")
+            stem = entry.path().parent_path() / entry.path().stem();
+    require(!stem.empty(), "no capture written");
+    result.original = slurp(stem.string() + "-original.png");
+    result.composed = slurp(stem.string() + "-ayther.png");
+    return result;
+}
+
+/// "N/N resident, 0 over budget, 0 missing" of the session-start prewarm.
+std::string prewarm_counts(const std::string &output) {
+    const auto at = output.find("HD textures prewarmed (session start): ");
+    if (at == std::string::npos)
+        return {};
+    const auto begin = at + std::string("HD textures prewarmed (session start): ").size();
+    const auto end = output.find(" missing", begin);
+    return end == std::string::npos ? std::string{} : output.substr(begin, end - begin);
+}
+
+/// Spec 008 (TP-304.6, RF-10.3): a pack baked with gpgx plays with Tessera in
+/// the Runtime. The pack loads, every HD texture is resident and the composed
+/// frame differs from the original. With the gpgx core, the original frames
+/// of both providers are byte-identical and the prewarm counts agree. The
+/// composed images are not compared byte for byte: two runs of the SAME
+/// provider already differ there (time-dependent composition), and the
+/// FrameView parity of the crossed play is ayther.integration.
+/// parity_bench_cross_pack's job in the Engine.
+int cross_pack(const std::string &runtime, const std::string &rom, const std::string &pack,
+               const std::string &registry, const std::string &gpgx_core) {
+    const auto root = std::filesystem::temp_directory_path() /
+                      ("ayther-tessera-cross-" +
+                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto tessera =
+        cross_run(runtime, "--provider tessera", rom, pack, registry, root / "tessera");
+    require(tessera.output.find("\"emulator_id\":\"tessera\"") != std::string::npos &&
+                tessera.output.find("has_pack=1") != std::string::npos,
+            "The gpgx pack is not active in the Tessera session: " + tessera.output);
+    const auto counts = prewarm_counts(tessera.output);
+    require(!counts.empty() && counts.ends_with(" 0") && !counts.starts_with("0/"),
+            "HD textures of the gpgx pack are not all resident with Tessera: " + counts);
+    require(!tessera.original.empty() && tessera.composed != tessera.original,
+            "The gpgx pack did not change the Tessera presentation");
+    if (!gpgx_core.empty()) {
+        const auto gpgx =
+            cross_run(runtime, "--core " + quote(gpgx_core), rom, pack, registry, root / "gpgx");
+        require(gpgx.output.find("\"emulator_id\":\"gpgx\"") != std::string::npos,
+                "The reference session is not gpgx");
+        require(gpgx.original == tessera.original,
+                "The original frame 30 differs between gpgx and Tessera");
+        require(prewarm_counts(gpgx.output) == counts,
+                "The HD textures resident differ between gpgx and Tessera");
+    }
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
+    std::cout << "Native Runtime gpgx-baked pack with Tessera passed"
+              << (gpgx_core.empty() ? " (no gpgx reference)" : " (gpgx reference compared)")
+              << '\n';
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
+    if ((argc == 6 || argc == 7) && std::string(argv[1]) == "--cross-pack") {
+        try {
+            return cross_pack(argv[2], argv[3], argv[4], argv[5], argc == 7 ? argv[6] : "");
+        } catch (const std::exception &error) {
+            std::cerr << error.what() << '\n';
+            return 1;
+        }
+    }
+    if (argc == 4 && std::string(argv[1]) == "--present") {
+        try {
+            return present_variants(argv[2], argv[3]);
+        } catch (const std::exception &error) {
+            std::cerr << error.what() << '\n';
+            return 1;
+        }
+    }
     if (argc == 4 && std::string(argv[1]) == "--active-audio") {
         try {
             const auto scratch =
@@ -93,7 +246,10 @@ int main(int argc, char **argv) {
         int code = -1;
         const auto arguments = "--provider tessera --rom " + quote(rom) + " --pack " + quote(pack) +
                                " --trust-registry " + quote(trust) +
-                               " --frames 4 --native-deactivate-at 2 --native-reactivate-at 4";
+                               " --frames 4 --native-input-mask 1";
+        // Tessera v0.2 (megadrive backend) has no observation-mask presentation
+        // policy: the pack never confirms, every frame presents the original and
+        // the presentation controls of the v0.1 MVP are refused (spec 008).
         const auto output = run(runtime, arguments, scratch, code);
         require(code == 0, "Native Runtime process failed: " + output);
         std::vector<std::map<std::string, std::string>> frames;
@@ -111,31 +267,35 @@ int main(int argc, char **argv) {
         require(frames.size() == 4 &&
                     output.find("AYTHER_NATIVE_DONE frames=4") != std::string::npos,
                 "Native Runtime did not advance exactly four frames");
-        require(!flow.empty() && flow.at("frames") == "4" && flow.at("composed_frames") == "2" &&
-                    flow.at("fallback_frames") == "2" && flow.at("fallback_policy") == "2" &&
-                    std::stoull(flow.at("composed_copy")) == 2 * 320 * 224 * 4 && !events.empty() &&
-                    events.at("losses") == "0" && events.at("emitted") == events.at("retained"),
-                "Native metric counts disagree with FX-03 presentation controls");
+        require(output.find("sin política de presentación") != std::string::npos,
+                "The megadrive backend was expected to lack the presentation policy");
+        require(!flow.empty() && flow.at("frames") == "4" && flow.at("composed_frames") == "0" &&
+                    flow.at("fallback_frames") == "4" && flow.at("fallback_policy") == "4" &&
+                    flow.at("composed_copy") == "0" && !events.empty() &&
+                    events.at("supported") == "0",
+                "Native metric counts disagree with the v0.2 original-only presentation");
         for (std::size_t index = 0; index < frames.size(); ++index) {
             require(frames[index].at("frame") == std::to_string(index + 1),
                     "Frame identity is not consecutive");
-            require(frames[index].at("original") == frames[0].at("original"),
-                    "Original video changed across presentation controls");
+            require(frames[index].at("presented") == frames[index].at("original"),
+                    "A frame presented something other than the original");
             require(!frames[index].at("pcm").empty(), "Original PCM identity is missing");
+            require(frames[index].at("transaction") == "0" && frames[index].at("flags") == "0",
+                    "A control transaction was confirmed without a policy");
         }
-        require(frames[0].at("presented") == frames[3].at("presented") &&
-                    frames[0].at("presented") != frames[1].at("presented") &&
-                    frames[1].at("presented") == frames[1].at("original") &&
-                    frames[2].at("presented") == frames[2].at("original"),
-                "Activation, deactivation, or original fallback is incorrect");
-        require(frames[0].at("transaction") == "1" && frames[1].at("transaction") == "2" &&
-                    frames[3].at("transaction") == "3" && frames[0].at("flags") == "1" &&
-                    frames[1].at("flags") == "1" && frames[3].at("flags") == "1",
-                "Applied control confirmation did not propagate");
+        const auto controls =
+            run(runtime,
+                "--provider tessera --rom " + quote(rom) + " --pack " + quote(pack) +
+                    " --trust-registry " + quote(trust) +
+                    " --frames 4 --native-deactivate-at 2 --native-reactivate-at 4",
+                scratch, code);
+        require(code != 0 &&
+                    controls.find("no admite controles de presentación") != std::string::npos,
+                "Presentation controls were not refused explicitly: " + controls);
         const auto invalid = run(
             runtime, "--provider tessera --core forbidden.dll --rom " + quote(rom) + " --frames 1",
             scratch, code);
-        require(code != 0 && invalid.find("incompatibles") != std::string::npos,
+        require(code == 64 && invalid.find("args.provider_conflict") != std::string::npos,
                 "Native provider accepted a libretro core");
         const auto invalid_mask =
             run(runtime,
@@ -179,16 +339,10 @@ int main(int argc, char **argv) {
                                 frames[index].at("presented"),
                         "GPU path changed original video, audio, or composition");
             }
-            require(gpu_frames.size() == 4 && gpu_frames[0].at("magenta_pixels") == "1224" &&
-                        gpu_frames[3].at("magenta_pixels") == "1224" &&
-                        gpu_frames[0].at("hash") == gpu_frames[3].at("hash") &&
-                        gpu_frames[0].at("hash") != gpu_frames[1].at("hash") &&
-                        gpu_frames[1].at("hash") == gpu_frames[2].at("hash") &&
-                        gpu_frames[1].at("magenta_pixels") == "0" &&
-                        gpu_frames[2].at("magenta_pixels") == "0" &&
-                        gpu_frames[0].at("cyan_pixels") == "0" &&
-                        gpu_frames[3].at("cyan_pixels") == "0",
-                    "GPU pixels did not follow the FX-03 activation and fallback policy");
+            require(gpu_frames.size() == 4, "GPU path did not read back four frames");
+            for (const auto &gpu_frame : gpu_frames)
+                require(gpu_frame.at("magenta_pixels") == "0",
+                        "GPU pixels show the pack although v0.2 presents the original");
             const auto device_output =
                 run(runtime,
                     "--provider tessera --rom " + quote(rom) + " --pack " + quote(pack) +
@@ -252,7 +406,8 @@ int main(int argc, char **argv) {
         }
         std::error_code ignored;
         std::filesystem::remove(scratch, ignored);
-        std::cout << "Native Runtime FX-03 activation, fallback, PCM and control results passed\n";
+        std::cout
+            << "Native Runtime FX-03 original presentation, PCM and refused controls passed\n";
         return 0;
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';

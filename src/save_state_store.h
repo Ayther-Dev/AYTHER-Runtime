@@ -21,7 +21,18 @@ enum class SaveStateStatus {
     target_exists,
 };
 
-inline constexpr std::uint32_t save_state_format_version = 1;
+// Spec 008 (RF-4.1, RF-6.1): version 2 records the emulator generation that
+// wrote the state. Version 1 files and files without the magic were all
+// written by gpgx and read as `gpgx / 1`.
+inline constexpr std::uint32_t save_state_format_version = 2;
+inline constexpr std::size_t save_state_max_emulator_id = 32;
+
+struct SaveStateGeneration {
+    std::string emulator_id{"gpgx"};
+    std::uint32_t determinism_contract{1};
+
+    friend bool operator==(const SaveStateGeneration &, const SaveStateGeneration &) = default;
+};
 
 enum class SaveStateWriteFault {
     none,
@@ -32,13 +43,12 @@ enum class SaveStateWriteFault {
 struct SaveStateLoadResult {
     SaveStateStatus status{SaveStateStatus::missing};
     std::uint32_t format_version{};
+    SaveStateGeneration generation;
     std::vector<std::uint8_t> bytes;
     RuntimeErrorCode error{RuntimeErrorCode::state_restore_failed};
     std::string diagnostic;
 
-    [[nodiscard]] bool loaded() const noexcept {
-        return status == SaveStateStatus::loaded;
-    }
+    [[nodiscard]] bool loaded() const noexcept { return status == SaveStateStatus::loaded; }
 };
 
 struct SaveStateWriteResult {
@@ -53,25 +63,21 @@ struct SaveStateWriteResult {
 };
 
 class SaveStateStore final {
-public:
-    explicit SaveStateStore(
-        SaveStateWriteFault fault = SaveStateWriteFault::none) noexcept
+  public:
+    explicit SaveStateStore(SaveStateWriteFault fault = SaveStateWriteFault::none) noexcept
         : fault_(fault) {}
 
-    [[nodiscard]] SaveStateLoadResult load(
-        const std::filesystem::path& path) const;
+    [[nodiscard]] SaveStateLoadResult load(const std::filesystem::path &path) const;
 
-    [[nodiscard]] SaveStateWriteResult save(
-        const std::filesystem::path& root, std::string_view game_id,
-        std::string_view profile, std::string_view rom_revision,
-        std::span<const std::uint8_t> bytes,
-        std::string_view timestamp_utc = {}) const;
+    [[nodiscard]] SaveStateWriteResult
+    save(const std::filesystem::path &root, std::string_view game_id, std::string_view profile,
+         std::string_view rom_revision, std::span<const std::uint8_t> bytes,
+         std::string_view timestamp_utc = {}, const SaveStateGeneration &generation = {}) const;
 
-    [[nodiscard]] static std::string sanitize_component(
-        std::string_view value);
+    [[nodiscard]] static std::string sanitize_component(std::string_view value);
 
-private:
+  private:
     SaveStateWriteFault fault_;
 };
 
-}  // namespace ayther::runtime
+} // namespace ayther::runtime

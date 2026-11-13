@@ -23,7 +23,8 @@ if ($lock.schemaVersion -ne 1 -or $lock.dependency -cne 'AYTHER Tessera' -or
 $tag = [string]$lock.release.tag
 $repo = [string]$lock.repository
 $name = "tessera-$tag-windows-x86_64.zip"
-if ($tag -notmatch '^v\d+\.\d+\.\d+-mvp\.\d+$' -or
+# Spec 008 (plan 2.5): the lock moves from the MVP packages to v0.2.0-*.
+if ($tag -notmatch '^v\d+\.\d+\.\d+-(mvp|rc)\.\d+$' -or
     $lock.sourceCommit -notmatch '^[0-9a-f]{40}$' -or
     $lock.release.url -cne "$repo/releases/tag/$tag" -or
     $lock.release.checksums.fileName -cne 'CHECKSUMS.sha256' -or

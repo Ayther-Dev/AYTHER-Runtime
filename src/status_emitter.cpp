@@ -65,6 +65,19 @@ class JsonObject final {
   public:
     JsonObject() { json_.push_back('{'); }
 
+    /// Continues a complete JSON object written elsewhere: its closing brace
+    /// is removed and the next field follows a comma.
+    explicit JsonObject(std::string object) : json_(std::move(object)), first_(false) {
+        while (!json_.empty() && json_.back() != '}')
+            json_.pop_back();
+        if (!json_.empty())
+            json_.pop_back();
+        if (json_.size() <= 1U)
+            first_ = true;
+        if (json_.empty())
+            json_.push_back('{');
+    }
+
     void field(const std::string_view name, const std::string_view value) {
         append_name(name);
         append_json_string(json_, value);
@@ -116,7 +129,37 @@ class JsonObject final {
     bool first_{true};
 };
 
+void append_game_fields(JsonObject &json, const ProbeGameStatus &game) {
+    json.field("game_loaded", game.loaded);
+    if (game.loaded && std::isfinite(game.timing_fps) && game.timing_fps > 0.0)
+        json.field("timing_fps", game.timing_fps);
+    if (game.loaded) {
+        json.field("geometry_known", game.geometry_known);
+        if (game.geometry_known) {
+            json.field("geometry_width", game.geometry_width);
+            json.field("geometry_height", game.geometry_height);
+        }
+    }
+    if (!game.loaded && !game.message.empty())
+        json.field("game_message", game.message);
+}
+
+[[nodiscard]] std::string serialize_report(const ProbeReportStatus &status) {
+    JsonObject json{status.report_json};
+    json.field("loaded", status.loaded);
+    if (status.has_libretro_info) {
+        json.field("valid_extensions", status.valid_extensions);
+        json.field("need_fullpath", status.need_fullpath);
+        json.field("block_extract", status.block_extract);
+    }
+    if (status.game)
+        append_game_fields(json, *status.game);
+    return json.finish();
+}
+
 [[nodiscard]] std::string serialize_json(const StatusEvent &event) {
+    if (const auto *report = std::get_if<ProbeReportStatus>(&event))
+        return serialize_report(*report);
     JsonObject json;
     json.field("protocol_version", status_protocol_version);
     std::visit(
@@ -131,21 +174,8 @@ class JsonObject final {
                 json.field("valid_extensions", status.valid_extensions);
                 json.field("need_fullpath", status.need_fullpath);
                 json.field("block_extract", status.block_extract);
-                if (status.game) {
-                    const auto &game = *status.game;
-                    json.field("game_loaded", game.loaded);
-                    if (game.loaded && std::isfinite(game.timing_fps) && game.timing_fps > 0.0)
-                        json.field("timing_fps", game.timing_fps);
-                    if (game.loaded) {
-                        json.field("geometry_known", game.geometry_known);
-                        if (game.geometry_known) {
-                            json.field("geometry_width", game.geometry_width);
-                            json.field("geometry_height", game.geometry_height);
-                        }
-                    }
-                    if (!game.loaded && !game.message.empty())
-                        json.field("game_message", game.message);
-                }
+                if (status.game)
+                    append_game_fields(json, *status.game);
             } else if constexpr (std::is_same_v<Status, ProbeFailedStatus>) {
                 json.field("event", "probe");
                 json.field("ok", false);
@@ -153,6 +183,8 @@ class JsonObject final {
                 if (!status.message.empty()) {
                     json.field("message", status.message);
                 }
+            } else if constexpr (std::is_same_v<Status, ProbeReportStatus>) {
+                // serialized by serialize_report
             } else if constexpr (std::is_same_v<Status, ReadyStatus>) {
                 json.field("event", "ready");
                 json.field("game_id", status.game_id);

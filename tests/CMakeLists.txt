@@ -407,6 +407,21 @@ add_test(
             -DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cli_error_test.cmake
 )
+# Spec 008 (TP-304.4): exit 65 for a state of another emulator generation,
+# with the deterministic test core the Engine package ships.
+get_filename_component(_ayther_engine_prefix "${Ayther_DIR}/../../.." ABSOLUTE)
+add_test(
+    NAME    state_generation_mismatch
+    COMMAND ${CMAKE_COMMAND}
+            -DRUNTIME_EXE=$<TARGET_FILE:ayther_runtime>
+            -DTEST_CORE=${_ayther_engine_prefix}/share/ayther/probe-vectors/ayther_test_core${CMAKE_SHARED_LIBRARY_SUFFIX}
+            -DSTATE_FIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/state-v2-tessera.bin
+            -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/state-generation
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/state_generation_test.cmake
+)
+set_tests_properties(state_generation_mismatch PROPERTIES
+    SKIP_RETURN_CODE 77
+    ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy")
 add_test(
     NAME    runtime_package_smoke
     COMMAND ${CMAKE_COMMAND}
@@ -1098,6 +1113,8 @@ add_test(
             "-DCORE_DLL=$<TARGET_FILE:synthetic_libretro_core>"
             "-DNON_CORE_DLL=$<TARGET_FILE:non_libretro_library>"
             "-DROM_FILE=${CMAKE_CURRENT_SOURCE_DIR}/audio_qa/fixtures/public-synthetic.aytest"
+            "-DPROBE_VECTORS_DIR=${_ayther_engine_prefix}/share/ayther/probe-vectors"
+            "-DLIBRARY_SUFFIX=${CMAKE_SHARED_LIBRARY_SUFFIX}"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/probe_core_test.cmake
 )
 
@@ -1123,7 +1140,51 @@ add_test(NAME tessera_runtime_native_headless
         "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx03/trust.toml")
 set_tests_properties(tessera_runtime_native_headless PROPERTIES
     LABELS "integration;tessera;FX-03" TIMEOUT 45)
+# Spec 008 (TP-304.2): the live SDL gamepad drives the Tessera session through
+# GameInput and set_input, as the Runtime loop does. A virtual gamepad stands
+# in for the controller: no window, no hardware.
+add_executable(tessera_live_input_tests
+    tessera_live_input_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/input_map.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/game_input.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/native_session_config.cpp)
+target_include_directories(tessera_live_input_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+target_link_libraries(tessera_live_input_tests PRIVATE
+    Ayther::engine SDL3::SDL3 tomlplusplus::tomlplusplus)
+set_target_properties(tessera_live_input_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+add_test(NAME tessera_runtime_live_input
+    COMMAND tessera_live_input_tests "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx02/program.md"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set_tests_properties(tessera_runtime_live_input PROPERTIES
+    LABELS "integration;tessera;FX-02;input" TIMEOUT 60)
 if(AYTHER_ENABLE_GPU_TESTS)
+    # Spec 008 (TP-304.3): shaders, no shaders and hd_compose with F12 capture.
+    add_test(NAME tessera_runtime_present
+        COMMAND tessera_runtime_test --present
+            "$<TARGET_FILE:ayther_runtime>"
+            "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx02/program.md")
+    set_tests_properties(tessera_runtime_present PROPERTIES
+        LABELS "integration;tessera;FX-02;gpu" TIMEOUT 120)
+    # Spec 008 (TP-304.6): a pack baked with gpgx on FX-03, played with Tessera.
+    # The pack comes from the Engine's parity_bench (`cross-pack bake
+    # --provider libretro --core <gpgx> --rom fx03_rom.md --frames 60`), so the
+    # directory is local, like the rest of the native fixtures.
+    set(AYTHER_TESSERA_CROSS_PACK_DIR "" CACHE PATH
+        "Directory with gpgx.ay and gpgx.toml baked by parity_bench cross-pack")
+    set(AYTHER_TESSERA_GPGX_CORE "" CACHE FILEPATH
+        "Optional gpgx fork core for the reference run of tessera_runtime_pack")
+    if(EXISTS "${AYTHER_TESSERA_CROSS_PACK_DIR}/gpgx.ay")
+        add_test(NAME tessera_runtime_pack
+            COMMAND tessera_runtime_test --cross-pack
+                "$<TARGET_FILE:ayther_runtime>"
+                "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx03/fx03_rom.md"
+                "${AYTHER_TESSERA_CROSS_PACK_DIR}/gpgx.ay"
+                "${AYTHER_TESSERA_CROSS_PACK_DIR}/gpgx.toml"
+                ${AYTHER_TESSERA_GPGX_CORE})
+        set_tests_properties(tessera_runtime_pack PROPERTIES
+            LABELS "integration;tessera;FX-03;gpu;pack" TIMEOUT 120)
+    endif()
     add_test(NAME tessera_runtime_active_audio
         COMMAND tessera_runtime_test --active-audio
             "$<TARGET_FILE:ayther_runtime>"

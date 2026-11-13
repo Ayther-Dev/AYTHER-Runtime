@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <ios>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <span>
@@ -42,6 +43,7 @@
 #ifdef AYTHER_ENABLE_TESSERA_NATIVE
 #include "native_runtime.h"
 #endif
+#include "native_session_config.h"
 #include "save_state_store.h"
 #include "session_controller.h"
 #include "sonic_telemetry.h" // Runtime-owned game-specific diagnostics
@@ -143,12 +145,24 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
         const std::string diagnostic = ayther::runtime::describe(*error);
         std::fprintf(stderr, "[ayther_runtime] %s\n", diagnostic.c_str());
         emit_status(ayther::runtime::WarningStatus{
-            ayther::runtime::RuntimeErrorCode::cli_invalid_argument, diagnostic});
+            error->code == ayther::runtime::RuntimeOptionErrorCode::provider_conflict
+                ? ayther::runtime::RuntimeErrorCode::args_provider_conflict
+                : ayther::runtime::RuntimeErrorCode::cli_invalid_argument,
+            diagnostic});
         return ayther::runtime::runtime_cli_error_exit_code;
     }
     ayther::runtime::RuntimeOptions options = std::move(*parsed_options.options());
 
-    if (options.provider == "tessera") {
+    // Spec 008 (RF-5.3, TP-304.2): --provider tessera runs the same session,
+    // window, input, overlay, shaders, hd_compose and capture as libretro. The
+    // direct NativeEmulation driver stays as the QA mode, selected by its own
+    // flags (--native-trace and the other --native-* options).
+    const bool native_qa_mode =
+        options.provider == "tessera" &&
+        (!options.native_trace_path.empty() || options.native_visible || options.native_gpu_probe ||
+         options.native_audio_device || options.native_input_mask != 0 ||
+         options.native_deactivate_at != 0 || options.native_reactivate_at != 0);
+    if (native_qa_mode) {
 #ifdef AYTHER_ENABLE_TESSERA_NATIVE
         return ayther::runtime::run_native_runtime(options);
 #else
@@ -280,41 +294,46 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
     // otra arquitectura, el que muere es este proceso desechable y Play se
     // entera por el codigo de salida, en vez de llevarse el launcher puesto.
     // -----------------------------------------------------------------------
+    // Spec 008 (RF-9.3, TP-304.5): contrato de sonda v2. El veredicto, la
+    // linea y el codigo de salida (0 ok, 2 archivo/arquitectura, 3 no es core,
+    // 4 ABI o capacidades) son los del Engine; el Runtime solo AGREGA los
+    // metadatos Libretro y la sonda de ROM que Play y audio_qa leen.
     if (!probe_core.empty()) {
-        auto probed = ayther::engine::probe_core(probe_core);
-        if (!probed) {
-            const bool invalid_core = probed.error.code == ayther::ErrorCode::BadFormat;
-            std::fprintf(stderr, "[core-probe] %s\n", probed.error.message.c_str());
-            emit_status(ayther::runtime::ProbeFailedStatus{
-                invalid_core ? ayther::runtime::RuntimeErrorCode::core_invalid
-                             : ayther::runtime::RuntimeErrorCode::core_load_failed,
-                probed.error.message});
-            return ayther::runtime::exit_code(
-                invalid_core ? ayther::runtime::RuntimeExitCode::invalid_core
-                             : ayther::runtime::RuntimeExitCode::core_load_failed);
+        const ayther::engine::ProbeReport report = ayther::engine::probe_core_v2(probe_core);
+        if (!report.ok() && !report.message.empty())
+            std::fprintf(stderr, "[core-probe] %s\n", report.message.c_str());
+        ayther::runtime::ProbeReportStatus probe_status;
+        probe_status.report_json = report.serialize();
+        probe_status.loaded = report.loaded;
+        if (report.loaded) {
+            // Runtime copia el modelo publico del Engine a su evento tipado; no
+            // interpreta ni conserva punteros Libretro prestados.
+            if (auto probed = ayther::engine::probe_core(probe_core)) {
+                const ayther::engine::CoreInfo &info = probed->info();
+                probe_status.has_libretro_info = true;
+                probe_status.valid_extensions = info.valid_extensions;
+                probe_status.need_fullpath = info.need_fullpath;
+                probe_status.block_extract = info.block_extract;
+            }
+            // Spec 002: con --probe-rom el core tambien carga la ROM, sin
+            // ejecutar ningun frame, y el evento dice si la cargo y con que timing.
+            if (!options.probe_rom.empty())
+                probe_status.game = probe_game(options);
         }
-
-        // Runtime copia el modelo publico del Engine a su evento tipado; no
-        // interpreta ni conserva punteros Libretro prestados.
-        const ayther::engine::CoreInfo &info = probed->info();
-        ayther::runtime::ProbeSucceededStatus probe_status{
-            info.api_version,      info.library_name,  info.library_version,
-            info.valid_extensions, info.need_fullpath, info.block_extract,
-        };
-        // Spec 002: con --probe-rom el core tambien carga la ROM, sin ejecutar ningun
-        // frame, y el evento dice si la cargo y con que timing.
-        if (!options.probe_rom.empty())
-            probe_status.game = probe_game(options);
         emit_status(probe_status);
-        return 0;
+        return ayther::engine::verdict_exit_code(report.verdict);
     }
 
-    if (core_path_str.empty() || rom_path_str.empty()) {
+    const bool tessera_provider = options.provider == "tessera";
+    if (rom_path_str.empty() || (!tessera_provider && core_path_str.empty())) {
         emit_status(ayther::runtime::WarningStatus{
-            ayther::runtime::RuntimeErrorCode::cli_invalid_argument, "faltan --core y/o --rom"});
+            ayther::runtime::RuntimeErrorCode::cli_invalid_argument,
+            tessera_provider ? "falta --rom" : "faltan --core y/o --rom"});
         std::fprintf(stderr,
                      "ayther_runtime — the Ayther game-session host (spawned by Ayther Play).\n"
                      "Usage: ayther_runtime --core <libretro.dll> --rom <rom>\n"
+                     "       ayther_runtime --provider tessera --rom <rom>\n"
+                     "         [--provider external|tessera]  (tessera: sin --core)\n"
                      "         [--pack <ay>] [--patch <ips/bps>] [--profile <id>]\n"
                      "         [--subsystems <mask>] [--mute-buses <mask>] [--output <id>]\n"
                      "         [--core-option key=value]... [--no-shaders|--shaders]\n"
@@ -330,6 +349,33 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
                      "         Sondea el core y emite un evento probe. Con --probe-rom\n"
                      "         carga ademas la ROM, sin ejecutar ningun frame.\n");
         return ayther::runtime::runtime_cli_error_exit_code;
+    }
+
+    // Spec 008 (TP-304.2): the Tessera configuration is built before SDL, so a
+    // ROM of another system or an Engine without Tessera ends here.
+    ayther::engine::NativeConfig native_config;
+    if (tessera_provider) {
+        std::vector<std::uint8_t> rom_bytes;
+        {
+            std::ifstream rom_file(rom_path_str, std::ios::binary);
+            rom_bytes.assign(std::istreambuf_iterator<char>{rom_file},
+                             std::istreambuf_iterator<char>{});
+            if (!rom_file.good() && !rom_file.eof())
+                rom_bytes.clear();
+        }
+        auto prepared = ayther::runtime::megadrive_session_config(std::move(rom_bytes), {});
+        if (!prepared.ok) {
+            const bool unsupported = prepared.reason == "core.unsupported_system";
+            std::fprintf(stderr, "[ayther_runtime] %s\n", prepared.message.c_str());
+            emit_status(ayther::runtime::WarningStatus{
+                unsupported ? ayther::runtime::RuntimeErrorCode::core_unsupported_system
+                            : ayther::runtime::RuntimeErrorCode::core_load_failed,
+                prepared.message});
+            return ayther::runtime::exit_code(
+                unsupported ? ayther::runtime::RuntimeExitCode::invalid_core
+                            : ayther::runtime::RuntimeExitCode::core_load_failed);
+        }
+        native_config = std::move(prepared.config);
     }
 
     std::unique_ptr<ayther::runtime::FileReservation> rom_reservation;
@@ -513,7 +559,7 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
     // pre-rebrand). Kept here because the Runtime-owned reload policy and its
     // typed watcher share the exact path.
     std::string pack_path = pack_path_arg;
-    if (pack_path.empty()) {
+    if (pack_path.empty() && !core_path_str.empty()) {
         const auto dot = core_path_str.rfind('.');
         const auto stem = (dot != std::string::npos) ? core_path_str.substr(0, dot) : core_path_str;
         pack_path = stem + ".ay";
@@ -571,7 +617,14 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
 
     ayther::AytherSession::Config scfg;
     scfg.core_path = core_path_str;
-    scfg.rom_path = rom_path_str;
+    // Tessera receives the ROM bytes inside native_config; the Engine rejects
+    // a ROM path with that provider (it has no libretro loader to give it to).
+    if (!tessera_provider)
+        scfg.rom_path = rom_path_str;
+    if (tessera_provider) {
+        scfg.provider = ayther::EmulationProvider::tessera_native;
+        scfg.native_config = std::move(native_config);
+    }
     scfg.pack_path = pack_path;                // explicit → watcher shares this exact path
     scfg.trust_registry = trust_registry.path; // Engine retains it for reload_pack().
     scfg.enable_audio = true;
@@ -604,6 +657,29 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
             ayther::runtime::RuntimeErrorCode::pack_open_failed,
             "Engine no activo el pack solicitado; la sesion se cancela"});
         return ayther::runtime::exit_code(ayther::runtime::RuntimeExitCode::pack_open_failed);
+    }
+    // Spec 008 (RF-4.1): a state written by another emulator generation would
+    // restore garbage. The session does not start; Play offers to start
+    // without the state (exit 65, state.generation_mismatch).
+    std::optional<ayther::runtime::SaveStateLoadResult> loaded_state;
+    if (!load_state_arg.empty()) {
+        loaded_state = save_state_store.load(load_state_arg);
+        const auto &session_generation = sess->emulation_generation();
+        if (loaded_state->loaded() && !session_generation.id.empty() &&
+            (loaded_state->generation.emulator_id != session_generation.id ||
+             loaded_state->generation.determinism_contract !=
+                 session_generation.determinism_contract)) {
+            const std::string diagnostic =
+                "el guardado es de " + loaded_state->generation.emulator_id + " / " +
+                std::to_string(loaded_state->generation.determinism_contract) +
+                " y la sesion corre " + session_generation.id + " / " +
+                std::to_string(session_generation.determinism_contract);
+            std::fprintf(stderr, "[main] %s\n", diagnostic.c_str());
+            emit_status(ayther::runtime::WarningStatus{
+                ayther::runtime::RuntimeErrorCode::state_generation_mismatch, diagnostic});
+            return ayther::runtime::exit_code(
+                ayther::runtime::RuntimeExitCode::protocol_incompatible);
+        }
     }
     sess->enable_rewind(true, 10); // R6: 10 s rewind window (Backspace to rewind)
 
@@ -953,13 +1029,12 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
     // a alguien creyendo que perdio la partida cuando el archivo sigue ahi; y
     // negarse a arrancar convertiria un guardado ilegible en un juego que no se
     // puede jugar.
-    if (!load_state_arg.empty()) {
-        auto loaded_state = save_state_store.load(load_state_arg);
+    if (loaded_state) {
         const bool state_restored =
-            loaded_state.loaded() && sess && sess->unserialize(loaded_state.bytes);
+            loaded_state->loaded() && sess && sess->unserialize(loaded_state->bytes);
         if (state_restored) {
             std::fprintf(stdout, "[main] reanudado desde %s (%zu bytes)\n", load_state_arg.c_str(),
-                         loaded_state.bytes.size());
+                         loaded_state->bytes.size());
         } else {
             emit_status(ayther::runtime::WarningStatus{
                 ayther::runtime::RuntimeErrorCode::state_restore_failed,
@@ -1556,8 +1631,14 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
     std::string savestate_path;
     std::vector<std::uint8_t> state_data;
     if (sess && sess->serialize(state_data)) {
+        const auto &session_generation = sess->emulation_generation();
+        ayther::runtime::SaveStateGeneration state_generation;
+        if (!session_generation.id.empty()) {
+            state_generation = {session_generation.id, session_generation.determinism_contract};
+        }
         const auto saved = save_state_store.save(runtime_config.saves_directory(), sess->game_id(),
-                                                 sess->active_profile(), rom_crc32_arg, state_data);
+                                                 sess->active_profile(), rom_crc32_arg, state_data,
+                                                 {}, state_generation);
         if (saved) {
             savestate_path = saved.path.string();
             std::fprintf(stdout, "[main] guardado: %zu bytes -> %s\n", state_data.size(),

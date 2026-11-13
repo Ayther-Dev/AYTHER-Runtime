@@ -45,6 +45,7 @@ LICENSE text eol=lf
 *.lib binary
 *.exe binary
 *.pdb binary
+*.bin binary
 
 # Keep generated fixture identity exact across checkouts.
 tests/fixtures/tessera-fx03/manifest.json -text

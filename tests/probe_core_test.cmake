@@ -90,23 +90,34 @@ function(exigir_campo etiqueta json campo tipo_esperado valor_esperado)
     endif()
 endfunction()
 
-# 1. Missing file: launcher maps this to a load failure (exit 2).
+# Spec 008 (RF-9.3, TP-304.5): the line is the probe contract v2 of the Engine
+# (`verdict`, `reason`, exit 0/2/3/4), plus `loaded` and the Libretro metadata.
+
+# 1. Missing file: verdict missing_file (exit 2).
 set(archivo_ausente "${CORE_DLL}.missing")
 if(EXISTS "${archivo_ausente}")
     message(FATAL_ERROR "el fixture de archivo ausente existe: ${archivo_ausente}")
 endif()
 sondear("archivo ausente" "${archivo_ausente}" 2 json_ausente)
+exigir_campo("archivo ausente" "${json_ausente}" "protocol_version" "NUMBER" "2")
 exigir_campo("archivo ausente" "${json_ausente}" "ok" "BOOLEAN" "OFF")
-exigir_campo("archivo ausente" "${json_ausente}" "reason" "STRING" "core.load_failed")
+exigir_campo("archivo ausente" "${json_ausente}" "verdict" "STRING" "missing_file")
+exigir_campo("archivo ausente" "${json_ausente}" "reason" "STRING" "core.missing")
+exigir_campo("archivo ausente" "${json_ausente}" "loaded" "BOOLEAN" "OFF")
 
 # 2. Loadable shared library without the required Libretro symbols (exit 3).
 sondear("no es un core" "${NON_CORE_DLL}" 3 json_no_core)
 exigir_campo("no es un core" "${json_no_core}" "ok" "BOOLEAN" "OFF")
+exigir_campo("no es un core" "${json_no_core}" "verdict" "STRING" "not_a_core")
 exigir_campo("no es un core" "${json_no_core}" "reason" "STRING" "core.invalid")
 
-# 3. Deterministic synthetic Libretro core (exit 0 and complete metadata).
-sondear("core sintético" "${CORE_DLL}" 0 json_core)
-exigir_campo("core sintético" "${json_core}" "ok" "BOOLEAN" "ON")
+# 3. Deterministic synthetic Libretro core without the AYTHER interface: the
+#    contract says abi_missing (exit 4); the Libretro metadata is still there.
+sondear("core sintético" "${CORE_DLL}" 4 json_core)
+exigir_campo("core sintético" "${json_core}" "ok" "BOOLEAN" "OFF")
+exigir_campo("core sintético" "${json_core}" "verdict" "STRING" "abi_missing")
+exigir_campo("core sintético" "${json_core}" "reason" "STRING" "core.abi_missing")
+exigir_campo("core sintético" "${json_core}" "loaded" "BOOLEAN" "ON")
 exigir_campo("core sintético" "${json_core}" "api" "NUMBER" "1")
 exigir_campo("core sintético" "${json_core}" "library_name" "STRING" "AYTHER Synthetic Core")
 exigir_campo("core sintético" "${json_core}" "library_version" "STRING" "1.0-test")
@@ -116,8 +127,8 @@ exigir_campo("core sintético" "${json_core}" "block_extract" "BOOLEAN" "OFF")
 
 # 4. Spec 002 (contracts.md C5): the core also loads its ROM, without running a frame,
 #    and reports the timing the replay will use.
-sondear("core sintético con ROM" "${CORE_DLL}" 0 json_rom --probe-rom "${ROM_FILE}")
-exigir_campo("core sintético con ROM" "${json_rom}" "ok" "BOOLEAN" "ON")
+sondear("core sintético con ROM" "${CORE_DLL}" 4 json_rom --probe-rom "${ROM_FILE}")
+exigir_campo("core sintético con ROM" "${json_rom}" "loaded" "BOOLEAN" "ON")
 exigir_campo("core sintético con ROM" "${json_rom}" "game_loaded" "BOOLEAN" "ON")
 exigir_campo("core sintético con ROM" "${json_rom}" "timing_fps" "NUMBER" "60")
 string(JSON tipo_geometria ERROR_VARIABLE geometria_error TYPE "${json_rom}" geometry_known)
@@ -129,16 +140,53 @@ endif()
 get_filename_component(directorio_rom_vacia "${CORE_DLL}" DIRECTORY)
 set(rom_vacia "${directorio_rom_vacia}/probe-empty.aytest")
 file(WRITE "${rom_vacia}" "")
-sondear("ROM rechazada" "${CORE_DLL}" 0 json_rechazo --probe-rom "${rom_vacia}")
+sondear("ROM rechazada" "${CORE_DLL}" 4 json_rechazo --probe-rom "${rom_vacia}")
 file(REMOVE "${rom_vacia}")
-exigir_campo("ROM rechazada" "${json_rechazo}" "ok" "BOOLEAN" "ON")
+exigir_campo("ROM rechazada" "${json_rechazo}" "loaded" "BOOLEAN" "ON")
 exigir_campo("ROM rechazada" "${json_rechazo}" "game_loaded" "BOOLEAN" "OFF")
 string(JSON fps_rechazo ERROR_VARIABLE fps_rechazo_error GET "${json_rechazo}" timing_fps)
 if(fps_rechazo_error STREQUAL "NOTFOUND")
     message(FATAL_ERROR "[ROM rechazada] un juego no cargado no tiene timing\n${json_rechazo}")
 endif()
 
-if(NOT CASOS_CORRIDOS EQUAL 5)
-    message(FATAL_ERROR "el oráculo corrió ${CASOS_CORRIDOS} casos; se esperaban 5")
+# 6. The shared vectors of the Engine package (TP-013), in process. The
+#    `timeout` vector is set by a supervising parent, not by the probe, and the
+#    `external` vectors need material this repository does not ship.
+set(casos_esperados 5)
+if(DEFINED PROBE_VECTORS_DIR AND EXISTS "${PROBE_VECTORS_DIR}/probe-vectors.json")
+    file(READ "${PROBE_VECTORS_DIR}/probe-vectors.json" vectores)
+    string(JSON n_vectores LENGTH "${vectores}" vectors)
+    math(EXPR ultimo "${n_vectores} - 1")
+    foreach(i RANGE ${ultimo})
+        string(JSON id GET "${vectores}" vectors ${i} id)
+        string(JSON veredicto GET "${vectores}" vectors ${i} expect verdict)
+        string(JSON salida GET "${vectores}" vectors ${i} expect exit_code)
+        string(JSON libreria ERROR_VARIABLE sin_libreria GET "${vectores}" vectors ${i} library)
+        string(JSON archivo ERROR_VARIABLE sin_archivo GET "${vectores}" vectors ${i} file)
+        if(veredicto STREQUAL "timeout")
+            continue()
+        endif()
+        if(sin_libreria STREQUAL "NOTFOUND")
+            set(objetivo "${PROBE_VECTORS_DIR}/${libreria}${LIBRARY_SUFFIX}")
+        elseif(sin_archivo STREQUAL "NOTFOUND")
+            set(objetivo "${PROBE_VECTORS_DIR}/${archivo}")
+        else()
+            continue()
+        endif()
+        sondear("vector ${id}" "${objetivo}" ${salida} json_vector)
+        exigir_campo("vector ${id}" "${json_vector}" "verdict" "STRING" "${veredicto}")
+        string(JSON motivo ERROR_VARIABLE sin_motivo GET "${vectores}" vectors ${i} expect reason)
+        if(sin_motivo STREQUAL "NOTFOUND")
+            exigir_campo("vector ${id}" "${json_vector}" "reason" "STRING" "${motivo}")
+        endif()
+        math(EXPR casos_esperados "${casos_esperados} + 1")
+    endforeach()
+else()
+    message(STATUS "[probe_core] sin vectores del Engine (PROBE_VECTORS_DIR)")
+endif()
+
+if(NOT CASOS_CORRIDOS EQUAL casos_esperados)
+    message(FATAL_ERROR
+        "el oráculo corrió ${CASOS_CORRIDOS} casos; se esperaban ${casos_esperados}")
 endif()
 message(STATUS "[probe_core] ${CASOS_CORRIDOS} casos verificados")

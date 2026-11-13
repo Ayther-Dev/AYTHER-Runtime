@@ -1,4 +1,5 @@
 #include "native_runtime.h"
+#include "native_session_config.h"
 #ifdef AYTHER_NATIVE_ALLOCATION_METRICS
 #include "native_allocation_metrics.hpp"
 #endif
@@ -88,65 +89,18 @@ int nibble(char value) {
     return -1;
 }
 
+// Tessera v0.2 has no clownmdemu backend: the QA driver uses the same
+// megadrive configuration as the session path (2 pads x 12 controls).
 bool prepare(const Bytes &rom, native::NativeConfig &out, native::NativeResult &error) {
-    native::NativeDetection detection;
-    error = native::NativeEmulation::detect(rom, 0, detection);
-    if (error.code != 0 || detection.system != 1)
-        return false;
-    std::vector<native::NativeBackendInfo> backends;
-    error = native::NativeEmulation::backends(backends);
-    if (error.code != 0)
-        return false;
-    const native::NativeBackendInfo *selected = nullptr;
-    for (const auto &backend : backends)
-        if (backend.id == "clownmdemu" && backend.system == detection.system)
-            selected = &backend;
-    if (!selected) {
-        error.code = static_cast<std::int32_t>(native::NativeStatus::implementation_unavailable);
+    auto prepared = megadrive_session_config(rom, {});
+    if (!prepared.ok) {
+        error.code =
+            static_cast<std::int32_t>(prepared.reason == "core.unsupported_system"
+                                          ? native::NativeStatus::unsupported_capability
+                                          : native::NativeStatus::implementation_unavailable);
         return false;
     }
-
-    out.backend_id = selected->id;
-    out.system_override = detection.system;
-    out.content = rom;
-    out.initial_persistent_memory.resize(65536);
-    scalar(out.config, 1, 1, detection.system);
-    field(out.config, 2, 6, text(out.backend_id));
-    field(out.config, 3, 5, selected->build_id);
-    scalar(out.config, 4, 1, detection.system);
-    scalar(out.config, 5, 1, 48000);
-    std::vector<Bytes> inputs;
-    for (std::uint32_t control = 0; control < 8; ++control) {
-        Bytes item;
-        scalar(item, 1, 1, 0);
-        scalar(item, 2, 1, control);
-        scalar(item, 3, 1, 1);
-        scalar(item, 4, 2, 0);
-        scalar(item, 5, 2, 1);
-        inputs.push_back(std::move(item));
-    }
-    field(out.config, 6, 8, array(inputs));
-    std::array<char, 65> digest{};
-    if (!ayther_sha256_hex(out.initial_persistent_memory.data(),
-                           out.initial_persistent_memory.size(), digest.data()))
-        return false;
-    Bytes hash(32);
-    for (std::size_t index = 0; index < hash.size(); ++index) {
-        const int hi = nibble(digest[index * 2]);
-        const int lo = nibble(digest[index * 2 + 1]);
-        if (hi < 0 || lo < 0)
-            return false;
-        hash[index] = static_cast<std::uint8_t>((hi << 4) | lo);
-    }
-    field(out.config, 7, 5, hash);
-    scalar(out.config, 8, 1, 895780);
-    scalar(out.config, 9, 1, 53693175);
-    scalar(out.config, 10, 1, 1);
-    scalar(out.config, 11, 2, 32768);
-    scalar(out.config, 12, 2, 4096);
-    field(
-        out.config, 13, 6,
-        text("integer-causal-ZOH-v1;CD-disabled-zero-required;zero-initialized-upstream-options"));
+    out = std::move(prepared.config);
     return true;
 }
 
@@ -571,8 +525,16 @@ int run_native_runtime(const RuntimeOptions &options) {
         std::fprintf(stderr, "[native] Traza rechazada: %d\n", status.code);
         return 1;
     }
+    // Tessera v0.2 (megadrive) has no observation-mask presentation policy:
+    // -6 means the pack composes every frame and the QA controls are refused.
+    constexpr auto kUnsupported =
+        static_cast<std::int32_t>(native::NativeStatus::unsupported_capability);
     status = session->native_submit_presentation_policy(31, 31);
-    if (status.code != 0) {
+    const bool policy_supported = status.code != kUnsupported;
+    if (!policy_supported)
+        std::fprintf(stdout,
+                     "[native] Tessera sin política de presentación; se compone siempre.\n");
+    if (status.code != 0 && policy_supported) {
         std::fprintf(stderr, "[native] Política inicial rechazada: %d\n", status.code);
         return 1;
     }
@@ -597,6 +559,13 @@ int run_native_runtime(const RuntimeOptions &options) {
 #endif
         const auto next = completed + 1;
         if (next == options.native_deactivate_at || next == options.native_reactivate_at) {
+            if (!policy_supported) {
+                std::fprintf(stderr,
+                             "[native] Control rechazado: %d (este Tessera no admite "
+                             "controles de presentación)\n",
+                             kUnsupported);
+                return 1;
+            }
             status = session->native_submit_presentation_policy(
                 next == options.native_deactivate_at ? 0 : 31,
                 next == options.native_deactivate_at ? 0 : 31);
@@ -614,11 +583,15 @@ int run_native_runtime(const RuntimeOptions &options) {
             if (status.code != 0 ||
                 current.frame_id.frame == std::numeric_limits<std::uint64_t>::max())
                 return 1;
-            std::array<native::NativeInputAssignment, 8> inputs{};
-            for (std::uint16_t control = 0; control < inputs.size(); ++control)
-                inputs[control] = {
-                    0, control,
-                    static_cast<std::int32_t>((options.native_input_mask >> control) & 1U)};
+            // Every control of both pads each frame (-15 input_incomplete
+            // otherwise); the mask drives the first pad's buttons.
+            std::array<native::NativeInputAssignment, 24> inputs{};
+            for (std::uint16_t index = 0; index < inputs.size(); ++index)
+                inputs[index] = {
+                    static_cast<std::uint16_t>(index / 12), static_cast<std::uint16_t>(index % 12),
+                    index < 12
+                        ? static_cast<std::int32_t>((options.native_input_mask >> index) & 1U)
+                        : 0};
             status = session->native_step_frame(
                 {current.frame_id.epoch, current.frame_id.frame + 1, inputs});
         }
@@ -712,27 +685,38 @@ int run_native_runtime(const RuntimeOptions &options) {
             ayther::NativeOriginalReason::no_matching_rule)]));
     std::uint64_t event_required = 0, event_next = 0, loss_required = 0;
     const auto event_probe = emulation->events(0, {}, event_required, event_next);
-    if (event_probe.code != static_cast<std::int32_t>(native::NativeStatus::buffer_too_small) ||
-        event_required < 24 || event_required > 16 * 1024 * 1024)
+    if (event_probe.code == kUnsupported) {
+        // The megadrive backend publishes no event stream in Tessera v0.2.
+        std::fprintf(stdout,
+                     "AYTHER_NATIVE_EVENTS supported=0 scope=post_run_engine_tessera_cursor\n");
+    } else if (event_probe.code !=
+                   static_cast<std::int32_t>(native::NativeStatus::buffer_too_small) ||
+               event_required < 24 || event_required > 16 * 1024 * 1024) {
+        std::fprintf(stderr, "[native] Consulta de eventos rechazada: %d\n", event_probe.code);
         return 1;
-    Bytes event_batch(static_cast<std::size_t>(event_required));
-    if (emulation->events(0, event_batch, event_required, event_next).code != 0 ||
-        event_required != event_batch.size())
-        return 1;
-    const auto loss_probe = emulation->losses({}, loss_required);
-    if (loss_probe.code != static_cast<std::int32_t>(native::NativeStatus::buffer_too_small) ||
-        loss_required < 24 || loss_required > 4096)
-        return 1;
-    Bytes loss_data(static_cast<std::size_t>(loss_required));
-    if (emulation->losses(loss_data, loss_required).code != 0 || loss_required != loss_data.size())
-        return 1;
-    std::fprintf(stdout,
-                 "AYTHER_NATIVE_EVENTS emitted=%llu retained=%llu batch_bytes=%llu losses=%llu "
-                 "scope=post_run_engine_tessera_cursor\n",
-                 static_cast<unsigned long long>(event_next),
-                 static_cast<unsigned long long>(read_u64(event_batch, 16)),
-                 static_cast<unsigned long long>(event_batch.size()),
-                 static_cast<unsigned long long>(read_u64(loss_data, 16)));
+    } else {
+        Bytes event_batch(static_cast<std::size_t>(event_required));
+        if (emulation->events(0, event_batch, event_required, event_next).code != 0 ||
+            event_required != event_batch.size())
+            return 1;
+        const auto loss_probe = emulation->losses({}, loss_required);
+        if (loss_probe.code != static_cast<std::int32_t>(native::NativeStatus::buffer_too_small) ||
+            loss_required < 24 || loss_required > 4096) {
+            std::fprintf(stderr, "[native] Consulta de pérdidas rechazada: %d\n", loss_probe.code);
+            return 1;
+        }
+        Bytes loss_data(static_cast<std::size_t>(loss_required));
+        if (emulation->losses(loss_data, loss_required).code != 0 ||
+            loss_required != loss_data.size())
+            return 1;
+        std::fprintf(stdout,
+                     "AYTHER_NATIVE_EVENTS supported=1 emitted=%llu retained=%llu batch_bytes=%llu "
+                     "losses=%llu scope=post_run_engine_tessera_cursor\n",
+                     static_cast<unsigned long long>(event_next),
+                     static_cast<unsigned long long>(read_u64(event_batch, 16)),
+                     static_cast<unsigned long long>(event_batch.size()),
+                     static_cast<unsigned long long>(read_u64(loss_data, 16)));
+    }
     report_cost("engine_step", std::move(step_costs));
     report_cost("engine_frame", std::move(frame_costs));
     report_cost("runtime_hash", std::move(hash_costs));

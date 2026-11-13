@@ -3,7 +3,7 @@
 Status: protocol v1 is stable. Last reviewed: 2026-09-03.
 
 This wire contract is stable independently of the product release channel.
-AYTHER Runtime itself remains a prerelease at `0.1.0-beta.14`; its package, ABI, save-state,
+AYTHER Runtime itself remains a prerelease at `0.1.0-beta.15`; its package, ABI, save-state,
 and general product surfaces are not covered by the protocol-v1 guarantee.
 
 Runtime writes one record per line to stdout. A protocol record starts with
@@ -66,12 +66,14 @@ be used for branching.
 | Domain | Stable reasons | Severity / recovery |
 | --- | --- | --- |
 | CLI | `cli.invalid_argument` | Fatal; fix invocation. |
+| CLI | `args.provider_conflict` | Fatal; `--provider tessera` was given a `--core`, which the native provider does not load. Exit 64, as a `warning` event like every CLI reason. |
 | Core | `core.load_failed`, `core.invalid` | Fatal for the requested launch. |
 | Pack | `pack.rejected` | Recoverable only for a pack discovered by convention, without explicit `--pack`. |
 | Pack | `pack.open_failed` | Fatal; requested pack unavailable, incompatible or rejected by Engine trust policy. |
 | Pack | `pack.trust_registry_invalid` | Fatal; fix the missing, unreadable or malformed registry. |
 | Pack | `pack.no_active_subsystems` | Warning; continue original. |
 | State | `state.restore_failed` | Recoverable; start from the beginning. |
+| State | `state.generation_mismatch` | Fatal before the first frame; the state was written by another emulator generation (save state v2 header: `emulator_id`, `determinism_contract`; files without the header or in v1 are `gpgx / 1`). Exit 65; Play offers to start without the state. |
 | State | `state.save_failed` | Recoverable for the session; save was not published. |
 | Vulkan | `vulkan.unavailable` | Recoverable; headless/original path. |
 | Vulkan | `vulkan.initialization_failed`, `vulkan.frame_failed` | Fatal for GPU presentation. |

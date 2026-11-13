@@ -24,6 +24,9 @@ enum class RuntimeOptionErrorCode {
     value_out_of_domain,
     malformed_list,
     malformed_core_option,
+    // Spec 008 (RF-5.3): --core names a libretro core, which the native
+    // provider does not load.
+    provider_conflict,
 };
 
 struct RuntimeOptionError {

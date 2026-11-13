@@ -44,14 +44,17 @@ enum class ErrorSeverity {
 // messages may change or be translated without changing these values.
 enum class RuntimeErrorCode {
     cli_invalid_argument,
+    args_provider_conflict,
     core_load_failed,
     core_invalid,
+    core_unsupported_system,
     pack_rejected,
     pack_open_failed,
     trust_registry_invalid,
     pack_no_active_subsystems,
     state_restore_failed,
     state_save_failed,
+    state_generation_mismatch,
     vulkan_unavailable,
     vulkan_initialization_failed,
     vulkan_frame_failed,
@@ -68,10 +71,14 @@ enum class RuntimeErrorCode {
     switch (code) {
     case RuntimeErrorCode::cli_invalid_argument:
         return "cli.invalid_argument";
+    case RuntimeErrorCode::args_provider_conflict:
+        return "args.provider_conflict";
     case RuntimeErrorCode::core_load_failed:
         return "core.load_failed";
     case RuntimeErrorCode::core_invalid:
         return "core.invalid";
+    case RuntimeErrorCode::core_unsupported_system:
+        return "core.unsupported_system";
     case RuntimeErrorCode::pack_rejected:
         return "pack.rejected";
     case RuntimeErrorCode::pack_open_failed:
@@ -84,6 +91,8 @@ enum class RuntimeErrorCode {
         return "state.restore_failed";
     case RuntimeErrorCode::state_save_failed:
         return "state.save_failed";
+    case RuntimeErrorCode::state_generation_mismatch:
+        return "state.generation_mismatch";
     case RuntimeErrorCode::vulkan_unavailable:
         return "vulkan.unavailable";
     case RuntimeErrorCode::vulkan_initialization_failed:
@@ -111,9 +120,11 @@ enum class RuntimeErrorCode {
 [[nodiscard]] constexpr ErrorDomain error_domain(const RuntimeErrorCode code) noexcept {
     switch (code) {
     case RuntimeErrorCode::cli_invalid_argument:
+    case RuntimeErrorCode::args_provider_conflict:
         return ErrorDomain::cli;
     case RuntimeErrorCode::core_load_failed:
     case RuntimeErrorCode::core_invalid:
+    case RuntimeErrorCode::core_unsupported_system:
         return ErrorDomain::core;
     case RuntimeErrorCode::pack_rejected:
     case RuntimeErrorCode::pack_no_active_subsystems:
@@ -122,6 +133,7 @@ enum class RuntimeErrorCode {
         return ErrorDomain::pack;
     case RuntimeErrorCode::state_restore_failed:
     case RuntimeErrorCode::state_save_failed:
+    case RuntimeErrorCode::state_generation_mismatch:
         return ErrorDomain::state;
     case RuntimeErrorCode::vulkan_unavailable:
     case RuntimeErrorCode::vulkan_initialization_failed:
