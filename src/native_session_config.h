@@ -27,7 +27,7 @@ struct NativeSessionConfigResult {
 
 /// Builds the megadrive configuration for `content`. `memory` is the initial
 /// persistent memory; empty means native_persistent_memory_bytes of zeros.
-[[nodiscard]] NativeSessionConfigResult
-megadrive_session_config(std::vector<std::uint8_t> content, std::vector<std::uint8_t> memory);
+[[nodiscard]] NativeSessionConfigResult megadrive_session_config(std::vector<std::uint8_t> content,
+                                                                 std::vector<std::uint8_t> memory);
 
 } // namespace ayther::runtime

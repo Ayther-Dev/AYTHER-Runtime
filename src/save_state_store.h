@@ -31,8 +31,7 @@ struct SaveStateGeneration {
     std::string emulator_id{"gpgx"};
     std::uint32_t determinism_contract{1};
 
-    friend bool operator==(const SaveStateGeneration&,
-                           const SaveStateGeneration&) = default;
+    friend bool operator==(const SaveStateGeneration &, const SaveStateGeneration &) = default;
 };
 
 enum class SaveStateWriteFault {
@@ -49,9 +48,7 @@ struct SaveStateLoadResult {
     RuntimeErrorCode error{RuntimeErrorCode::state_restore_failed};
     std::string diagnostic;
 
-    [[nodiscard]] bool loaded() const noexcept {
-        return status == SaveStateStatus::loaded;
-    }
+    [[nodiscard]] bool loaded() const noexcept { return status == SaveStateStatus::loaded; }
 };
 
 struct SaveStateWriteResult {
@@ -66,26 +63,21 @@ struct SaveStateWriteResult {
 };
 
 class SaveStateStore final {
-public:
-    explicit SaveStateStore(
-        SaveStateWriteFault fault = SaveStateWriteFault::none) noexcept
+  public:
+    explicit SaveStateStore(SaveStateWriteFault fault = SaveStateWriteFault::none) noexcept
         : fault_(fault) {}
 
-    [[nodiscard]] SaveStateLoadResult load(
-        const std::filesystem::path& path) const;
+    [[nodiscard]] SaveStateLoadResult load(const std::filesystem::path &path) const;
 
-    [[nodiscard]] SaveStateWriteResult save(
-        const std::filesystem::path& root, std::string_view game_id,
-        std::string_view profile, std::string_view rom_revision,
-        std::span<const std::uint8_t> bytes,
-        std::string_view timestamp_utc = {},
-        const SaveStateGeneration& generation = {}) const;
+    [[nodiscard]] SaveStateWriteResult
+    save(const std::filesystem::path &root, std::string_view game_id, std::string_view profile,
+         std::string_view rom_revision, std::span<const std::uint8_t> bytes,
+         std::string_view timestamp_utc = {}, const SaveStateGeneration &generation = {}) const;
 
-    [[nodiscard]] static std::string sanitize_component(
-        std::string_view value);
+    [[nodiscard]] static std::string sanitize_component(std::string_view value);
 
-private:
+  private:
     SaveStateWriteFault fault_;
 };
 
-}  // namespace ayther::runtime
+} // namespace ayther::runtime

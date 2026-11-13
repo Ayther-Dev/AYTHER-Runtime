@@ -76,8 +76,8 @@ NativeSessionConfigResult megadrive_session_config(Bytes content, Bytes memory) 
     std::vector<native::NativeBackendInfo> backends;
     if (native::NativeEmulation::backends(backends).code != 0)
         return failure("native.unavailable", "este Engine no incluye el proveedor Tessera");
-    const auto found = std::ranges::find(backends, std::string_view{"megadrive"},
-                                         &native::NativeBackendInfo::id);
+    const auto found =
+        std::ranges::find(backends, std::string_view{"megadrive"}, &native::NativeBackendInfo::id);
     if (found == backends.end())
         return failure("native.unavailable", "el Tessera instalado no tiene el backend megadrive");
 

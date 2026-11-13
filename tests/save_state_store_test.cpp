@@ -1,8 +1,8 @@
 #include "save_state_store.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <cstdint>
 #include <iterator>
 #include <string>
 #include <vector>
@@ -11,8 +11,8 @@ int main() {
     using ayther::runtime::SaveStateStatus;
     using ayther::runtime::SaveStateStore;
 
-    const auto root = std::filesystem::temp_directory_path() /
-                      "ayther-runtime-save-state-store-test";
+    const auto root =
+        std::filesystem::temp_directory_path() / "ayther-runtime-save-state-store-test";
     std::error_code error;
     std::filesystem::remove_all(root, error);
 
@@ -23,31 +23,27 @@ int main() {
     }
 
     const std::vector<std::uint8_t> state{0, 1, 2, 0xff};
-    const auto saved = store.save(root, "crc32:ABC/DEF", "CRT premium",
-                                  "A0:B1", state, "20260101T010203Z");
+    const auto saved =
+        store.save(root, "crc32:ABC/DEF", "CRT premium", "A0:B1", state, "20260101T010203Z");
     if (!saved || !std::filesystem::exists(saved.path) ||
         std::filesystem::exists(saved.path.string() + ".tmp") ||
         saved.path.parent_path().filename() != "CRT_premium" ||
-        saved.path.parent_path().parent_path().filename() !=
-            "crc32_ABC_DEF" ||
+        saved.path.parent_path().parent_path().filename() != "crc32_ABC_DEF" ||
         saved.path.filename() != "estado-20260101T010203Z-a0_b1.bin") {
         std::filesystem::remove_all(root, error);
         return 2;
     }
 
     const auto loaded = store.load(saved.path);
-    if (!loaded.loaded() || loaded.format_version !=
-            ayther::runtime::save_state_format_version ||
-        loaded.bytes != state ||
-        loaded.generation != ayther::runtime::SaveStateGeneration{}) {
+    if (!loaded.loaded() || loaded.format_version != ayther::runtime::save_state_format_version ||
+        loaded.bytes != state || loaded.generation != ayther::runtime::SaveStateGeneration{}) {
         std::filesystem::remove_all(root, error);
         return 3;
     }
 
     const std::vector<std::uint8_t> replacement{9, 9, 9};
-    const auto duplicate = store.save(
-        root, "crc32:ABC/DEF", "CRT premium", "A0:B1", replacement,
-        "20260101T010203Z");
+    const auto duplicate =
+        store.save(root, "crc32:ABC/DEF", "CRT premium", "A0:B1", replacement, "20260101T010203Z");
     if (duplicate.status != SaveStateStatus::target_exists ||
         store.load(saved.path).bytes != state) {
         std::filesystem::remove_all(root, error);
@@ -64,26 +60,24 @@ int main() {
     const auto legacy_path = root / "legacy-v0.bin";
     {
         std::ofstream legacy(legacy_path, std::ios::binary | std::ios::trunc);
-        legacy.write(reinterpret_cast<const char*>(state.data()),
+        legacy.write(reinterpret_cast<const char *>(state.data()),
                      static_cast<std::streamsize>(state.size()));
     }
     const auto legacy = store.load(legacy_path);
-    if (!legacy.loaded() || legacy.format_version != 0U ||
-        legacy.bytes != state ||
+    if (!legacy.loaded() || legacy.format_version != 0U || legacy.bytes != state ||
         legacy.generation != ayther::runtime::SaveStateGeneration{"gpgx", 1U}) {
         std::filesystem::remove_all(root, error);
         return 6;
     }
 
     std::ifstream encoded_input(saved.path, std::ios::binary);
-    std::vector<std::uint8_t> encoded{
-        std::istreambuf_iterator<char>{encoded_input},
-        std::istreambuf_iterator<char>{}};
+    std::vector<std::uint8_t> encoded{std::istreambuf_iterator<char>{encoded_input},
+                                      std::istreambuf_iterator<char>{}};
     encoded_input.close();
-    const auto write_bytes = [](const std::filesystem::path& path,
-                                const std::vector<std::uint8_t>& bytes) {
+    const auto write_bytes = [](const std::filesystem::path &path,
+                                const std::vector<std::uint8_t> &bytes) {
         std::ofstream output(path, std::ios::binary | std::ios::trunc);
-        output.write(reinterpret_cast<const char*>(bytes.data()),
+        output.write(reinterpret_cast<const char *>(bytes.data()),
                      static_cast<std::streamsize>(bytes.size()));
     };
 
@@ -110,16 +104,15 @@ int main() {
     future[9] = future[10] = future[11] = 0U;
     const auto future_path = root / "future-v3.bin";
     write_bytes(future_path, future);
-    if (store.load(future_path).status !=
-        SaveStateStatus::unsupported_version) {
+    if (store.load(future_path).status != SaveStateStatus::unsupported_version) {
         std::filesystem::remove_all(root, error);
         return 9;
     }
 
     // Spec 008 (RF-4.1, TP-304.4): version 2 carries the generation.
     const ayther::runtime::SaveStateGeneration tessera{"tessera", 1U};
-    const auto native = store.save(root, "game", "profile", "rev", state,
-                                   "20260101T040000Z", tessera);
+    const auto native =
+        store.save(root, "game", "profile", "rev", state, "20260101T040000Z", tessera);
     const auto native_loaded = store.load(native.path);
     if (!native || !native_loaded.loaded() || native_loaded.generation != tessera ||
         native_loaded.bytes != state) {
@@ -152,16 +145,17 @@ int main() {
     }
 
     // The emulator id is bounded and printable, on write and on read.
-    if (store.save(root, "game", "profile", "rev", state, "20260101T050000Z",
-                   {"", 1U}).status != SaveStateStatus::invalid ||
+    if (store.save(root, "game", "profile", "rev", state, "20260101T050000Z", {"", 1U}).status !=
+            SaveStateStatus::invalid ||
         store.save(root, "game", "profile", "rev", state, "20260101T050001Z",
-                   {std::string(33, 'x'), 1U}).status != SaveStateStatus::invalid) {
+                   {std::string(33, 'x'), 1U})
+                .status != SaveStateStatus::invalid) {
         std::filesystem::remove_all(root, error);
         return 14;
     }
     std::ifstream native_input(native.path, std::ios::binary);
-    std::vector<std::uint8_t> native_bytes{
-        std::istreambuf_iterator<char>{native_input}, std::istreambuf_iterator<char>{}};
+    std::vector<std::uint8_t> native_bytes{std::istreambuf_iterator<char>{native_input},
+                                           std::istreambuf_iterator<char>{}};
     native_input.close();
     auto bad_id = native_bytes;
     bad_id[14] = 0x01U; // first byte of "tessera"
@@ -181,11 +175,9 @@ int main() {
         ayther::runtime::SaveStateWriteFault::disk_full};
     const ayther::runtime::SaveStateStore interrupted{
         ayther::runtime::SaveStateWriteFault::before_publish};
-    if (disk_full.save(root, "game", "profile", "rev", replacement,
-                       "20260101T020000Z").status !=
+    if (disk_full.save(root, "game", "profile", "rev", replacement, "20260101T020000Z").status !=
             SaveStateStatus::io_error ||
-        interrupted.save(root, "game", "profile", "rev", replacement,
-                         "20260101T030000Z").status !=
+        interrupted.save(root, "game", "profile", "rev", replacement, "20260101T030000Z").status !=
             SaveStateStatus::io_error ||
         store.load(saved.path).bytes != state) {
         std::filesystem::remove_all(root, error);

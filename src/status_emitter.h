@@ -108,8 +108,7 @@ struct ExitStatus {
 
 using StatusEvent =
     std::variant<ProbeSucceededStatus, ProbeFailedStatus, ProbeReportStatus, ReadyStatus,
-                 NowPlayingStatus,
-                 WarningStatus, AudioWarningStatus, CrashTestStatus, ExitStatus>;
+                 NowPlayingStatus, WarningStatus, AudioWarningStatus, CrashTestStatus, ExitStatus>;
 
 class StatusEmitter final {
   public:
