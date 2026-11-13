@@ -214,6 +214,11 @@ function(ayther_verify_windows_engine_link)
         "-DCMAKE_TRY_COMPILE_CONFIGURATION:STRING=RelWithDebInfo"
         "-DCMAKE_CONFIGURATION_TYPES:STRING=RelWithDebInfo"
     )
+    # The native Engine package depends on Tessera (find_dependency): the probe
+    # needs the same package location as the main configure.
+    if(Tessera_DIR)
+        list(APPEND _probe_cmake_flags "-DTessera_DIR:PATH=${Tessera_DIR}")
+    endif()
     if(CMAKE_MSVC_RUNTIME_LIBRARY)
         list(APPEND _probe_cmake_flags
             "-DCMAKE_MSVC_RUNTIME_LIBRARY:STRING=${CMAKE_MSVC_RUNTIME_LIBRARY}")

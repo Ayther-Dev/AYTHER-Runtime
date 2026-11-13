@@ -93,7 +93,10 @@ int main(int argc, char **argv) {
         int code = -1;
         const auto arguments = "--provider tessera --rom " + quote(rom) + " --pack " + quote(pack) +
                                " --trust-registry " + quote(trust) +
-                               " --frames 4 --native-deactivate-at 2 --native-reactivate-at 4";
+                               " --frames 4 --native-input-mask 1";
+        // Tessera v0.2 (megadrive backend) has no observation-mask presentation
+        // policy: the pack never confirms, every frame presents the original and
+        // the presentation controls of the v0.1 MVP are refused (spec 008).
         const auto output = run(runtime, arguments, scratch, code);
         require(code == 0, "Native Runtime process failed: " + output);
         std::vector<std::map<std::string, std::string>> frames;
@@ -111,31 +114,35 @@ int main(int argc, char **argv) {
         require(frames.size() == 4 &&
                     output.find("AYTHER_NATIVE_DONE frames=4") != std::string::npos,
                 "Native Runtime did not advance exactly four frames");
-        require(!flow.empty() && flow.at("frames") == "4" && flow.at("composed_frames") == "2" &&
-                    flow.at("fallback_frames") == "2" && flow.at("fallback_policy") == "2" &&
-                    std::stoull(flow.at("composed_copy")) == 2 * 320 * 224 * 4 && !events.empty() &&
-                    events.at("losses") == "0" && events.at("emitted") == events.at("retained"),
-                "Native metric counts disagree with FX-03 presentation controls");
+        require(output.find("sin política de presentación") != std::string::npos,
+                "The megadrive backend was expected to lack the presentation policy");
+        require(!flow.empty() && flow.at("frames") == "4" && flow.at("composed_frames") == "0" &&
+                    flow.at("fallback_frames") == "4" && flow.at("fallback_policy") == "4" &&
+                    flow.at("composed_copy") == "0" && !events.empty() &&
+                    events.at("supported") == "0",
+                "Native metric counts disagree with the v0.2 original-only presentation");
         for (std::size_t index = 0; index < frames.size(); ++index) {
             require(frames[index].at("frame") == std::to_string(index + 1),
                     "Frame identity is not consecutive");
-            require(frames[index].at("original") == frames[0].at("original"),
-                    "Original video changed across presentation controls");
+            require(frames[index].at("presented") == frames[index].at("original"),
+                    "A frame presented something other than the original");
             require(!frames[index].at("pcm").empty(), "Original PCM identity is missing");
+            require(frames[index].at("transaction") == "0" && frames[index].at("flags") == "0",
+                    "A control transaction was confirmed without a policy");
         }
-        require(frames[0].at("presented") == frames[3].at("presented") &&
-                    frames[0].at("presented") != frames[1].at("presented") &&
-                    frames[1].at("presented") == frames[1].at("original") &&
-                    frames[2].at("presented") == frames[2].at("original"),
-                "Activation, deactivation, or original fallback is incorrect");
-        require(frames[0].at("transaction") == "1" && frames[1].at("transaction") == "2" &&
-                    frames[3].at("transaction") == "3" && frames[0].at("flags") == "1" &&
-                    frames[1].at("flags") == "1" && frames[3].at("flags") == "1",
-                "Applied control confirmation did not propagate");
+        const auto controls =
+            run(runtime,
+                "--provider tessera --rom " + quote(rom) + " --pack " + quote(pack) +
+                    " --trust-registry " + quote(trust) +
+                    " --frames 4 --native-deactivate-at 2 --native-reactivate-at 4",
+                scratch, code);
+        require(code != 0 &&
+                    controls.find("no admite controles de presentación") != std::string::npos,
+                "Presentation controls were not refused explicitly: " + controls);
         const auto invalid = run(
             runtime, "--provider tessera --core forbidden.dll --rom " + quote(rom) + " --frames 1",
             scratch, code);
-        require(code != 0 && invalid.find("incompatibles") != std::string::npos,
+        require(code == 64 && invalid.find("args.provider_conflict") != std::string::npos,
                 "Native provider accepted a libretro core");
         const auto invalid_mask =
             run(runtime,
@@ -179,16 +186,10 @@ int main(int argc, char **argv) {
                                 frames[index].at("presented"),
                         "GPU path changed original video, audio, or composition");
             }
-            require(gpu_frames.size() == 4 && gpu_frames[0].at("magenta_pixels") == "1224" &&
-                        gpu_frames[3].at("magenta_pixels") == "1224" &&
-                        gpu_frames[0].at("hash") == gpu_frames[3].at("hash") &&
-                        gpu_frames[0].at("hash") != gpu_frames[1].at("hash") &&
-                        gpu_frames[1].at("hash") == gpu_frames[2].at("hash") &&
-                        gpu_frames[1].at("magenta_pixels") == "0" &&
-                        gpu_frames[2].at("magenta_pixels") == "0" &&
-                        gpu_frames[0].at("cyan_pixels") == "0" &&
-                        gpu_frames[3].at("cyan_pixels") == "0",
-                    "GPU pixels did not follow the FX-03 activation and fallback policy");
+            require(gpu_frames.size() == 4, "GPU path did not read back four frames");
+            for (const auto &gpu_frame : gpu_frames)
+                require(gpu_frame.at("magenta_pixels") == "0",
+                        "GPU pixels show the pack although v0.2 presents the original");
             const auto device_output =
                 run(runtime,
                     "--provider tessera --rom " + quote(rom) + " --pack " + quote(pack) +
@@ -252,7 +253,8 @@ int main(int argc, char **argv) {
         }
         std::error_code ignored;
         std::filesystem::remove(scratch, ignored);
-        std::cout << "Native Runtime FX-03 activation, fallback, PCM and control results passed\n";
+        std::cout
+            << "Native Runtime FX-03 original presentation, PCM and refused controls passed\n";
         return 0;
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';

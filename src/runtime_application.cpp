@@ -159,10 +159,9 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
     // flags (--native-trace and the other --native-* options).
     const bool native_qa_mode =
         options.provider == "tessera" &&
-        (!options.native_trace_path.empty() || options.native_visible ||
-         options.native_gpu_probe || options.native_audio_device ||
-         options.native_input_mask != 0 || options.native_deactivate_at != 0 ||
-         options.native_reactivate_at != 0);
+        (!options.native_trace_path.empty() || options.native_visible || options.native_gpu_probe ||
+         options.native_audio_device || options.native_input_mask != 0 ||
+         options.native_deactivate_at != 0 || options.native_reactivate_at != 0);
     if (native_qa_mode) {
 #ifdef AYTHER_ENABLE_TESSERA_NATIVE
         return ayther::runtime::run_native_runtime(options);
@@ -333,6 +332,8 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
         std::fprintf(stderr,
                      "ayther_runtime — the Ayther game-session host (spawned by Ayther Play).\n"
                      "Usage: ayther_runtime --core <libretro.dll> --rom <rom>\n"
+                     "       ayther_runtime --provider tessera --rom <rom>\n"
+                     "         [--provider external|tessera]  (tessera: sin --core)\n"
                      "         [--pack <ay>] [--patch <ips/bps>] [--profile <id>]\n"
                      "         [--subsystems <mask>] [--mute-buses <mask>] [--output <id>]\n"
                      "         [--core-option key=value]... [--no-shaders|--shaders]\n"
@@ -616,7 +617,10 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
 
     ayther::AytherSession::Config scfg;
     scfg.core_path = core_path_str;
-    scfg.rom_path = rom_path_str;
+    // Tessera receives the ROM bytes inside native_config; the Engine rejects
+    // a ROM path with that provider (it has no libretro loader to give it to).
+    if (!tessera_provider)
+        scfg.rom_path = rom_path_str;
     if (tessera_provider) {
         scfg.provider = ayther::EmulationProvider::tessera_native;
         scfg.native_config = std::move(native_config);
@@ -1632,10 +1636,9 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
         if (!session_generation.id.empty()) {
             state_generation = {session_generation.id, session_generation.determinism_contract};
         }
-        const auto saved =
-            save_state_store.save(runtime_config.saves_directory(), sess->game_id(),
-                                  sess->active_profile(), rom_crc32_arg, state_data, {},
-                                  state_generation);
+        const auto saved = save_state_store.save(runtime_config.saves_directory(), sess->game_id(),
+                                                 sess->active_profile(), rom_crc32_arg, state_data,
+                                                 {}, state_generation);
         if (saved) {
             savestate_path = saved.path.string();
             std::fprintf(stdout, "[main] guardado: %zu bytes -> %s\n", state_data.size(),
