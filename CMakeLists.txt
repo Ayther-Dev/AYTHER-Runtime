@@ -11,12 +11,12 @@
 #   cmake -S . -B build_rt -DCMAKE_PREFIX_PATH=<Engine bootstrap prefix>
 #   cmake --build build_rt
 # ---------------------------------------------------------------------------
-set(AYTHER_RUNTIME_VERSION "0.1.0-beta.16")
+set(AYTHER_RUNTIME_VERSION "0.1.0-beta.17")
 set(AYTHER_RUNTIME_PROJECT_VERSION "0.1.0")
 set(AYTHER_ENGINE_MIN_VERSION "0.1.0")
 set(AYTHER_ENGINE_MAX_VERSION_EXCLUSIVE "0.2.0")
 # Spec 002, BR-174: the QA build uses the engine-vpx artifact of the same release.
-set(AYTHER_ENGINE_LOCKED_RELEASE "v0.1.0-rc.24" CACHE STRING "Engine release tag recorded in Runtime package metadata")
+set(AYTHER_ENGINE_LOCKED_RELEASE "v0.1.0-rc.25" CACHE STRING "Engine release tag recorded in Runtime package metadata")
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     cmake_minimum_required(VERSION 3.21)
