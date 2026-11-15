@@ -3,18 +3,18 @@
   "dependency": "AYTHER Engine",
   "repository": "https://github.com/Ayther-Dev/AYTHER-Engine",
   "release": {
-    "tag": "native-v0.1.0-rc.24",
-    "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/tag/native-v0.1.0-rc.24",
+    "tag": "native-v0.1.0-rc.25",
+    "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/tag/native-v0.1.0-rc.25",
     "checksums": {
       "fileName": "CHECKSUMS.sha256",
-      "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/native-v0.1.0-rc.24/CHECKSUMS.sha256",
-      "sha256": "99ff25dc86142aa261a5d0c3dbd04829e86c95a349b08da360c280869c659813"
+      "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/native-v0.1.0-rc.25/CHECKSUMS.sha256",
+      "sha256": "0fae0a8b8d28690ee06609ff6f09e10603952756383fb82d379b6a6b22885b0b"
     }
   },
   "attestation": {
     "repository": "Ayther-Dev/AYTHER-Engine",
     "signerWorkflow": "Ayther-Dev/AYTHER-Engine/.github/workflows/native-release.yml",
-    "sourceRef": "refs/tags/native-v0.1.0-rc.24",
+    "sourceRef": "refs/tags/native-v0.1.0-rc.25",
     "predicateType": "https://slsa.dev/provenance/v1"
   },
   "artifacts": [
@@ -23,9 +23,9 @@
       "architecture": "x86_64",
       "variant": "engine-vpx",
       "vpx": true,
-      "fileName": "ayther-engine-vpx-native-v0.1.0-rc.24-windows-x86_64.zip",
-      "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/native-v0.1.0-rc.24/ayther-engine-vpx-native-v0.1.0-rc.24-windows-x86_64.zip",
-      "sha256": "533a9175f957891e16a853634852b842374728cef3622cf142cdb61c993a3296"
+      "fileName": "ayther-engine-vpx-native-v0.1.0-rc.25-windows-x86_64.zip",
+      "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/native-v0.1.0-rc.25/ayther-engine-vpx-native-v0.1.0-rc.25-windows-x86_64.zip",
+      "sha256": "9697e02a6aae056fa5b1ccb56b058e7992f24aea17a7b89da43199800e613d27"
     }
   ]
 }
