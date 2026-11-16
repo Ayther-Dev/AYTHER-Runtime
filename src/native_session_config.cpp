@@ -69,28 +69,35 @@ NativeSessionConfigResult megadrive_session_config(Bytes content, Bytes memory) 
         return failure("native.unavailable",
                        "el Engine no pudo detectar el sistema con Tessera (codigo " +
                            std::to_string(detected.code) + ")");
-    if (detection.system != kSystemMegaDrive)
+    std::string_view backend_id;
+    switch (detection.system) {
+    case 1: backend_id = "megadrive"; break;
+    case 2: backend_id = "mastersystem"; break;
+    case 3: backend_id = "gamegear"; break;
+    case 4: backend_id = "sg1000"; break;
+    default:
         return failure("core.unsupported_system",
-                       "la ROM no es de Mega Drive; Tessera no la emula todavia");
+                       "sistema no soportado por Tessera todavia");
+    }
 
     std::vector<native::NativeBackendInfo> backends;
     if (native::NativeEmulation::backends(backends).code != 0)
         return failure("native.unavailable", "este Engine no incluye el proveedor Tessera");
     const auto found =
-        std::ranges::find(backends, std::string_view{"megadrive"}, &native::NativeBackendInfo::id);
+        std::ranges::find(backends, backend_id, &native::NativeBackendInfo::id);
     if (found == backends.end())
-        return failure("native.unavailable", "el Tessera instalado no tiene el backend megadrive");
+        return failure("native.unavailable", "el Tessera instalado no tiene el backend " + std::string(backend_id));
 
     NativeSessionConfigResult result;
     native::NativeConfig &config = result.config;
     config.backend_id = found->id;
     config.content = std::move(content);
     config.initial_persistent_memory = std::move(memory);
-    config.system_override = kSystemMegaDrive;
-    scalar(config.config, 1, 1, kSystemMegaDrive);
+    config.system_override = detection.system;
+    scalar(config.config, 1, 1, detection.system);
     field(config.config, 2, 6, Bytes(config.backend_id.begin(), config.backend_id.end()));
     field(config.config, 3, 5, found->build_id);
-    scalar(config.config, 4, 1, kSystemMegaDrive);
+    scalar(config.config, 4, 1, 1);
     scalar(config.config, 5, 1, 48000);
     Bytes controls;
     put(controls, kPads * kControlsPerPad, 8);
