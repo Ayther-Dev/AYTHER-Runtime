@@ -1,162 +1,92 @@
-# Project Status and Release Gates
+# Project status
 
-## Current maturity
+Last updated: 2026-11-19, for `0.1.0-beta.18` and the unreleased changes on
+`main`.
 
-AYTHER Runtime `0.1.0-beta.15` is an internal, pre-release product under active
-separation from the AYTHER monorepo. It is suitable for engineering integration
-and focused testing. It is **not** presented as production-ready, generally
-available, or backward compatible.
+## Maturity
 
-The Runtime–Play process protocol v1 is stable. That is a deliberately narrow
-wire-compatibility promise for status records, reason identifiers, negotiation,
-and exit codes; it does not stabilize the Runtime product, Engine ABI, package,
-configuration, or save-state formats.
+AYTHER Runtime `0.1.0-beta.18` is an internal prerelease. It is for
+engineering integration and focused testing. It is not production-ready, not
+generally available, and not backward compatible between betas.
 
-There are currently:
+| Surface | Status |
+| --- | --- |
+| Runtime–Play process protocol v1 ([contract](runtime-play-protocol.md)) | **Stable.** Status records, reason identifiers, negotiation and exit codes keep their meaning within v1; a breaking change needs a new protocol version. |
+| Command-line options ([contract](process-protocol.md)) | Implemented; may change between betas. |
+| Runtime/Engine package contract ([contract](runtime-engine-compatibility.md)) | Implemented for Engine `>=0.1.0,<0.2.0`; not stable. |
+| Save-state and player-config formats | Implemented and versioned; no long-term compatibility policy. |
+| End-user installer | Not present. Runtime ships as ZIP/TGZ archives that AYTHER Play CE consumes. |
+| Third-party license inventory and notice bundle | Not present. |
 
-- no supported stable release line; `v0.1.0-beta.15` is for internal evaluation;
-- no stable Runtime/Engine ABI or package surface;
-- one stable launcher protocol version (v1), with future breaking changes
-  requiring a new protocol version;
-- no end-user installer or standalone engine distribution in this repository;
-- no declared long-term save-state compatibility policy; and
-- no completed distribution-wide third-party license inventory or notice bundle.
+## Release line
 
-## Verified today
+| Item | Value |
+| --- | --- |
+| Latest release | `v0.1.0-beta.18`, published 2026-11-19 ([notes](releases/v0.1.0-beta.18.md)) |
+| Release assets | Windows x64 Runtime ZIP, Windows x64 QA Runtime ZIP, Linux x86-64 Runtime TGZ, one `SHA256SUMS-*.txt` per archive |
+| Unreleased | Default `--accent-color` is `#FF7300` (beta.18 shipped `#FB2C36`); new Runtime logo and Windows executable icon |
+| Engine lock (release and QA) | `v0.1.0-rc.28` |
+| Engine lock (Tessera route) | `native-v0.1.0-rc.28` with Tessera `v0.2.0-rc.9` |
 
-The source tree contains focused tests for Runtime path resolution, output
-profiles, player configuration, split geometry, capture metadata, pack-layer
-assembly, typed pack/watcher APIs, bounded game telemetry, diagnostic decisions,
-and the real core-probe process contract. The
-standalone smoke bootstraps the pinned, attested Engine release and proves its
-CMake configuration and public-header contract without an Engine or monorepo
-checkout. The pinned `v0.1.0-rc.19` package configures successfully and Runtime
-sources compile and link against its installed public surface.
+Engine `v0.1.0-rc.29` exists but is not locked. The locks and how to bootstrap
+them are described in [Runtime–Engine compatibility](runtime-engine-compatibility.md).
 
-A clean vcpkg manifest installation resolves the complete native dependency
-closure advertised by `AytherConfig.cmake`; the manifest oracle also preserves
-Runtime's direct ImGui and stb dependencies and their required backends.
+## Emulation providers
 
-On 2026-09-03, pull request #2 was merged into `main` as
-`d924f4b7b4fe67a32970d7ae2e8088ce87cb0c19`. From that clean Windows x64
-checkout (Windows 25H2, build 26200.9278), the standalone smoke bootstrapped
-and verified the pinned Engine `v0.1.0-rc.6` archive, including its locked and
-published SHA-256 values and SLSA provenance. CMake 4.3.3 and Ninja configured
-and built all 58 steps with MSVC 19.51.36256.0 from the v145 14.51.36231
-toolset. PowerShell 7.5.2 enabled the complete test inventory, and CTest passed
-19/19 tests with zero failures or tests omitted at the CTest level. The full
-local smoke log is retained at
-`build-mad001-d924f4b/mad-001-smoke.log` (995,642 bytes; SHA-256
-`014338932bb1f8c1cea012598f522d5adb538348286fd307f5302d77950a7ab0`).
+| Provider | Option | Status |
+| --- | --- | --- |
+| Libretro core supplied by the user | `--provider libretro` (default) with `--core` | Implemented in every release archive. |
+| Tessera, AYTHER's own Mega Drive core, through Engine's `tessera_native` provider | `--provider tessera`, no `--core` | Implemented. Needs a Runtime built against the native Engine package; the published release archives are built against the regular package and do not include it. Mega Drive only, Windows x64 only. |
 
-On 2026-11-13, the `0.1.0-beta.15` release candidate was validated against the
-published Engine lock `v0.1.0-rc.23`. Built against the regular rc.23 VPX package
-(RelWithDebInfo, Visual Studio 2026 v145), CTest passed 230 of 236 tests; the six
-failures are the `tessera_runtime_*` integration tests, which need the native
-package. Built with the Tessera route against the published `native-v0.1.0-rc.23`
-package (bootstrap with SHA-256, release manifest and `native-release.yml`
-provenance) and Tessera `v0.2.0-rc.9`, CTest passed 236/236, including the GPU
-presentation and device-audio tests. The QA variant (`windows-qa`) was not run.
+Save states record the emulator that wrote them; a state from the other
+provider is refused (exit 65). See [Architecture](architecture.md#3-emulation-providers).
 
-On 2026-11-06, the `0.1.0-beta.14` release candidate was validated against the
-published Engine lock `v0.1.0-rc.22`. The bootstrap verified the Windows x86-64
-`engine-vpx` archive against the locked and published SHA-256 values and its SLSA
-provenance. The `windows-ci` preset built the RelWithDebInfo configuration and CTest
-passed 226/226 tests; the QA variant (`windows-qa`, against the published QA lock)
-passed 248/249. The remaining test, `audio_qa_check_runner_integration`, fails only
-in a checkout whose path leaves its 180-character destination one character short
-(a test-helper defect fixed in pull request #64, where it passes), not in the
-product. The GPU tests and the native Tessera integration tests were not run.
+## Latest validation
 
-On 2026-10-19, the `0.1.0-beta.13` release candidate was validated against the
-published Engine lock `v0.1.0-rc.19`. The bootstraps verified the Windows x86-64
-`engine-vpx` archives of the release and QA locks against the locked and
-published SHA-256 values and their SLSA provenance. The `windows-ci` preset
-built the RelWithDebInfo configuration and CTest passed 224/224 tests. The QA
-variant (`windows-qa`, against the published QA lock) passed 247/247 tests,
-including the 150 `audio_qa` tests without GPU that the `Windows / QA` check
-runs; the GPU tests were not run. The spec 006 TL-010 replay of Golden Axe
-re-anchors the HD intro at f799 and reaches the loop at f1374 without an
-original-sound gap.
+These are the results recorded for the latest changes. They do not prove broad
+GPU, driver, operating-system, core, or game compatibility.
 
-On 2026-10-18, the `0.1.0-beta.12` release candidate was validated against the
-published Engine lock `v0.1.0-rc.18`. The bootstraps verified the Windows x86-64
-`engine-vpx` archives of the release and QA locks against the locked and
-published SHA-256 values and their SLSA provenance. The `windows-ci` preset
-built the RelWithDebInfo configuration and CTest passed 224/224 tests. The QA
-variant (`windows-qa`, against the published QA lock) passed 247/247 tests,
-including the 150 `audio_qa` tests without GPU that the `Windows / QA` check
-runs; the GPU tests were not run.
+| Date | Build | Result |
+| --- | --- | --- |
+| 2026-11-19 | `fix/pause-accent-default` (PR #71), `windows-ci`, Engine `v0.1.0-rc.28` | CTest 227/227 passed. |
+| 2026-11-19 | `v0.1.0-beta.18` (PR #70), `windows-ci`, Engine `v0.1.0-rc.28` | CTest 227/227 passed. Bootstrap verified SHA-256 and SLSA provenance for the regular and native locks. Release workflow published all six assets. |
+| 2026-11-13 | `v0.1.0-beta.15`, Engine `v0.1.0-rc.23` | Regular package: 230/236 (the six `tessera_runtime_*` tests need the native package). Native package `native-v0.1.0-rc.23` with Tessera `v0.2.0-rc.9`: 236/236, including GPU presentation and device audio. |
 
-On 2026-10-08, the `0.1.0-beta.11` release candidate was validated against the
-published Engine lock `v0.1.0-rc.17`, the Engine of the spec 002 final
-candidate accepted in campaign h. The bootstraps verified the Windows x86-64
-`engine` and `engine-vpx` archives against the locked and published SHA-256
-values and their SLSA provenance. The `windows-ci` preset built the
-RelWithDebInfo configuration and CTest passed 221/221 tests. The QA variant
-with GPU tests (`windows-qa-gpu`, against the published QA lock) passed
-250/250 tests, including the 148 `audio_qa` tests without GPU that the
-`Windows / QA` check runs.
+Results of earlier betas are in the git history of this file and in the
+[release notes](releases/). The Tessera integration tests and the `windows-qa`
+and `windows-qa-gpu` suites were not rerun for beta.16 to beta.18.
 
-On 2026-10-04, the `0.1.0-beta.10` release candidate was validated against the
-same Engine lock `v0.1.0-rc.15`. The bootstrap verified the Windows x86-64
-`engine-vpx` archive against the locked and published SHA-256 values and its
-SLSA provenance. The `windows-ci` preset built the RelWithDebInfo configuration
-and CTest passed 217/217 tests. The QA variant (`windows-qa`, against the
-published QA lock) passed 239/239 tests, including the 144 `audio_qa` tests run
-by the `Windows / QA` check; the GPU tests were not run.
+Branch protection on `main` requires `Windows / RelWithDebInfo`,
+`Linux / RelWithDebInfo`, `Linux / ASan-UBSan-Fuzz`, `Windows / QA`,
+`Security / Dependency Review`, `Security / Secret Scan`, `Analyze (actions)`
+and `Analyze (c-cpp)`. See
+[Development guide](development.md#continuous-integration).
 
-On 2026-10-04, the release candidate was validated against the Engine lock at
-`v0.1.0-rc.15`. The bootstrap verified the Windows x86-64 `engine-vpx` archive
-against the locked and published SHA-256 values and its SLSA provenance. The
-`windows-ci` preset (Visual Studio 2026, toolset v145) configured against that
-prefix with the toolchain, package and Engine link contracts passing, built the
-RelWithDebInfo configuration, and CTest passed 217/217 tests, including the
-replay inspection, QA launcher and checker suites and the CI, release,
-security, package and toolchain contract tests. The QA variant
-(`windows-qa-gpu`, against the published QA lock) passed its suite apart from
-one intermittent GPU integration test.
+## Known gaps
 
-On 2026-10-02, the release candidate was validated against the Engine lock at
-`v0.1.0-rc.13`. The bootstrap verified the Windows x86-64 `engine-vpx` archive
-against the locked and published SHA-256 values and its SLSA provenance. The
-`windows-ci` preset (Visual Studio 2026, toolset v145) configured against that
-prefix with the toolchain, package and Engine link contracts passing, built the
-RelWithDebInfo configuration, and CTest passed 175/175 tests. This includes the
-complete Audio QA and RF-18 music continuity suites, plus the CI, release,
-security, package and toolchain contract tests.
-
-These checks do not prove broad GPU, driver, operating-system, core, or game
-compatibility.
-
-## Known technical gaps
-
-1. `Ayther::engine` remains provisional, although Runtime now consumes its
-   typed pack, input, renderer, core-probe, and Vulkan-interoperability
-   contracts exclusively through installed public headers.
-2. Windows is verified with MSVC v145 14.51; older toolsets are intentionally
-   rejected during configure. Ubuntu 24.04/Clang 18 remains gated by the remote
-   quality and sanitizer jobs for each integration SHA.
-3. GPU coverage currently represents one discrete Windows adapter. Integrated
-   GPUs and Linux display stacks remain unverified and are not support claims.
-4. Packaging smoke coverage exists, but an end-user installer, signed release
-   automation, and a complete distribution license/notice bundle do not.
-
-The evidence and proposed ownership for these items are recorded in
-[`runtime-engine-dependency-audit.yaml`](runtime-engine-dependency-audit.yaml).
+1. `Ayther::engine` is still a broad, provisional package surface. Runtime uses
+   only installed public headers, but the surface has not been narrowed.
+2. Windows requires MSVC toolset v145 14.51 or newer; configuration rejects
+   older toolsets. Linux is built and tested in CI with Clang on Ubuntu 24.04;
+   it has no GPU validation.
+3. GPU validation covers one discrete NVIDIA adapter on Windows 11. Integrated
+   GPUs and Linux display stacks are untested. See the
+   [compatibility matrix](compatibility-matrix-v1.md).
+4. The Tessera route is not in the release archives, and its integration tests
+   need locally generated fixtures and a GPU. No CI job runs them.
+5. Release archives are not code-signed, and there is no distribution license
+   and notice bundle.
 
 ## Stable-release gates
 
-A stable release should not be declared until maintainers have:
+A stable release needs, at minimum:
 
-- verified MPL-2.0 notices and completed the third-party license inventory for
-  every distributed artifact;
-- narrowed and versioned the Runtime/Engine package contract;
-- preserved the stable v1 launcher protocol and versioned any future breaking
-  wire changes;
-- defined supported platforms, compilers, Vulkan requirements, and test cores;
-- established clean build, test, security-scanning, and packaging automation;
-- documented save/config migration and compatibility policies; and
-- completed license review for shipped dependencies and distribution artifacts.
+- MPL-2.0 notices and a complete third-party license inventory for every
+  distributed artifact;
+- a narrowed and versioned Runtime/Engine package contract;
+- protocol v1 preserved, with any breaking wire change in a new version;
+- declared supported platforms, compilers, Vulkan requirements and test cores;
+- save-state and configuration migration policies; and
+- a decision on whether the Tessera route ships in the release archives.
 
-This list is a release-readiness boundary, not a promise of schedule or scope.
+This list defines release readiness. It is not a schedule.

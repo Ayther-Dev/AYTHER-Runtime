@@ -1,16 +1,42 @@
-# Compatibilidad de reservas con Play CE
+# File reservations for Play CE
 
-Estado: alcance autorizado por el usuario el 2026-09-27: «Sí, publicar solo los cambios necesarios de compatibilidad». Se integra el contrato requerido por el Play CE local; no se modifican las decisiones de audio de Engine ni se desarrolla el comprobador de replay.
+Status: implemented in `0.1.0-beta.6` (`src/file_reservation.h`). The wire
+behavior is summarized in the [Runtime–Play protocol](../runtime-play-protocol.md);
+this document is the full contract.
 
-## Requisitos verificables
+## Requirements
 
-- RC-1: Cuando Play envíe la revisión de una ROM o pack, Runtime deberá reservar los archivos de la sesión y comprobar la revisión solicitada antes de confirmar la transferencia. Una revisión diferente o un archivo inaccesible deberá impedir la confirmación y el arranque del juego.
-- RC-2: Mientras la sesión conserve la reserva en Windows, deberá impedir escritura, borrado y renombrado; deberá liberar los recursos al finalizar y también ante errores de preparación. Una plataforma que no soporte la reserva deberá rechazar una solicitud explícita sin simular éxito.
-- RC-3: Cuando no se soliciten revisiones, Runtime deberá mantener el lanzamiento previo, incluidos orden de validación y diagnósticos. Las nuevas opciones y su confirmación son optativas; no cambian el protocolo de estado existente.
-- RC-4: Cuando se publique el consumidor compatible, su versión, paquete Engine, hash del artefacto y contrato de lanzamiento deberán quedar documentados y validados con Play CE.
+- **RC-1.** When Play sends the revision of a ROM or a pack, Runtime reserves
+  the session's files and checks the requested revision before it confirms the
+  handover. A different revision or an inaccessible file prevents the
+  confirmation and the game start.
+- **RC-2.** While the session holds the reservation on Windows, writing,
+  deleting and renaming the files is prevented. Runtime releases the files when
+  the session ends and also when preparation fails. A platform that does not
+  support reservations rejects an explicit request instead of simulating
+  success.
+- **RC-3.** When no revision is requested, Runtime keeps the previous launch
+  behavior, including validation order and diagnostics. The options and their
+  confirmation are optional and do not change the existing status protocol.
+- **RC-4.** A compatible consumer release documents its version, Engine
+  package, artifact hash and launch contract, validated with Play CE.
 
-## Contrato y aceptación
+## Contract
 
-Opciones: --rom-revision y --pack-revision. Formato compartido con Play: identidad del volumen/archivo/creación, tamaño, fecha de modificación en nanosegundos y USN, separados por los delimitadores existentes de Play. La confirmación técnica es AYTHER_RESERVATION 1 en stdout, únicamente después de obtener las reservas solicitadas y comprobar sus tokens. Los errores técnicos se emiten en inglés mediante el diagnóstico existente de preparación; Play conserva la presentación localizada.
+| Item | Value |
+| --- | --- |
+| Options | `--rom-revision <token>`, `--pack-revision <token>` |
+| Token | Shared with Play: volume/file/creation identity, size, modification time in nanoseconds and USN, joined with Play's existing delimiters. |
+| Confirmation | `AYTHER_RESERVATION 1` on stdout, only after every requested reservation is held and its token matches. |
+| Rejection | Reason `runtime.reservation_failed`, exit 74 (I/O error). A ROM reservation failure is never attributed to the pack. |
+| Diagnostics | Technical errors are in English through the existing preparation diagnostic; Play keeps the localized presentation. |
 
-Un rechazo usa el motivo técnico runtime.reservation_failed y salida 74 (error de E/S), sin atribuir a un pack un fallo de reserva de ROM. Se exige el test nativo de reserva/liberación y rechazo, una prueba real con tokens calculados por Play, y la suite de Runtime para proteger el lanzamiento sin las opciones nuevas. El token detecta cambios de revisión; no es un hash criptográfico del contenido ni acredita origen de un pack. No se incorporan cambios de caché, interfaz, autoría o audio a esta release.
+The token detects revision changes. It is not a cryptographic hash of the
+content and does not prove where a pack came from.
+
+## Acceptance
+
+- A native test of reservation, release and rejection (`file_reservation`,
+  `file_reservation_cli`).
+- A real run with tokens computed by Play CE.
+- The Runtime suite, which protects the launch without the new options.

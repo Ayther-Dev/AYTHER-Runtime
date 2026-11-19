@@ -1,7 +1,7 @@
 # Security policy
 
-AYTHER Runtime is a prerelease product, but dependency and secret findings are
-treated as release-blocking engineering defects.
+AYTHER Runtime is a prerelease product. Dependency and secret findings are
+release-blocking defects.
 
 ## Reporting
 
@@ -11,12 +11,17 @@ revoke exposed credentials before investigating their history.
 
 ## Pull-request gates
 
-- GitHub CodeQL default setup analyzes Actions and C++.
+- GitHub CodeQL default setup analyzes Actions, C/C++ and Python; the
+  `Analyze (actions)` and `Analyze (c-cpp)` checks are required on `main`.
 - GitHub secret scanning and push protection detect supported provider tokens.
+- Dependabot security updates are enabled.
 - `Security / Secret Scan` runs TruffleHog OSS over the pull-request range.
 - `Security / Dependency Review` rejects newly introduced dependencies with a
   high or critical advisory. Medium and low findings remain visible for triage.
-- All workflow actions are referenced by immutable commit SHA.
+- All workflow actions are referenced by immutable commit SHA, and workflow
+  tokens are read-only except for the release publishing job.
+- `tests/security_workflow_contract_test.ps1` checks these workflow rules and
+  this policy's commitments.
 
 ## Remediation and exceptions
 

@@ -1,119 +1,180 @@
-# Process and CLI Contract (protocol v1)
+# Command line and status events
 
-> [!IMPORTANT]
-> The Runtime–Play wire protocol v1 is stable. AYTHER Runtime remains the
-> separate `0.1.0-beta.15` product; stability here does not extend to its
-> package, Engine ABI, configuration, or save-state formats.
+This is the reference for the `ayther_runtime` command line and the
+`AYTHER_STATUS` events it emits. It is written for launcher authors (AYTHER
+Play CE) and for developers who start Runtime by hand.
+
+The compatibility rules of the wire protocol (framing, negotiation, stable exit
+codes and reason identifiers) are normative in
+[`runtime-play-protocol.md`](runtime-play-protocol.md). This page does not
+repeat them.
+
+Source of truth: `src/runtime_options.h` and `src/runtime_options.cpp` (parser),
+`src/runtime_application.cpp` (dispatch, usage text, exit paths),
+`src/runtime_error.h` (exit codes and reasons), `src/status_emitter.cpp`
+(event serialization).
 
 ## Invocation modes
 
-Normal session:
+| Mode | Command | Notes |
+| --- | --- | --- |
+| Libretro session | `ayther_runtime --core <core> --rom <rom> [options]` | Default provider (`libretro`). |
+| Tessera session | `ayther_runtime --provider tessera --rom <rom> [options]` | Native Mega Drive provider. No `--core`. |
+| Core probe | `ayther_runtime --probe-core <core> [--probe-rom <rom>]` | Exits without SDL initialization. |
+| Pack probe | `ayther_runtime --probe-pack <pack> [--trust-registry <file>]` | QA build only. |
+| Tessera diagnostic run | `ayther_runtime --provider tessera --rom <rom> --native-... ` | Selected by any `--native-*` option. Diagnostic; not a player session. |
+| QA capability query / session | `--qa-capabilities`, `--qa-session ...` | Started by `ayther_audio_qa`; see [tools/audio_qa](../tools/audio_qa/README.md). |
 
-```text
-ayther_runtime --core <path> --rom <path> [options]
-```
+Positional form: arguments that are not recognized options are collected as
+positional values. With the libretro provider the first is the core and the
+second the ROM (`ayther_runtime <core> <rom>`); with `--provider tessera` the
+first is the ROM. The form remains for backward compatibility; new callers
+SHOULD use named options.
 
-Core probe:
-
-```text
-ayther_runtime --probe-core <path>
-```
-
-The legacy positional form `ayther_runtime <core> <rom>` is accepted for
-backward compatibility. New callers SHOULD use named options.
+Dispatch order: the Tessera diagnostic run, `--qa-capabilities`, `--qa-session`,
+`--probe-pack`, protocol negotiation, `--probe-core`, then the session.
 
 ## Options
 
-| Option | Value | Current behavior |
+Every option accepted by the parser appears exactly once below.
+
+### Session
+
+| Option | Value | Behavior |
 | --- | --- | --- |
-| `--core` | path | Required core library for a normal session. |
-| `--rom` | path | Required game image for a normal session. |
-| `--pack` | path | Explicit AYTHER pack. Failure to open, validate or activate it exits with code 4. |
-| `--trust-registry` | path | Public-key TOML registry, resolved relative to the launch working directory before session creation; retained for pack reloads. See [format](trust-registry.md). |
-| `--patch` | path | Optional IPS/BPS patch applied to the in-memory ROM buffer. |
-| `--input-map` | path | Optional TOML keyboard/gamepad map, parsed once before SDL initialization. Omitted entries inherit Runtime defaults. |
-| `--accent-color` | `#RRGGBB` (the `#` is optional) | Accent of the pause dialog: caption, primary button, checkboxes, sliders and hover states. Default `#FF7300`. Any other spelling is `value_out_of_domain`. |
+| `--provider` | `libretro` or `tessera` | Emulation provider. Default `libretro`. Any other value is `value_out_of_domain` (exit 64). `tessera` requires an Engine package built with Tessera; it emulates Mega Drive only (another system: `core.unsupported_system`, exit 3; Engine without Tessera: `core.load_failed`, exit 2). |
+| `--core` | path | Libretro core. Required with the libretro provider. With `--provider tessera` it is rejected with `args.provider_conflict` (exit 64). |
+| `--rom` | path | Game image. Required for a session. |
+| `--pack` | path | Explicit AYTHER pack. Must not be empty. If it cannot be opened, validated, activated or reloaded, Runtime exits 4 (`pack.open_failed`). |
+| `--trust-registry` | path | Public-key TOML registry passed to Engine. Must not be empty. See [trust-registry.md](trust-registry.md). |
+| `--patch` | path | IPS/BPS patch applied to the in-memory ROM buffer, never to the file. |
+| `--profile` | id | Engine content profile selected before the first frame. An id the pack does not offer is reported on stderr and the pack's default profile is used. |
+| `--output` | id | Presentation profile: `lcd` (default), `crt`, `pixel`, `smooth`, `cinema` or `ntsc`. Overrides the stored player preference. |
+| `--subsystems` | unsigned decimal `uint32_t` | Subsystem mask applied after persisted settings. |
+| `--mute-buses` | unsigned decimal `uint32_t` | Audio-bus mute mask. |
+| `--core-option` | `key=value` | Repeatable. Applied when the core initializes. The key must not be empty (`malformed_core_option`). |
+| `--shaders` | none | Enables shaders. |
+| `--no-shaders` | none | Disables shaders. |
+| `--input-map` | path | Keyboard/gamepad TOML map, read once before SDL initialization. Must not be empty. See [input-map.md](input-map.md). |
+| `--saves-dir` | path | Save-state root chosen by the launcher. |
+| `--load-state` | path | Save state to resume. If it cannot be read or restored, the session starts from power-on, emits `state.restore_failed` and keeps the file. A state written by another emulator generation stops the launch with `state.generation_mismatch` (exit 65). |
+| `--rom-crc32` | hexadecimal text | ROM identity used in save-state naming. |
+| `--manifest` | path | Correlation path logged and echoed in `ready`. Runtime does not read the file. |
+
+### Launcher integration
+
+| Option | Value | Behavior |
+| --- | --- | --- |
+| `--play-protocol-version` | unsigned decimal `uint32_t` | Protocol negotiation before SDL, Vulkan, core, ROM or session startup. Only `1` is accepted. See [negotiation](runtime-play-protocol.md#negotiation). |
+| `--rom-revision` | token | Windows file reservation for the ROM. Must not be empty. See [file reservations](runtime-play-protocol.md#optional-file-reservations). |
+| `--pack-revision` | token | Windows file reservation for the pack. Must not be empty. |
+| `--accent-color` | `#RRGGBB` (`#` optional, hex digits in any case) | Pause-dialog accent: caption, primary button, checkboxes, sliders and hover states. Default `#FF7300`. Any other spelling is `value_out_of_domain`. |
 | `--title` | text | Caption shown above «EN PAUSA» in the pause dialog. Default `Runtime`. Must not be empty. |
-| `--exit-button-text` | text | Label of the pause-dialog button that closes the Runtime. Default `Salir`. Must not be empty. |
-| `--profile` | id | Engine content profile selected before the first frame. |
-| `--output` | id | Runtime presentation profile: `lcd`, `crt`, `pixel`, `smooth`, `cinema`, or `ntsc`. |
-| `--subsystems` | unsigned decimal `uint32_t` | Explicit subsystem mask applied after persisted settings; range `0..4294967295`. |
-| `--mute-buses` | unsigned decimal `uint32_t` | Explicit audio-bus mute mask; range `0..4294967295`. |
-| `--core-option` | `key=value` | Repeatable core option applied during session creation. |
-| `--shaders` | none | Explicitly enables shaders. |
-| `--no-shaders` | none | Explicitly disables shaders. |
-| `--manifest` | path | Correlation path logged and emitted in `ready`; Runtime does not parse the file. |
-| `--saves-dir` | path | Save-state root chosen by AYTHER Play. |
-| `--load-state` | path | Exact save state to resume; failure starts fresh and preserves the file. |
-| `--rom-crc32` | hexadecimal text | ROM identity metadata included in save naming. |
-| `--frames` | unsigned decimal `uint64_t` | Development/CI frame limit; `0` means unlimited. |
-| `--capture-at` | comma-separated positive `uint64_t` values | Non-empty list of logical frame numbers; every element must be greater than zero. |
-| `--crash-test` | none | Emits `crash-test` and aborts; test-only launcher isolation hook. |
-| `--probe-core` | path | Probes a core and exits without loading a ROM or initializing SDL. |
-| `--play-protocol-version` | unsigned decimal `uint32_t` | Negotiates protocol v1 before SDL, Vulkan, core, ROM, or session startup. |
-| `--hd-compose` | none | Deprecated compatibility option; accepted but no longer enables the removed path. |
+| `--exit-button-text` | text | Label of the pause-dialog button that closes Runtime. Default `Salir`. Must not be empty. |
 
-Numeric values are parsed with complete-input and range validation. Empty or
-missing values, signs, overflow, trailing text, zero capture frames, and
-leading, trailing, or repeated commas are rejected before SDL initialization.
-`--core-option` likewise requires `key=value` with a non-empty key.
+### Development and CI
 
-## Status framing
+| Option | Value | Behavior |
+| --- | --- | --- |
+| `--frames` | unsigned decimal `uint64_t` | Clean exit after N emulated frames. `0` means unlimited. |
+| `--capture-at` | comma-separated positive `uint64_t` | Repeatable. Requests a capture (the F12 path) at each listed frame. |
+| `--input-script` | path | A pad timeline (the grammar of [`--timeline`](../tools/audio_qa/README.md#pad-timelines)) drives port 0 from power-on instead of keyboard and gamepad; the run ends after its last frame. Only `start power_on` is accepted. A missing or invalid script exits 64. Works with both providers. |
+| `--frame-log` | path | Writes one CSV row per displayed frame: `frame,t_ms,step_ms,work_ms,interval_ms,pacing_hz,tile_ms,sprite_ms,audio_ms`. If the file cannot be opened Runtime exits 64. |
+| `--crash-test` | none | Emits `crash-test` and aborts. Test hook for launcher crash handling. |
+| `--hd-compose` | none | Retired. Accepted for compatibility; prints a notice and has no effect. |
 
-Machine-readable events are emitted as one unbuffered stdout line:
+### Probes
 
-```text
-AYTHER_STATUS <JSON object>\n
-```
+| Option | Value | Behavior |
+| --- | --- | --- |
+| `--probe-core` | path | Probes a libretro core with the Engine probe contract v2, emits one `probe` event and exits. No ROM, no SDL. |
+| `--probe-rom` | path | With `--probe-core`: also loads this ROM in a session without running a frame and reports `game_*` fields. `--patch` and `--core-option` apply. |
+| `--probe-pack` | path | QA build only. Prints one `AYTHER_PACK_PROBE <json>` line and exits 0 (usable), 66 (unusable) or 78 (`trust_registry_invalid`). A non-QA build prints `"status":"unavailable"` and exits 65. |
 
-`StatusEmitter` is the only component allowed to frame these records. It builds
-the complete line in memory, encodes every event through one JSON serializer,
-writes it with one `fwrite` call, and immediately flushes stdout. Quotes,
-backslashes, JSON control characters, and line breaks are escaped; valid UTF-8
-is preserved.
+### Tessera diagnostic run
 
-Every JSON object includes `"protocol_version":1` before the event-specific
-fields. Consumers MUST:
+Diagnostic options. Any of them, together with `--provider tessera`, selects
+the direct native driver (`src/native_runtime.cpp`) instead of a player
+session; it is compiled only with `AYTHER_ENABLE_TESSERA_NATIVE`. The run needs
+`--rom` and either `--frames` or `--native-trace`, rejects every libretro or
+session option (`--core`, `--patch`, `--core-option`, `--input-map`,
+`--load-state`, `--profile`, `--subsystems`, `--mute-buses`, shader options,
+`--output`, `--capture-at`, `--manifest`, `--hd-compose`) with exit 64, and
+prints `AYTHER_NATIVE_*` lines that are not protocol records. Without
+`--provider tessera` these options fail with exit 64.
 
-- parse only complete lines beginning with the exact `AYTHER_STATUS ` prefix;
-- treat all other stdout and stderr as human diagnostic output;
-- reject an unsupported protocol version before starting a session;
-- tolerate unknown event names and additional JSON fields within v1; and
-- treat process termination without an `exit` event as abnormal.
+| Option | Value | Behavior |
+| --- | --- | --- |
+| `--native-trace` | path | Replays a Tessera input trace. Must not be empty. |
+| `--native-input-mask` | unsigned decimal, `0..255` | Holds pad-1 controls every frame (bit *n* = control *n*). |
+| `--native-deactivate-at` | positive `uint64_t` | Frame at which the HD presentation policy is switched off. |
+| `--native-reactivate-at` | positive `uint64_t` | Frame at which it is switched back on. Must be greater than `--native-deactivate-at`. |
+| `--native-visible` | none | Opens a window and presents frames. |
+| `--native-audio-device` | none | Opens the SDL audio device. |
+| `--native-gpu-probe` | none | Hashes presented GPU frames (`AYTHER_NATIVE_GPU_FRAME`). |
 
-Play SHOULD pass `--play-protocol-version 1`. Runtime accepts version 1 and
-rejects lower or higher explicit versions with reason `protocol.incompatible`
-and exit code `65` before subsystem startup. Omitting negotiation is retained
-only for older launchers, which must inspect the first status record.
+### QA session
 
-## Events
+Set by `ayther_audio_qa`; not meant to be typed by hand. They take effect in a
+QA build (`windows-qa` preset). See [tools/audio_qa](../tools/audio_qa/README.md).
+
+| Option | Value | Behavior |
+| --- | --- | --- |
+| `--qa-capabilities` | none | Prints one `AYTHER_QA_CAPABILITIES <report>` line and exits 0. |
+| `--qa-session` | none | Runs a supervised replay session. A non-QA build prints `AYTHER_QA_SESSION` with `"status":"unavailable"` and exits 65. |
+| `--qa-control-channel` | handle token | Inherited control channel. |
+| `--qa-data-channel` | handle token | Inherited data channel. |
+| `--qa-run-id` | id | Run identity of the take. |
+| `--qa-presentation` | `none` (default) or `visible` | Headless or visible replay. |
+| `--qa-take-position` | unsigned decimal `uint32_t` | Position of the take in the request. |
+| `--qa-last-take` | none | Marks the last take of the request. |
+| `--qa-close-at-end` | none | Closes the window after the confirmed natural end. |
+
+### Value validation
+
+- An option that takes a value fails with `missing_value` when the value is
+  absent or the next argument starts with `--`.
+- Numbers are unsigned decimal with complete-input and range checks. Signs,
+  overflow, trailing text and empty values are rejected.
+- `--capture-at` rejects zero, empty elements and leading, trailing or repeated
+  commas.
+- Every parse error emits a `warning` with `cli.invalid_argument` (or
+  `args.provider_conflict`), writes a diagnostic to stderr and exits 64 before
+  SDL initialization.
+
+## Status events
+
+Each event is one line, `AYTHER_STATUS <JSON object>`, framed as described in
+[status framing](runtime-play-protocol.md#status-framing). Fields are listed in
+emission order. Consumers ignore unknown fields and events.
 
 ### `probe`
 
-The probe follows the Engine's core probe contract v2 (spec 008, RF-9.3): the
-record is `ProbeReport::serialize()` of `engine::probe_core_v2`, so it carries
-`"protocol_version":2`, `ok`, `verdict`, `reason` (absent when `ok`),
-`architecture`, `ayther_abi`, `ayther_build_id`, `capabilities`,
-`required_capabilities` and `missing_capabilities`. The exit code is the
-contract's: 0 `ok`, 2 `missing_file` or `wrong_architecture`, 3 `not_a_core`,
-4 `abi_missing` or `capabilities_incomplete`. A supervising parent adds
-`timeout` (5) and `crashed` (6).
+`--probe-core` follows the Engine core probe contract v2. The record is the
+Engine's `ProbeReport::serialize()`, so it carries `"protocol_version":2` (the
+probe contract version, not protocol v1), `ok`, `verdict`, `reason` (absent
+when `ok`), `architecture`, `ayther_abi`, `ayther_build_id`, `capabilities`,
+`required_capabilities` and `missing_capabilities`.
 
 ```json
 {"protocol_version":2,"event":"probe","ok":true,"verdict":"ok","api":1,"library_name":"...","library_version":"...","architecture":"x64","ayther_abi":"1.10","ayther_build_id":"...","capabilities":"0xEFFFF","required_capabilities":"0xEFFFF","missing_capabilities":[],"loaded":true,"valid_extensions":"...","need_fullpath":false,"block_extract":false}
 ```
 
-Runtime only appends fields after the contract's: `loaded` (the Libretro entry
-points answered, even when the verdict is not `ok`), the Libretro metadata
-`valid_extensions`, `need_fullpath` and `block_extract` when `loaded`, and,
-with `--probe-rom`, the `game_*` fields of the ROM probe. Reasons are stable
-machine identifiers (`core.missing`, `core.wrong_architecture`, `core.invalid`,
-`core.abi_missing`, `core.capabilities_incomplete`). Optional `message` text is
-human-readable and MUST NOT drive logic.
+Runtime appends only:
 
-Engine owns the temporary dynamic-library handle and copies the Libretro
-metadata; the same Runtime serializer used by every other event performs the
-protocol framing.
+- `loaded`: the libretro entry points answered, even when the verdict is not `ok`;
+- `valid_extensions`, `need_fullpath`, `block_extract`: when `loaded`;
+- with `--probe-rom`: `game_loaded`; when loaded, `timing_fps` (if positive),
+  `geometry_known` and, when known, `geometry_width` and `geometry_height`;
+  when not loaded, `game_message`.
+
+Reasons are stable identifiers: `core.missing`, `core.wrong_architecture`,
+`core.invalid`, `core.abi_missing`, `core.capabilities_incomplete`. `message`
+is human text and MUST NOT drive logic.
+
+Exit codes are the probe contract's: `0` ok, `2` missing file or wrong
+architecture, `3` not a core, `4` ABI missing or capabilities incomplete. A
+supervising parent may add `5` (timeout) and `6` (crashed).
 
 ### `ready`
 
@@ -121,21 +182,23 @@ protocol framing.
 {"protocol_version":1,"event":"ready","game_id":"...","has_pack":false,"manifest":"..."}
 ```
 
-Indicates that the session exists. It does not guarantee that Vulkan
-post-processing or every optional subsystem initialized successfully.
+The session exists. It does not guarantee that Vulkan post-processing or every
+optional subsystem initialized.
 
-When the Engine reports the emulator generation of the session (spec 008), the
-record also carries it, after `manifest`. The fields are additive within
-protocol v1 and are left out when the Engine reports none:
+When Engine reports the emulator generation of the session, three fields follow
+`manifest`; they are absent otherwise:
 
 ```json
 {"protocol_version":1,"event":"ready","game_id":"...","has_pack":false,"manifest":"...","emulator_id":"gpgx","emulator_version":"...","determinism_contract":1}
 ```
 
-`emulator_id` is `gpgx` for Genesis Plus GX (or the slug of another libretro
-core's name) and `tessera` for the native provider; `emulator_version` is the
-core's version or backend build id; `determinism_contract` is a number.
-Consumers must ignore fields they do not know.
+- `emulator_id`: `gpgx` for Genesis Plus GX, the slug of another libretro
+  core's name, or `tessera` for the native provider.
+- `emulator_version`: core version or backend build id.
+- `determinism_contract`: number.
+
+Save states record the same generation; see
+[`state.generation_mismatch`](runtime-play-protocol.md#error-taxonomy).
 
 ### `now-playing`
 
@@ -143,8 +206,7 @@ Consumers must ignore fields they do not know.
 {"protocol_version":1,"event":"now-playing","game_id":"...","title":"..."}
 ```
 
-Indicates transition into active gameplay. The current implementation uses the
-game identifier as the title fallback.
+Gameplay is active. `title` currently falls back to the game identifier.
 
 ### `warning`
 
@@ -152,18 +214,14 @@ game identifier as the title fallback.
 {"protocol_version":1,"event":"warning","reason":"persistence.config_invalid","message":"..."}
 ```
 
-Reports a typed startup or runtime diagnostic, such as a loaded pack with no
-active subsystems, a failed resume, or an invalid input map. The `reason` field
-is a stable machine token and the optional `message` field is human-readable.
-An event named `warning` can precede a fatal startup exit; callers must use the
-process exit code rather than infer recoverability from the event name.
-The complete reason taxonomy and recovery classification is normative in
-[`runtime-play-protocol.md`](runtime-play-protocol.md).
+A typed diagnostic. `reason` is a stable token from the
+[error taxonomy](runtime-play-protocol.md#error-taxonomy); `message` is human
+text. A `warning` can precede a fatal exit: use the process exit code, not the
+event name, to decide recoverability.
 
 ### `crash-test`
 
-Emitted immediately before the deliberate `--crash-test` abort. It is a test
-hook and MUST NOT be interpreted as a clean exit.
+Emitted immediately before the `--crash-test` abort. It is not a clean exit.
 
 ### `exit`
 
@@ -171,37 +229,31 @@ hook and MUST NOT be interpreted as a clean exit.
 {"protocol_version":1,"event":"exit"}
 ```
 
-or, after a save state is written successfully:
+or, after a save state was written:
 
 ```json
-{"protocol_version":1,"event":"exit","savestate":"C:\\path\\to\\state.bin"}
+{"protocol_version":1,"event":"exit","savestate":"<saves-dir>\\<state>.bin"}
 ```
 
-Only the `savestate` path from a clean `exit` is eligible for launcher-side
-upload or synchronization.
+Only the `savestate` path of a clean `exit` is eligible for launcher-side upload
+or synchronization.
 
-## Process exit codes
+## Other stdout lines
 
-| Code | Meaning |
-| ---: | --- |
-| `0` | Core loaded and required Libretro information symbols were read. |
-| `2` | Dynamic library could not be loaded. |
-| `3` | Required Libretro symbols were not found. |
-| `4` | Explicit pack could not be opened, validated, activated or reloaded. |
-| `64` | Invalid command line: a required session argument or option value is missing, malformed, out of range, or outside its documented domain. |
-| `65` | Explicit Runtime–Play protocol versions are incompatible. |
-| `69` | A required service is unavailable. |
-| `74` | A non-recoverable I/O operation failed. |
-| `78` | The file supplied through `--input-map` or `--trust-registry` is unreadable or violates its configuration contract. |
+These lines are not `AYTHER_STATUS` records:
 
-Codes and their identifiers are stable protocol-v1 values. CLI and negotiation
-errors occur before SDL initialization and include both a machine reason in the
-status stream and a human-readable diagnostic. Code `78` follows the same
-pre-SDL behavior and emits stable reason `input.map_invalid` or `pack.trust_registry_invalid`.
+| Line | Emitted by |
+| --- | --- |
+| `AYTHER_RESERVATION 1` | Reservations acquired (`--rom-revision` / `--pack-revision`). |
+| `AYTHER_PACK_PROBE <json>` | `--probe-pack`. |
+| `AYTHER_QA_CAPABILITIES <report>` | `--qa-capabilities`. |
+| `AYTHER_QA_SESSION <json>` | `--qa-session` in a non-QA build. |
+| `AYTHER_NATIVE_<KIND> ...` | Tessera diagnostic run. |
+| `[tag] text` | Human diagnostics; never parse. |
 
-## Security and trust
+## Security
 
-A Libretro core is native code loaded into the Runtime process. Probing reduces
-launcher exposure but does not sandbox the core. Callers should treat cores,
-ROMs, packs, patches, manifests, paths, and save states as untrusted input and
-apply distribution-appropriate validation and provenance controls.
+A libretro core is native code loaded into the Runtime process. Probing reduces
+launcher exposure but does not sandbox the core. Treat cores, ROMs, packs,
+patches, manifests, paths and save states as untrusted input and apply
+distribution-appropriate validation and provenance controls.

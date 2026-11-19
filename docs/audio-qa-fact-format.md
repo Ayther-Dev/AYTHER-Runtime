@@ -1,35 +1,41 @@
-# Formato de hechos de QA de audio
+# Audio QA fact format
 
-Los mensajes `fact_batch` usan el protocolo binario 1.0 de Runtime. Su carga
-comienza con un contador `uint32` little-endian y contiene registros precedidos
-por su longitud `uint32` little-endian. Un registro no puede superar 64 KiB; un
-lote no puede superar 256 KiB ni 1024 registros. Estos límites se validan antes
-de reservar memoria.
+Reference for the `fact_batch` payload carried by the Runtime QA binary
+protocol 1.0 and stored in `.aqf` fragments (see
+[audio-qa-evidence.md](audio-qa-evidence.md#facts-and-audio)).
 
-El lector admite estos esquemas de registro:
+## Batch framing
 
-| Esquema | Representación | Uso |
+- The payload starts with a little-endian `uint32` record count.
+- Each record is preceded by its little-endian `uint32` length.
+- Limits: a record at most 64 KiB; a batch at most 256 KiB and 1024 records.
+  They are checked before any allocation.
+
+## Record schemas
+
+| Schema | Encoding | Use |
 | --- | --- | --- |
-| 1.0 | TOML completo | Formato histórico con todos los campos de `Fact`. |
-| 1.1 | TOML compacto | Hechos sin causas cuyos cinco campos opcionales son `not_applicable` y `compact_default`. |
-| 1.2 | TOML detallado | Campos tipados representados como tablas. |
-| 1.3 | TOML detallado compacto | Los mismos campos tipados en arreglos compactos. |
-| 1.4 | Binario `AQF4` | Representación vigente para hechos detallados. |
+| 1.0 | Full TOML | Historical format with every `Fact` field. |
+| 1.1 | Compact TOML | Facts without causes whose five optional fields are `not_applicable` and `compact_default`. |
+| 1.2 | Detailed TOML | Typed fields as tables. |
+| 1.3 | Compact detailed TOML | The same typed fields as compact arrays. |
+| 1.4 | Binary `AQF4` | Current encoding for detailed facts. |
 
-El escritor usa 1.1 para el caso compacto sin campos y 1.4 cuando el hecho
-contiene campos detallados. Los formatos 1.0–1.3 permanecen legibles para
-reabrir evidencia ya publicada. Una versión desconocida, un valor fuera de
-rango, una longitud incoherente o bytes residuales se rechazan; el lector no
-infiere valores predeterminados de otro esquema.
+- The writer uses 1.1 for compact facts without fields and 1.4 for facts with
+  detailed fields. 1.0–1.3 remain readable so published evidence can be
+  reopened.
+- An unknown version, an out-of-range value, an inconsistent length or trailing
+  bytes are rejected. The reader never infers defaults from another schema.
 
-`AQF4` comienza con su magic, versión 1.4 y longitudes explícitas. Codifica en
-little-endian la identidad del hecho, productor y secuencia, cuadro, clase,
-causas, identidades opcionales, motivo, órdenes compartidos y todos los campos
-tipados. Las cadenas llevan longitud y se validan antes de copiarlas. La
-decodificación reconstruye exactamente el mismo modelo `Fact`; no modifica la
-causalidad, la disponibilidad ni los motivos.
+## `AQF4`
 
-La variante 1.1 permite la carga reproducible de 256 bytes por registro usada
-por B06. La variante 1.4 reduce el coste de las trazas reales con millones de
-campos sin rebajar los límites ni omitir datos. El framing exterior, sus hashes
-y los contadores de emisión, recepción y durabilidad se verifican por separado.
+`AQF4` starts with its magic, version 1.4 and explicit lengths. It encodes, in
+little-endian: fact identity, producer and sequence, frame, class, causes,
+optional identities, reason, shared orders and every typed field. Strings carry
+their length and are validated before copying. Decoding rebuilds exactly the
+same `Fact` model; it does not alter causality, availability or reasons.
+
+Schema 1.1 gives the reproducible 256-byte-per-record load used by budget B06.
+Schema 1.4 reduces the cost of real traces with millions of fields without
+lowering limits or dropping data. The outer framing, its hashes and the
+emission, reception and durability counters are verified separately.

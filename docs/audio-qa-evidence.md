@@ -1,90 +1,133 @@
-# Evidencia, recuperación y compatibilidad del comprobador de audio
+# Audio QA evidence, recovery and compatibility
 
-`ayther_audio_qa` conserva evidencia técnica reabrible. Registra lo observado y
-su integridad; no decide si existe un reinicio o una superposición musical.
+`ayther_audio_qa` keeps reopenable technical evidence of a replay. It records
+what was observed and how intact the record is; it does **not** decide whether
+the music restarted or overlapped. This page is the reference for the evidence
+directory, the visible replay window and the compatibility rules. The command
+line is in [tools/audio_qa](../tools/audio_qa/README.md); the record encoding
+is in [audio-qa-fact-format.md](audio-qa-fact-format.md).
 
-## Replay visible
+## Visible replay
 
-Añade `--presentation visible` a `ayther_audio_qa check` para abrir la presentación
-normal de Runtime con el audio del dispositivo de reproducción. La imagen, la mezcla
-y los registros proceden de una sola sesión alimentada con la toma. El modo
-`--presentation none` (predeterminado) conserva la ejecución automatizada con audio
-dummy; no acredita observación audiovisual.
+`ayther_audio_qa check --presentation visible` opens Runtime's normal
+presentation with audio on the playback device. Image, mix and records come
+from one session fed by the take. `--presentation none` (default) is the
+automated run with dummy audio; it does not attest audiovisual observation.
 
-El modo visible requiere el protocolo QA 1.1 con las capacidades `visible_replay_v1` e
-`inspection_v1`. Los controles de juego, rewind y cambios de perfil están bloqueados durante
-la toma; ninguna tecla llega al juego. Cada toma abre su propia ventana, y cerrarla cancela
-y conserva lo disponible.
+- Requires QA protocol 1.1 with the capabilities `visible_replay_v1` and
+  `inspection_v1`.
+- Game controls, rewind and profile changes are blocked during the take; no key
+  reaches the game.
+- Each take opens its own window. Closing it cancels the take and keeps what is
+  available.
 
-## Guiones de mando
+### Pad timelines
 
-Un guion de mando (`--timeline`, spec 006) sustituye a la toma: el Runtime arranca la ROM desde
-el encendido o restaura un marcador del Lab y compila el guion a una máscara RetroPad por
-frame con el timing del core. A partir de ahí la ejecución es la de una toma: las mismas
-entradas por frame, el mismo cierre y la misma evidencia. Requiere la capacidad
-`timeline_replay_v1`; la solicitud que el supervisor entrega al Runtime lleva
-`material_kind = "timeline"`, una clave que una solicitud de toma nunca escribe, así que un
-Runtime anterior sigue sirviendo tomas. La evidencia de un guion añade el hecho
-`timeline_compiled` (productor `inspection`): `fps`, `frames`, `steps`, `start`, `state_id`,
-`fm_sidecar` y `fm_seeded`. En `request-summary.toml` (minor 2) la fila del guion dice
-`kind = 'timeline'`, y el guion, su marcador (`timeline_state`) y el `.fm` que lo acompañe
-(`timeline_fm_sidecar`) figuran entre los materiales con su SHA-256.
+A pad timeline (`--timeline`, grammar in
+[tools/audio_qa](../tools/audio_qa/README.md#pad-timelines)) replaces a take:
+Runtime starts the ROM from power-on or restores a Lab bookmark, and compiles
+the timeline to one RetroPad mask per frame at the core's timing. From then on
+the run is that of a take: same per-frame input, same close, same evidence.
 
-### Controles de inspección
+- Requires the capability `timeline_replay_v1`. The request sent to Runtime
+  carries `material_kind = "timeline"`, a key a take request never writes, so
+  an older Runtime still serves takes.
+- The evidence adds a `timeline_compiled` fact (producer `inspection`) with
+  `fps`, `frames`, `steps`, `start`, `state_id`, `fm_sidecar` and `fm_seeded`.
+- In `request-summary.toml` the timeline row says `kind = 'timeline'`; the
+  timeline, its bookmark (`timeline_state`) and its `.fm` sidecar
+  (`timeline_fm_sidecar`) are listed as materials with their SHA-256.
 
-| Tecla | Efecto |
-|---|---|
-| Espacio | Pausa al terminar el frame en curso, que queda presentado; si no hay ninguno en curso, se queda en el último mostrado. En pausa, reanuda desde el frame siguiente al mostrado, sin acelerar para recuperar el tiempo de pausa. |
-| ← / → | En pausa, retroceden o avanzan un frame dentro de la toma. La navegación es silenciosa y se recupera desde los checkpoints con las entradas grabadas. |
-| I | Muestra u oculta el registro de depuración del frame. No cambia la reproducción ni la posición, y cada toma empieza con el registro oculto. |
-| Re Pág, Av Pág, Inicio, Fin, rueda | Desplazan el registro de depuración visible. |
-| Esc | Pide cerrar la ventana, igual que su botón de cierre (la ventana ocupa la pantalla y no tiene barra de título). Antes del fin natural es una cancelación; después sólo cierra la ventana y la inspección posterior, y el resultado confirmado no cambia (spec 006 RF-7.1). |
+### Inspection controls
 
-- Una tecla mantenida no se repite.
-- Sin foco, ninguna tecla actúa. Al recuperarlo, una tecla que seguía pulsada queda bloqueada hasta que se suelta.
-- ← y → a la vez no mueven nada.
-- Durante la preparación o una recuperación, la ventana avisa «no disponible» u «ocupado» y no acumula órdenes.
+| Key | Effect |
+| --- | --- |
+| Space | Pauses at the end of the frame in progress, which stays presented; with no frame in progress, on the last one shown. In pause, resumes from the frame after the one shown, without speeding up to recover the paused time. |
+| Left / Right | In pause, step one frame back or forward within the take. Navigation is silent and is recovered from checkpoints with the recorded input. |
+| I | Shows or hides the frame's debug record. Does not change playback or position. Each take starts with the record hidden. |
+| Page Up, Page Down, Home, End, mouse wheel | Scroll the visible debug record. |
+| Esc | Requests closing the window, like its close button (the window is full screen, without a title bar). Before the natural end it cancels; after it, it only closes the window and the post-end inspection, and the confirmed result does not change. |
 
-**Línea de estado.** Abajo a la derecha, siempre visible, la ventana muestra el estado del frame en curso: el tiempo de la toma en segundos, el frame sobre el total, los botones del mando de ese frame con sus nombres Genesis («Mando a+right», «-» sin botones) y, en un guion, el paso en curso entre los que consumen frames, tal como se escribió, con los segundos que le quedan («Paso 7/9 wait 2s (1.20 s)»). Con I, el registro de depuración repite «Mando» y «Paso» como filas (spec 006 RF-7.4).
+- A held key does not repeat.
+- Without focus no key acts. On regaining focus, a key still held stays blocked
+  until released.
+- Left and Right together move nothing.
+- While preparing or recovering, the window shows «No disponible» / «Ocupado»
+  (Spanish UI; «Not available» / «Busy» in English) and does not queue
+  commands.
 
-**Historial de eventos.** En un guion, abajo a la izquierda, la ventana lleva una lista histórica: cada paso que el guion alcanza se añade como una fila con el segundo en que empezó y su texto («5.00 s  press start»), y la fila nueva aparece en la esquina y empuja las anteriores hacia arriba. Un paso `down`/`up`, que no consume frames, se añade con el paso que lo sigue. La lista sólo crece: navegar hacia atrás no quita filas, y sólo se ven las últimas que caben (spec 006 RF-7.5).
+**Status line.** Bottom right, always visible: take time in seconds, frame over
+total, the pad buttons of that frame with their Genesis names (label «Mando»,
+`-` for none) and, for a timeline, the current frame-consuming step as written,
+with its remaining seconds (label «Paso»). With `I`, the debug record repeats
+«Mando» and «Paso» as rows.
 
-**Fin natural.** Al completar el último frame de la última toma, el resultado lineal se confirma y se envía primero, y la ventana queda en pausa en ese frame con el aviso «Fin de la reproducción. Flechas: inspeccionar · Esc: cerrar la ventana» (spec 006 RF-7.2). Una toma intermedia pasa a la siguiente, salvo que hubiera una pausa pendiente: entonces queda en pausa y Espacio inicia la siguiente. Con `--at-end close` (campo «Al terminar» del lanzador) la ventana se cierra sola en cuanto el resultado se ha enviado, como termina la ejecución sin presentación; el Runtime debe ofrecer `close_at_end_v1` o la solicitud se rechaza con `runtime_missing_close_at_end_v1: --runtime` (spec 006 RF-7.3).
+**Event history.** For a timeline, bottom left: each step reached is appended
+as a row with its start second and its text (for example `5.00 s  press
+start`); new rows enter at the corner and push older ones up. A `down`/`up`
+step, which consumes no frames, is appended with the step that follows it. The
+list only grows: stepping back removes nothing, and only the last rows that fit
+are shown.
 
-**Inspección posterior.** Navegar después del fin natural abre un recorrido aparte, `post_end_inspection`, sobre una sesión rearmada desde los checkpoints. Ese recorrido tiene su propio `run_id` (`<run_id>-inspection-<n>`) y su propio terminal, y nunca cambia el resultado confirmado.
+**Natural end.** When the last frame of the last take completes, the linear
+result is confirmed and sent first; then the window pauses on that frame with
+the hint «Fin de la reproducción. Flechas: inspeccionar · Esc: cerrar la
+ventana». An intermediate take moves on to the next one, unless a pause was
+pending: then it pauses and Space starts the next take. With `--at-end close`
+(launcher field «Al terminar») the window closes itself once the result is
+sent, as a run without presentation ends; Runtime must offer `close_at_end_v1`
+or the request is rejected with `runtime_missing_close_at_end_v1: --runtime`.
 
-**Presentación interrumpida.** Una pérdida de vídeo, del dispositivo de audio en uso o de la ventana minimizada detiene la toma en el último frame completado. Al recuperarse, la toma queda en pausa con la incidencia registrada. La cancelación sigue disponible mientras está interrumpida.
+**Post-end inspection.** Navigating after the natural end opens a separate
+traversal, `post_end_inspection`, on a session rebuilt from checkpoints. It has
+its own `run_id` (`<run_id>-inspection-<n>`) and its own terminal, and never
+changes the confirmed result.
 
-`runs/<run_id>/replay-result.toml` conserva atómicamente el terminal con el
-modo, backend de audio, perfil efectivo, cuadros presentados, conteo de cuadros
-afectados y su intervalo envolvente (índices de toma desde cero). También conserva
-resolución inicial, HD/shaders y la equivalencia física histórica como no verificada. El
-terminal 1.4 añade, por separado, `playback` (`natural_end`, `cancelled`, `failed`,
-`interrupted`), `traversal` (`linear`, `inspection`, `post_end_inspection`),
-`linear_completed`, `evidence_reasons`, `ended_paused`, `user_pause_ms` e `interruptions`. El
-lector sigue aceptando terminales 1.2 y 1.3, cuyo recorrido y reproducción se informan como
-desconocidos, nunca como lineales. El intervalo envolvente
-puede incluir cuadros no afectados; no representa una pérdida continua.
+**Interrupted presentation.** Loss of video, of the audio device in use, or a
+minimized window stops the take at the last completed frame. On recovery the
+take stays paused with the incident recorded. Cancellation remains available
+while interrupted.
 
-Un fallo de ventana, vídeo, audio o cadencia produce un resultado incompleto,
-conservando el replay seguro y sus registros. El umbral de cadencia es un periodo
-del core adicional al vencimiento del cuadro. Excepción (DI-25): en la reproducción
-continua, los cuadros tardíos aislados se registran como `cadence_degraded` pero no
-dejan la observación incompleta si ninguno llega más de 3 periodos tarde y hay como
-mucho uno por cada 1 000 cuadros de la toma (mínimo uno). El terminal los cuenta en el
-campo opcional `presentation.tolerated_late_frames` (ausente vale 0). Una navegación
-(`traversal = inspection`) presenta en reproducción sólo los cuadros que reproduce; el
-resto lo alcanza moviéndose, así que no se exige que presente todos los consumidos, y
-un fallo al cerrarla sigue informándose como `inspection`. Ningún estado completo implica que
-se haya evaluado el fallo musical ni medido la sincronía física de los dispositivos.
-Los campos `audible_restart_observed` y `audible_overlap_observed` muestran
-`not_evaluated` cuando no existe evaluación, incluso si la ventana se presentó.
-`false` queda reservado a una evaluación explícita negativa; no es el valor por defecto.
+### Replay result
 
-## Directorio de evidencia
+`runs/<run_id>/replay-result.toml` atomically keeps the terminal: mode, audio
+backend, effective profile, presented frames, count of affected frames and
+their enclosing interval (zero-based take indices), initial resolution,
+HD/shaders, and the historical physical equivalence as not verified. The
+enclosing interval may include unaffected frames; it does not represent a
+continuous loss.
 
-La raíz de `--output` contiene `request-ledger.toml` y un directorio exclusivo
-por `run_id`:
+Terminal 1.4 adds, separately: `playback` (`natural_end`, `cancelled`,
+`failed`, `interrupted`), `traversal` (`linear`, `inspection`,
+`post_end_inspection`), `linear_completed`, `evidence_reasons`, `ended_paused`,
+`user_pause_ms` and `interruptions`. Terminals 1.2 and 1.3 are still read;
+their traversal and playback are reported as unknown, never as linear.
+
+Rules:
+
+- A window, video, audio or cadence failure yields an incomplete result and
+  keeps the safe replay and its records.
+- Cadence threshold: one core period beyond the frame's due time.
+- Exception (DI-25): in continuous playback, isolated late frames are recorded
+  as `cadence_degraded` but do not make the observation incomplete if none is
+  more than 3 periods late and there is at most one per 1 000 take frames
+  (minimum one). The terminal counts them in the optional
+  `presentation.tolerated_late_frames` (absent means 0).
+- A navigation (`traversal = inspection`) presents in playback only the frames
+  it plays; the rest it reaches by moving, so it is not required to present
+  every consumed frame. A failure while closing it is still reported as
+  `inspection`.
+- No complete status implies that the musical failure was evaluated or that
+  physical device synchronization was measured.
+  `audible_restart_observed` and `audible_overlap_observed` show
+  `not_evaluated` when there is no evaluation, even if the window was
+  presented. `false` is reserved for an explicit negative evaluation; it is not
+  the default.
+
+## Evidence directory
+
+The `--output` root holds `request-ledger.toml` and one exclusive directory per
+`run_id`:
 
 ```text
 <output>/
@@ -101,110 +144,158 @@ por `run_id`:
   runs/<run_id>-inspection-1/…
 ```
 
-## Recorridos, visitas y resumen
+Some files appear only when their phase publishes. An absence is reported as
+unknown or incomplete and never turned into a zero count. A run never replaces
+another run's directory.
 
-- **`traversal.toml`** (esquema 1.2, uno por recorrido; se siguen leyendo los 1.1, cuyos tramos de audio y exclusiones quedan como desconocidos) describe cómo se recorrió la toma, y se reescribe de forma duradera al confirmar el resultado:
-  - el tipo: `linear`, `inspection` o `post_end_inspection`;
-  - los tramos lineales;
-  - las visitas a frames, cada una con su número de visita;
-  - las reanudaciones y las interrupciones.
-- **Tipo de recorrido.** Una pausa sin navegación mantiene el recorrido lineal. El primer paso con ← o → lo convierte en `inspection` para siempre, y ese recorrido no se acredita como reproducción lineal completa.
-- **`inspection_event`.** Cada control aplicado es un hecho de esta clase, con:
-  - `seq`, el orden de visita desde 1;
-  - el control: `pause`, `resume`, `step_forward`, `step_back`, `recover_failed`, `overlay_toggle`, `interrupted`, `recovered` o `advance_take`;
-  - el frame antes y después, la visita y el tiempo de toma.
-- **`render_frame`.** Cada visita a un frame, producido o recuperado, genera un hecho de esta clase con el frame, la visita, si se pudo componer o el motivo, el número de ocurrencias, y el tiempo de procesamiento y los FPS instantáneos cuando se midieron. Una visita repetida tiene otro número de visita. Un frame en pausa no genera registros nuevos.
-- **Producción silenciosa.** Los hechos y el PCM producidos en modo silencioso, al navegar o recuperar, no entran en la evidencia: el Runtime los descarta en su sumidero y declara los hechos descartados (véase «Hechos excluidos»).
-- **Audio por tramos (evidencia 1.2).** El PCM de una toma se escribe por tramos lineales: el tramo 0 empieza con la toma y el Runtime abre el siguiente en cada reanudación. Cada bloque `.aqp` nombra su tramo y nunca abarca dos.
-  - `traversal.toml` 1.2 añade `audio_segments`: por tramo, `segment`, los frames que se reprodujeron en él (`frame_from`, `frame_to`), la línea de tiempo y la tasa, el intervalo de muestras (`sample_begin`, `sample_end`, decimales) y los bloques que lo forman. Un conmutador del registro durante la reproducción parte el tramo del recorrido, pero no el de audio: ambos quedan en el mismo tramo de audio.
-  - La continuidad del PCM se audita dentro de cada tramo. En un recorrido `inspection`, un salto entre dos tramos no es una pérdida: un paso adelante produce frames en silencio y la línea avanza; un paso atrás restaura un checkpoint y la línea retrocede.
-  - Un recorrido lineal sigue exigiendo un único intervalo continuo, aunque una pausa lo divida en tramos.
-  - Un tramo con frames y sin PCM, o PCM de un tramo sin frames, deja la evidencia incompleta (`pcm_segment_mismatch`). Con todos los tramos contiguos y completos, el audio de una inspección está completo, pero nunca se acredita como audio lineal.
-- **Hechos excluidos (evidencia 1.2).** Los hechos del Engine que una recuperación produce en silencio no son evidencia, y la secuencia de sus productores queda con un hueco. Cada recuperación lo declara:
-  - el Runtime emite, al terminar la recuperación, un hecho `fact_exclusion` del productor `inspection` por cada productor del Engine afectado, con `recovery` (orden de la recuperación en el run, desde 1), `producer` (`engine-<n>`), `sequence_from` y `sequence_to` (el intervalo excluido, ambos incluidos) y `cause` (`silent_recovery`). Viaja y se conserva con los demás hechos, en los fragmentos `.aqf`;
-  - `traversal.toml` 1.2 añade `fact_exclusions`, con los mismos campos (las secuencias como decimales), junto a `audio_segments`;
-  - la auditoría de la traza trata un hueco declarado como exclusión, no como pérdida. Un hueco no declarado sigue siendo pérdida, igual que una declaración que cubre un hecho conservado, que excluye dos veces la misma secuencia o que tiene otra causa. Una causa que apunta a un hecho excluido cuenta como excluida, no como sin resolver;
-  - así una inspección cuyos únicos huecos son exclusiones declaradas tiene la evidencia completa (`loss_free`), con `traversal = inspection` y sin acreditarse como reproducción lineal;
-  - una evidencia 1.0 o 1.1, o una 1.2 anterior sin `fact_exclusions`, se sigue leyendo; como no declara nada, sus huecos siguen siendo pérdidas y la evidencia queda incompleta.
-- **`request-summary.toml`** (esquema 1.1) es el resumen confirmado y duradero de la solicitud:
-  - las selecciones con su origen y su SHA-256, y `conditions_id`;
-  - el resultado de cada toma por posición, con `playback`, `traversal` y `evidence` por separado;
-  - el resultado conjunto.
-  - Consultar una solicitud ya confirmada devuelve este resumen tal cual.
-- **Evidencia completa.** Una evidencia es `complete` sólo si se conservaron y se comprobaron:
-  - la identificación;
-  - las condiciones;
-  - todas las posiciones y controles;
-  - el resultado;
-  - los datos de cada frame visitado, sin pérdidas conocidas.
+## Traversals, visits and summary
 
-Algunos archivos aparecen únicamente al publicar su fase. Una ausencia se
-informa como desconocida o incompleta y nunca se convierte en un conteo cero.
-Una ejecución no reemplaza el directorio de otra.
+**`traversal.toml`** (schema 1.2, one per traversal; 1.1 is still read, with
+audio segments and exclusions reported as unknown) describes how the take was
+traversed and is rewritten durably when the result is confirmed:
 
-## Hechos y audio
+- the kind: `linear`, `inspection` or `post_end_inspection`;
+- the linear segments;
+- the frame visits, each with its visit number;
+- resumptions and interruptions.
 
-Cada `.aqf` comienza con `AYTFACT1`, versión 1.0 del contenedor, secuencia,
-cantidad de registros, tamaño y SHA-256 del payload. El payload es un
-`fact_batch`; sus registros admiten los esquemas 1.0–1.4 descritos en
-`audio-qa-fact-format.md`. El formato vigente de hechos detallados es el binario
-1.4 `AQF4`. La lectura valida encabezado, límites, longitud, secuencia, hash,
-conteo y modelo antes de entregar hechos.
+**Traversal kind.** A pause without navigation keeps the traversal linear. The
+first Left or Right step turns it into `inspection` for good, and that
+traversal is never credited as a complete linear playback.
 
-Cada `.aqp` comienza con `AYTPCM01`, versión 1.0 del contenedor, secuencia,
-tamaños y SHA-256. El cuerpo conserva metadatos y PCM intercalado S16LE, S24LE,
-S32LE o F32LE, hasta 192 kHz y ocho canales dentro de los límites negociados.
-El lector valida captura, formato, timeline, rangos, hash y bytes. No inventa
-silencio ni completa canciones; un WAV derivado deja intactos los `.aqp`. Los
-metadatos 1.1 añaden las causas; los 1.2 añaden `segment`, el tramo del recorrido
-al que pertenece el bloque, y sólo se escriben para los tramos posteriores al 0.
-Un bloque 1.0 o 1.1 se lee como tramo 0, de modo que la evidencia anterior se sigue
-auditando como un único intervalo.
+**`inspection_event`.** Each applied control is a fact of this class, with
+`seq` (visit order from 1); the control (`pause`, `resume`, `step_forward`,
+`step_back`, `recover_failed`, `overlay_toggle`, `interrupted`, `recovered` or
+`advance_take`); the frame before and after; the visit; and the take time.
 
-## Durabilidad y recuperación
+**`render_frame`.** Each visit to a frame, produced or recovered, yields a fact
+of this class with the frame, the visit, whether it could be composed (or why
+not), the occurrence count, and the processing time and instantaneous FPS when
+measured. A repeated visit has another visit number. A paused frame produces no
+new records.
 
-`checkpoints/current.toml` usa esquema 1.0 y secuencia creciente. Enumera hasta
-4096 artefactos publicados con clase, ruta relativa segura, secuencia, tamaño y
-SHA-256. El nuevo checkpoint se escribe y vacía antes del reemplazo atómico. Si
-falla la publicación, el anterior permanece válido. El ledger aplica el mismo
-principio y distingue solicitud nueva, reenvío, conflicto y sesión ocupada.
+**Silent production.** Facts and PCM produced silently while navigating or
+recovering are not evidence: Runtime discards them in its sink and declares the
+discarded facts (see fact exclusions below).
 
-La auditoría reabre los artefactos en orden, verifica hechos, relaciones y
-muestras, y conserva el primer punto inválido sin borrar el diagnóstico previo.
-Una ejecución interrumpida se recupera como `incomplete`; el checkpoint queda
-`absent`, `verified` o `unreadable`. `automatic_resume_allowed` siempre es
-`false`: la recuperación no relanza la toma.
+**Segmented audio (evidence 1.2).** A take's PCM is written in linear segments:
+segment 0 starts with the take and Runtime opens the next one at each resume.
+Each `.aqp` block names its segment and never spans two.
 
-## Compatibilidad
+- `traversal.toml` 1.2 adds `audio_segments`: per segment, `segment`, the
+  frames played in it (`frame_from`, `frame_to`), the timeline and rate, the
+  sample interval (`sample_begin`, `sample_end`, decimal) and the blocks that
+  form it. Toggling the debug record during playback splits the traversal
+  segment but not the audio segment.
+- PCM continuity is audited within each segment. In an `inspection` traversal a
+  jump between segments is not a loss: stepping forward produces frames
+  silently and the timeline advances; stepping back restores a checkpoint and
+  the timeline goes back.
+- A linear traversal still requires one continuous interval, even if a pause
+  splits it into segments.
+- A segment with frames and no PCM, or PCM of a segment without frames, makes
+  the evidence incomplete (`pcm_segment_mismatch`). With all segments
+  contiguous and complete, an inspection's audio is complete but never credited
+  as linear audio.
 
-Contenedores, PCM, checkpoints, ledger y referencias declaran sus versiones.
-Los registros de hechos aceptan únicamente 1.0–1.4. Una versión no admitida,
-truncamiento, exceso, hash distinto o ruta insegura devuelve un error explícito
-sin migrar ni sobrescribir el original. Una futura migración deberá crear una
-vista nueva.
+**Fact exclusions (evidence 1.2).** Engine facts produced silently by a
+recovery are not evidence, and their producer's sequence has a gap. Each
+recovery declares it:
 
-Runtime negocia por separado los contratos Engine, Runtime QA, evidencia y
-estado HD. Los cuatro deben ofrecer 1.0 y las diez capacidades obligatorias. Un
-Runtime incompatible produce `runtime_incompatible` y no acredita replay. Una solicitud con
-guiones de mando exige además `timeline_replay_v1`; sin ella se rechaza con
-`runtime_missing_timeline_replay_v1` antes de la admisión. Una solicitud con `--at-end close`
-exige `close_at_end_v1`; sin ella se rechaza con `runtime_missing_close_at_end_v1`.
+- at the end of the recovery, Runtime emits a `fact_exclusion` fact (producer
+  `inspection`) for each affected Engine producer, with `recovery` (order of
+  the recovery in the run, from 1), `producer` (`engine-<n>`), `sequence_from`
+  and `sequence_to` (excluded interval, both inclusive) and `cause`
+  (`silent_recovery`). It is stored with the other facts in the `.aqf`
+  fragments;
+- `traversal.toml` 1.2 adds `fact_exclusions` with the same fields (sequences
+  as decimals), next to `audio_segments`;
+- the trace audit treats a declared gap as an exclusion, not a loss. An
+  undeclared gap is still a loss, as is a declaration that covers a kept fact,
+  excludes the same sequence twice or has another cause. A cause pointing to an
+  excluded fact counts as excluded, not unresolved;
+- an inspection whose only gaps are declared exclusions therefore has complete
+  evidence (`loss_free`), with `traversal = inspection` and no linear credit;
+- evidence 1.0 or 1.1, or an earlier 1.2 without `fact_exclusions`, is still
+  read; since it declares nothing, its gaps remain losses and the evidence is
+  incomplete.
 
-## Aislamiento y materiales privados
+**`request-summary.toml`** (schema 1.2) is the confirmed, durable summary of the
+request:
 
-La validación previa calcula el SHA-256 de cada material (Runtime, ROM, core, pack, tomas,
-manifiesto y registro de confianza) y lo guarda en el resumen de la solicitud. Durante cada
-toma, el comprobador mantiene abiertos los materiales de esa toma con `FILE_SHARE_READ`, sin
-permiso de escritura ni de borrado, y comprueba su SHA-256 contra el de la validación antes
-de entregarlos al Runtime. Si algún material cambió, la toma no empieza y la solicitud se
-detiene con `material_changed`, conservando la evidencia anterior. Cada consulta y replay recibe
-una raíz privada de datos de Runtime bajo la salida de la campaña. El
-comprobador toma una instantánea completa del árbol ordinario de datos del
-usuario, verifica que permanezca idéntico al terminar y elimina la raíz privada
-por RAII. Una alteración produce `user_data_changed`; un aislamiento que no
-puede prepararse produce `runtime_data_isolation_failed`.
+- the selections with their origin, SHA-256 and `conditions_id`;
+- each take's result by position, with `playback`, `traversal` and `evidence`
+  separately;
+- the joint result.
 
-La evidencia conserva identidades y procedencia, no bytes de ROM ni core. Pack,
-tomas, manifiesto, registro de confianza y guardados ordinarios son entradas de
-solo lectura. La campaña final verifica además que no queden raíces privadas y
-que ningún archivo entregable coincida con los hashes de ROM o core.
+Querying an already confirmed request returns this summary unchanged.
+
+**Complete evidence.** Evidence is `complete` only if all of these were kept and
+checked: identification; conditions; every position and control; the result;
+and the data of every visited frame, with no known loss.
+
+## Facts and audio
+
+Each `.aqf` starts with `AYTFACT1`, container version 1.0, sequence, record
+count, payload size and SHA-256. The payload is a `fact_batch` whose records
+use schemas 1.0–1.4 ([format](audio-qa-fact-format.md)); detailed facts are
+written as binary 1.4 `AQF4`. Reading validates header, limits, length,
+sequence, hash, count and model before returning facts.
+
+Each `.aqp` starts with `AYTPCM01`, container version 1.0, sequence, sizes and
+SHA-256. The body holds metadata and interleaved PCM: S16LE, S24LE, S32LE or
+F32LE, up to 192 kHz and eight channels within the negotiated limits. The
+reader validates capture, format, timeline, ranges, hash and bytes. It never
+invents silence or completes songs; a derived WAV leaves the `.aqp` files
+intact. Metadata 1.1 adds causes; 1.2 adds `segment`, written only for segments
+after 0. A 1.0 or 1.1 block reads as segment 0, so older evidence is still
+audited as one interval.
+
+## Durability and recovery
+
+- `checkpoints/current.toml` (schema 1.0, increasing sequence) lists up to 4096
+  published artifacts with class, safe relative path, sequence, size and
+  SHA-256. The new checkpoint is written and flushed before the atomic
+  replacement; if publication fails, the previous one stays valid.
+- The ledger follows the same principle and distinguishes new request, resend,
+  conflict and busy session.
+- The audit reopens artifacts in order, verifies facts, relations and samples,
+  and keeps the first invalid point without deleting earlier diagnostics.
+- An interrupted run is recovered as `incomplete`; its checkpoint is `absent`,
+  `verified` or `unreadable`. `automatic_resume_allowed` is always `false`:
+  recovery never relaunches the take.
+
+## Compatibility
+
+- Containers, PCM, checkpoints, ledger and references declare their versions.
+  Fact records accept only 1.0–1.4.
+- An unsupported version, truncation, excess, hash mismatch or unsafe path
+  returns an explicit error without migrating or overwriting the original. A
+  future migration must create a new view.
+- Runtime negotiates the Engine, Runtime QA, evidence and HD-state contracts
+  separately. All four must offer 1.0 and the ten mandatory capabilities. An
+  incompatible Runtime yields `runtime_incompatible` and is not credited with a
+  replay.
+- A request with pad timelines also requires `timeline_replay_v1`; without it
+  the request is rejected with `runtime_missing_timeline_replay_v1` before
+  admission. A request with `--at-end close` requires `close_at_end_v1`;
+  without it, `runtime_missing_close_at_end_v1`.
+
+## Isolation and private materials
+
+- Preflight computes the SHA-256 of every material (Runtime, ROM, core, pack,
+  takes, manifest and trust registry) and stores it in the request summary.
+- During each take, the checker keeps that take's materials open with
+  `FILE_SHARE_READ`, without write or delete sharing, and checks each SHA-256
+  against the preflight value before handing it to Runtime. If any material
+  changed, the take does not start and the request stops with
+  `material_changed`, keeping earlier evidence.
+- Each query and replay gets a private Runtime data root under the campaign
+  output. The checker snapshots the user's ordinary data tree, verifies it is
+  unchanged at the end and removes the private root (RAII). A change yields
+  `user_data_changed`; an isolation that cannot be prepared yields
+  `runtime_data_isolation_failed`.
+- Evidence keeps identities and provenance, never ROM or core bytes. Pack,
+  takes, manifest, trust registry and ordinary saves are read-only inputs. The
+  final campaign also verifies that no private roots remain and that no
+  deliverable file matches the ROM or core hashes.

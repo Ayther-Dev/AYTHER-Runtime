@@ -1,53 +1,80 @@
-# Launcher de replay QA (`ayther_replay_qa`)
+# Replay QA launcher (`ayther_replay_qa`)
 
-`ayther_replay_qa` es la ventana para preparar y lanzar una comprobación de replay QA sin escribir la línea de órdenes de `ayther_audio_qa check`. Usa la misma biblioteca, `run_check`, y la misma tabla de opciones: cada opción de `check` tiene un campo en el launcher, y ninguna opción queda fuera.
+`ayther_replay_qa` is a window for preparing and starting a replay QA check
+without typing the `ayther_audio_qa check` command line. It uses the same
+library (`run_check`) and the same option table: every `check` option has a
+field, and none is left out. Options and rules are documented in
+[tools/audio_qa](../audio_qa/README.md).
 
-Se instala con el componente `qa`, junto a `ayther_audio_qa`, y nunca con el componente de usuario final del Runtime.
+It is installed with the `qa` component, next to `ayther_audio_qa`, never with
+the end-user Runtime component.
 
-## Uso
+The interface is bilingual. UI labels are quoted below in English with the
+Spanish label (the default language) in parentheses.
 
-1. **Abre `ayther_replay_qa.exe`.**
-   - La ventana empieza vacía: no recuerda la ROM, las tomas ni el pack de una sesión anterior.
-   - La modalidad inicial es la presentación visible.
-2. **Elige los materiales** con «Elegir…», que abre el diálogo nativo de archivos.
-   - **ROM:** el juego.
-   - **Tomas:** una o varias `.ayr`. Se pueden reordenar, repetir y quitar; cada repetición se ve como otra posición.
-   - **Guiones de mando:** uno o varios archivos de texto (`.timeline`) que manejan el mando en lugar de una toma, desde el encendido o desde un marcador del Lab (spec 006). Mismas operaciones que las tomas; van después de ellas. Hace falta al menos una toma o un guion; si no hay ninguno, ambos campos dicen «Hace falta una toma o un guion de mando». Un guion rechazado muestra su código en su posición y, debajo de los errores, la línea y el motivo (`audio_qa_diagnostic`). La gramática está en el README de `ayther_audio_qa`.
-   - **Pack:** opcional. «Quitar» lo retira, y el resumen dice entonces «Sin pack».
-   - **Runtime y core:** si hay un Runtime instalado junto al launcher y una configuración de AYTHER Play CE, salen de ahí. El resumen muestra su origen como «entorno», y la configuración de Play CE sólo se lee.
-   - **Rutas pegadas:** una ruta pegada entre comillas dobles, como la deja «Copiar como ruta de acceso» de Windows, se usa sin ese par de comillas en todos los campos de ruta. El resumen y la solicitud registran la ruta sin comillas.
-3. **Revisa las secciones.** Son entorno y condiciones, información auxiliar, destino e identidad, presentación e idioma. Un campo no válido muestra su error debajo, por ejemplo «Campo obligatorio» o el código de la validación previa, como `core_platform_mismatch`.
-   - **Al terminar** (`--at-end`): `inspect` deja la ventana del Runtime en pausa en el último frame al fin natural, con el aviso «Flechas: inspeccionar · Esc: cerrar la ventana»; `close` la cierra sola en cuanto el resultado se ha enviado. Exige un Runtime con `close_at_end_v1` (spec 006 RF-7.3).
-4. **Comprueba el resumen de valores efectivos.** Cada fila muestra su origen: seleccionado, por defecto, entorno o manifiesto.
-   - Cualquier cambio vuelve a validar la solicitud con el Runtime antes de poder iniciar.
-   - «Iniciar» sólo se habilita cuando no queda ningún error.
-5. **Pulsa «Iniciar».**
-   - La solicitud corre en un hilo de trabajo y la ventana no se bloquea.
-   - La línea de fase muestra validación, admisión, preparación, reproducción y cierre, con la toma en curso.
-6. **Para detener, pulsa «Cancelar».** Cancela la solicitud y las tomas que no empezaron quedan como no iniciadas.
-7. **Lee los resultados.** Al terminar se ve, para cada toma, la reproducción, el recorrido y la evidencia, con los motivos de una evidencia incompleta. Debajo aparece el resultado conjunto. Un resultado técnico no es una evaluación visual.
+## Usage
 
-### Idioma
+1. **Open `ayther_replay_qa.exe`.** The form starts empty: it does not remember
+   ROM, takes or pack from a previous session. The initial mode is visible
+   presentation.
+2. **Choose the materials** with "Choose…" («Elegir…»), which opens the native
+   file dialog.
+   - **ROM:** the game.
+   - **Takes:** one or more `.ayr` files. They can be reordered, repeated and
+     removed; each repeat is another position.
+   - **Pad timelines:** one or more `.timeline` text files that drive the pad
+     instead of a take, from power-on or a Lab bookmark. Same operations as
+     takes; they run after them. At least one take or timeline is required;
+     otherwise both fields say "A take or a pad timeline is required" («Hace
+     falta una toma o un guion de mando»). A rejected timeline shows its code at
+     its position and, below the errors, the line and reason
+     (`audio_qa_diagnostic`). Grammar:
+     [pad timelines](../audio_qa/README.md#pad-timelines).
+   - **Pack:** optional. "Remove" («Quitar») clears it, and the summary then
+     says "No pack" («Sin pack»).
+   - **Runtime and core:** if a Runtime is installed next to the launcher and a
+     Play CE configuration exists, they come from there; the summary shows the
+     origin "environment" («entorno»). The Play CE configuration is only read.
+   - **Pasted paths:** a path wrapped in double quotes (as Windows "Copy as
+     path" produces) is used without them in every path field, and is recorded
+     without them.
+3. **Review the sections:** environment and conditions, auxiliary information,
+   destination and identity, presentation and language. An invalid field shows
+   its error below it, for example "Required field" («Campo obligatorio») or a
+   preflight code such as `core_platform_mismatch`.
+   - **At the end** («Al terminar», `--at-end`): `inspect` keeps the Runtime
+     window paused on the last frame at the natural end; `close` closes it once
+     the result is sent. `close` requires a Runtime with `close_at_end_v1`.
+4. **Check the effective-values summary.** Each row shows its origin: selected,
+   default, environment or manifest. Any change revalidates the request with
+   Runtime; "Start" («Iniciar») is enabled only when no error remains.
+5. **Press "Start" («Iniciar»).** The request runs on a worker thread and the
+   window stays responsive. The phase line shows validation, admission,
+   preparation, playback and close, with the current take.
+6. **To stop, press "Cancel" («Cancelar»).** The request is cancelled; takes
+   that had not started are reported as not started.
+7. **Read the results:** per take, playback, traversal and evidence, with the
+   reasons for incomplete evidence, then the joint result. A technical result is
+   not a visual evaluation.
 
-- La interfaz está en español o en inglés según el campo «Idioma», que es la opción `--language` (`es` por defecto, `en`).
-- El mismo idioma llega a la ventana de replay del Runtime: avisos, overlay de depuración y mensajes.
+### Language
 
-### Controles de la ventana de replay
+The "Language" («Idioma») field is the `--language` option: `es` (default) or
+`en`. The same language reaches the Runtime replay window: hints, debug overlay
+and messages.
 
-Con presentación visible, el Runtime abre su propia ventana por toma. Los controles son:
+### Replay window
 
-- **Espacio:** pausa al terminar el frame en curso (si no hay ninguno, en el último mostrado) y reanuda.
-- **Línea de estado:** abajo a la derecha, siempre visible: tiempo de la toma (s), frame/total, botones del mando del frame («Mando a+right») y, en un guion, el paso en curso con los segundos que le quedan («Paso 7/9 wait 2s (1.20 s)»).
-- **Historial de eventos:** en un guion, abajo a la izquierda, una lista histórica donde cada paso alcanzado se añade como una fila con el segundo en que empezó («5.00 s  press start»); la fila nueva entra por la esquina y empuja las anteriores hacia arriba. Sirve para seguir los `wait` y ver cuándo entra cada botón.
-- **Esc:** pide cerrar la ventana, igual que su botón de cierre (la ventana ocupa la pantalla). Antes del fin natural cancela la toma; después sólo cierra la ventana y el resultado confirmado no cambia. Al fin natural la ventana lo recuerda: «Fin de la reproducción. Flechas: inspeccionar · Esc: cerrar la ventana». El campo «Al terminar» (`--at-end`) con `close` hace que la ventana se cierre sola en cuanto el resultado se ha enviado (spec 006 RF-7).
-- **← y →:** en pausa, retroceden y avanzan un frame.
-- **I:** muestra u oculta el registro de depuración.
+With visible presentation, Runtime opens its own window per take: Space pauses
+and resumes, Left/Right step in pause, `I` toggles the debug record, Esc
+closes. The status line, event history and natural-end behavior are described
+in [docs/audio-qa-evidence.md](../../docs/audio-qa-evidence.md#inspection-controls);
+the key table is in [docs/input-map.md](../../docs/input-map.md#replay-qa-window).
 
-Están descritos en `docs/input-map.md` y en `docs/audio-qa-evidence.md`.
+## Build
 
-## Compilación
-
-El launcher forma parte de la compilación QA del Runtime y requiere el paquete QA del Engine (ver `docs/development.md`, «Replay QA»):
+The launcher is part of the Runtime QA build and needs the QA Engine package
+(see [docs/development.md](../../docs/development.md), «Replay QA»):
 
 ```powershell
 $env:AYTHER_ENGINE_PREFIX = & ./tools/bootstrap_ayther_engine_qa.ps1
@@ -55,45 +82,51 @@ cmake --preset windows-qa
 cmake --build --preset windows-qa --target ayther_replay_qa
 ```
 
-- **Dependencias.** SDL3 y Dear ImGui, con el backend SDL_Renderer de ImGui. Por eso `vcpkg.json` activa la feature `sdl3-renderer-binding` de `imgui`, además de `sdl3-binding` y `vulkan-binding`. La ventana del launcher dibuja con SDL_Renderer y no necesita Vulkan.
-- **Estructura.** El modelo es puro y se compila aparte, en la biblioteca `ayther_replay_qa_model`: formulario, validación, secciones, resumen, resultados y textos. La ventana (`launcher_app.cpp`) sólo dispone ese modelo.
+- **Dependencies:** SDL3 and Dear ImGui with its SDL_Renderer backend, so
+  `vcpkg.json` enables the `imgui` feature `sdl3-renderer-binding` in addition
+  to `sdl3-binding` and `vulkan-binding`. The launcher window draws with
+  SDL_Renderer and does not need Vulkan.
+- **Structure:** the model is pure and built separately as
+  `ayther_replay_qa_model` (form, validation, sections, summary, results and
+  texts). The window (`launcher_app.cpp`) only lays it out.
 
-## Pruebas
+## Tests
 
-Sin GPU:
+Without GPU:
 
 ```powershell
 ctest --preset windows-qa -R "^replay_qa_launcher_" --output-on-failure
 ```
 
-- **`replay_qa_launcher_launcher_messages`:** catálogo es/en.
-- **`replay_qa_launcher_launcher_model`:** campos, obligatorios, «Sin pack», tomas ordenadas, revalidación, fases y resultados.
-- **`replay_qa_launcher_environment_resolver`:** Runtime y core del entorno.
-- **`replay_qa_launcher_launcher_runner`:** hilo de trabajo y cancelación.
-- **`replay_qa_launcher_launcher_view`:** diálogos, secciones, validación por tipo, resumen, errores y resultados.
-- **`replay_qa_launcher_option_coverage`:** un campo por opción. Regenera `evidence/rf1-option-correspondence.md` en el árbol de compilación.
+| Test | Covers |
+| --- | --- |
+| `replay_qa_launcher_launcher_messages` | es/en catalog. |
+| `replay_qa_launcher_launcher_model` | Fields, required values, «Sin pack», ordered takes, revalidation, phases and results. |
+| `replay_qa_launcher_environment_resolver` | Runtime and core from the environment. |
+| `replay_qa_launcher_launcher_runner` | Worker thread and cancellation. |
+| `replay_qa_launcher_launcher_view` | Dialogs, sections, per-type validation, summary, errors and results. |
+| `replay_qa_launcher_option_coverage` | One field per option; regenerates `evidence/rf1-option-correspondence.md` in the build tree. |
 
-Con GPU y escritorio (`windows-qa-gpu`):
+With GPU and a desktop session (`windows-qa-gpu`):
 
 ```powershell
 ctest --preset windows-qa-gpu -R "^replay_qa_launcher_(window_smoke|interface_smoke|idle_cpu)$" --output-on-failure
 ```
 
-- **`replay_qa_launcher_window_smoke`:** `ayther_replay_qa --smoke-frames 30` abre la ventana y dibuja 30 fotogramas. `--smoke-capture <archivo.bmp>` guarda el último.
-- **`replay_qa_launcher_interface_smoke`:** `ayther_replay_qa --self-test` comprueba la interfaz de punta a punta:
-  - muestra los errores de los campos obligatorios;
-  - inicia una solicitud visible con el core sintético;
-  - la cancela tras dos segundos de reproducción;
-  - muestra la toma como «Cancelada» y el resultado conjunto.
-  - Los materiales llegan con `--runtime`, `--core`, `--rom`, `--take` (o `--timeline`) y `--output`.
-- **`replay_qa_launcher_idle_cpu`:** `ayther_replay_qa --idle-seconds 3` deja la ventana en reposo tres segundos e informa de los redibujos y de la CPU usada. En reposo la ventana espera la entrada (o redibuja cada 100 ms el progreso) con vsync, para no competir con el Runtime mientras presenta la reproducción; la prueba exige como mucho un redibujo por refresco y menos de un cuarto de núcleo.
+| Test | Command and check |
+| --- | --- |
+| `replay_qa_launcher_window_smoke` | `ayther_replay_qa --smoke-frames 30` opens the window and draws 30 frames; `--smoke-capture <file.bmp>` saves the last one. |
+| `replay_qa_launcher_interface_smoke` | `ayther_replay_qa --self-test`: shows the required-field errors, starts a visible request with the synthetic core, cancels it after two seconds of playback, and shows the take as cancelled («Cancelada») plus the joint result. Materials come from `--runtime`, `--core`, `--rom`, `--take` (or `--timeline`) and `--output`. |
+| `replay_qa_launcher_idle_cpu` | `ayther_replay_qa --idle-seconds 3` idles three seconds and reports redraws and CPU. Idle, the window waits for input (or redraws progress every 100 ms) with vsync; the test allows at most one redraw per refresh and less than a quarter of a core. |
 
-`--self-test`, `--smoke-frames`, `--smoke-capture` e `--idle-seconds` son modos de prueba del ejecutable QA; no forman parte del uso normal.
+`--self-test`, `--smoke-frames`, `--smoke-capture` and `--idle-seconds` are test
+modes, not normal use.
 
-## Campos precargados (DI-23)
+## Prefilled fields
 
-`ayther_replay_qa --prefill <archivo>` abre el formulario con los campos del archivo: una
-línea `--campo=valor` por valor; `--take`, `--timeline` y `--core-option` se repiten en orden. Todos los
-valores cuentan como explícitos y los campos ausentes quedan sin seleccionar. Una línea
-desconocida o mal formada rechaza el archivo entero (`prefill_rejected` en el log) y el
-formulario queda vacío. Lo usa la herramienta de campaña de la spec 002.
+`ayther_replay_qa --prefill <file>` opens the form with the fields of the file:
+one `--field=value` line per value; `--take`, `--timeline` and `--core-option`
+repeat in order. All values count as explicit, and absent fields stay
+unselected. An unknown or malformed line rejects the whole file
+(`prefill_rejected` in the log) and the form stays empty. The spec 002 campaign
+tool uses it.

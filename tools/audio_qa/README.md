@@ -1,734 +1,328 @@
-# Dominio y contratos del comprobador de audio
+# `ayther_audio_qa` — replay QA checker
 
-Implementación incremental del comprobador. La CLI `ayther_audio_qa check` ejecuta replay mediante el Runtime ampliado y conserva evidencia reabrible; la evaluación musical continúa fuera de su alcance.
+`ayther_audio_qa` replays recorded takes (`.ayr`/`.arp`) or pad timelines
+through a QA build of Runtime and keeps reopenable technical evidence: facts,
+PCM, checkpoints and results. It attests execution and integrity only; it does
+**not** judge whether music restarted or overlapped.
 
-## Preparación, instalación y ejecución
+- Evidence layout and compatibility: [docs/audio-qa-evidence.md](../../docs/audio-qa-evidence.md)
+- Fact record encoding: [docs/audio-qa-fact-format.md](../../docs/audio-qa-fact-format.md)
+- Graphical front end: [tools/replay_qa_launcher](../replay_qa_launcher/README.md)
+- Replay window keys: [docs/input-map.md](../../docs/input-map.md#replay-qa-window)
 
-El comprobador entregable y Runtime deben proceder del mismo build QA y del
-lock `dependencies/ayther-engine.qa.lock.json`. Desde la raíz de Runtime:
+## Build and install
+
+The checker and Runtime must come from the same QA build, against the QA Engine
+lock `dependencies/ayther-engine.qa.lock.json`. From the Runtime root:
 
 ```powershell
-$env:VCPKG_ROOT = 'C:\Users\david\tools\vcpkg'
 $env:AYTHER_ENGINE_PREFIX = & ./tools/bootstrap_ayther_engine_qa.ps1
-cmake --preset windows-ci -B out/build/windows-ci-audio-qa `
-  -DAYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE=ON
-cmake --build out/build/windows-ci-audio-qa --config RelWithDebInfo `
-  --target ayther_runtime ayther_audio_qa
-cmake --install out/build/windows-ci-audio-qa --config RelWithDebInfo `
-  --prefix install/audio-qa
+cmake --preset windows-qa
+cmake --build --preset windows-qa --target ayther_runtime ayther_audio_qa
+cmake --install out/build/windows-qa --config RelWithDebInfo --prefix <new-prefix>
 ```
 
-La instalación crea `bin/ayther_runtime.exe`, `bin/ayther_audio_qa.exe`, sus
-DLL, shaders, fuentes, licencia y metadatos. Se debe elegir un prefijo nuevo;
-el comando no necesita ni debe reemplazar una instalación usada como referencia.
+`windows-qa` sets `AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE=ON`, which compiles
+Runtime's QA session (`--qa-session`, `--probe-pack`). The install creates
+`bin/ayther_runtime.exe` and `bin/ayther_audio_qa.exe` (component `qa`) with
+their DLLs, shaders, fonts, license and metadata. Use a new prefix; never
+overwrite an installation used as a reference. See also
+[docs/development.md](../../docs/development.md) («Replay QA»).
 
-Una solicitud real usa únicamente las opciones implementadas. La mínima indica
-Runtime, ROM, al menos una toma y destino:
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `check` | Validate a request, run each take or timeline in Runtime and store evidence. |
+| `query --index <query-index.toml> --run-id <id> --producer-id <id> --sequence <n> [--language es\|en]` | Look up a stored relation. |
+| `audit --run-directory <dir> --run-id <id> --expected-assignments <n> [--language es\|en]` | Reopen and audit a campaign's evidence. |
+| `options --format toml` | Print the option inventory of this build. |
+
+Minimal `check`:
 
 ```powershell
-$qa = 'C:\ruta\audio-qa\bin\ayther_audio_qa.exe'
-$runtime = 'C:\ruta\audio-qa\bin\ayther_runtime.exe'
-& $qa check `
-  --runtime $runtime `
-  --rom 'C:\ruta\juego.md' `
-  --core 'C:\ruta\core.dll' `
-  --pack 'C:\ruta\juego.ay' `
-  --trust-registry 'C:\ruta\trust.toml' `
-  --take 'C:\ruta\toma.ayr' `
-  --output 'C:\ruta\evidencia' `
-  --request-id 'solicitud-unica' `
-  --language es
+& <prefix>\bin\ayther_audio_qa.exe check `
+  --runtime <prefix>\bin\ayther_runtime.exe `
+  --rom <game.md> --core <core.dll> `
+  --pack <game.ay> --trust-registry <trust.toml> `
+  --take <take.ayr> `
+  --output <evidence-root> --request-id <unique-id> --language es
 ```
 
-- `--rom` es obligatoria, y hace falta al menos una toma (`--take`) o un guion de mando
-  (`--timeline`). No hay toma por defecto: sin ninguno de los dos la solicitud se rechaza
-  con `missing_required_material: --take` (RF-1.2; spec 006 RF-1.1).
-- `--take` es repetible, conserva el orden y admite repeticiones explícitas: cada
-  posición es una ejecución propia (`<run>`, `<run>-take-2`, ...) (RF-1.4).
-- `--timeline` (spec 006) es repetible como `--take`. Los guiones van después de las tomas,
-  con posiciones contiguas, y su ejecución se llama `<run>-timeline-N` (N = posición + 1);
-  un guion en la primera posición conserva `<run>`. El Runtime debe ofrecer la capacidad
-  `timeline_replay_v1`; si no, la solicitud se rechaza con
-  `runtime_missing_timeline_replay_v1: --runtime` y una solicitud sólo con tomas sigue
-  funcionando con Runtimes anteriores.
-- `--at-end inspect|close` (spec 006 RF-7.3) decide qué hace la ventana de
-  `--presentation visible` al fin natural de la última toma o guion: `inspect`
-  (predeterminado) la deja en pausa en el último frame con el aviso «Flechas: inspeccionar
-  · Esc: cerrar la ventana»; `close` la cierra sola en cuanto el resultado se ha enviado y el
-  Runtime llega a su fin, como sin presentación. `close` exige la capacidad
-  `close_at_end_v1` (`runtime_missing_close_at_end_v1: --runtime` si falta). Sin
-  presentación la opción no cambia nada.
-- `--core` es opcional. Si falta, se toma del manifiesto de Play, de la referencia o,
-  en último lugar, de la configuración de Play CE (`cores[plataforma]` y después
-  `default_core` en `%APPDATA%\Ayther\play_config.toml`), que sólo se lee (RF-1.6).
-- `--pack` es opcional; sin ella la solicitud se ejecuta «Sin pack» y el Runtime no
-  recibe `--pack` (RF-1.3). `--pack-mode original` equivale a no cargar el pack.
-- `--reference` y `--play-manifest` son opcionales y sólo aportan core y condiciones
-  que no se hayan indicado. Si describen otra ROM, la solicitud se rechaza.
-- Las condiciones se pueden indicar de forma explícita: `--profile`, `--subsystems`,
-  `--mute-buses`, `--video-output`, `--patch`, `--shaders on|off` y `--core-option
-  clave=valor` (repetible). La opción explícita precede al manifiesto y éste a la
-  referencia (RF-1.5, RF-1.6).
-- `--profile` sólo se aplica a un pack cargado. Sin pack (o con `--pack-mode original`)
-  la solicitud se acepta con las mismas condiciones que la ejecución con pack: se muestra
-  `profile=<pedido>` y `profile_effective=none source=generated`, y el Runtime no recibe
-  `--profile`. Con pack, un perfil que el pack no ofrece se rechaza antes de admitir la
-  solicitud con `profile_not_in_pack: --profile`; el sondeo del pack lista sus perfiles.
-- Cada toma se valida entera antes de admitir la solicitud: además de cabecera, tamaños
-  y entradas, su estado inicial se descomprime completo, como lo hará el Runtime antes de
-  restaurarlo. Un estado dañado se rechaza con `take_initial_state_invalid: --take[i]`.
-  Una toma `.arp` v9 trae al final la sombra de registros FM del detector al iniciar la
-  toma; se lee entera como lo hará el Runtime antes de sembrar el detector, y una cola
-  dañada se rechaza con `take_fm_registers_invalid: --take[i]`. Las tomas v2 a v8 no la
-  traen y se admiten igual.
-- Cada guion de mando se analiza antes de admitir la solicitud. Un error de sintaxis se
-  rechaza con `timeline_syntax_invalid: --timeline[j]` y una línea
-  `audio_qa_diagnostic: timeline_syntax_invalid field=--timeline[j] line=<n> reason=<código>`;
-  un guion que supera 54 000 frames o 900 s al timing del core, con `timeline_too_long`; uno
-  sin frames, con `timeline_empty`; un marcador que no se puede leer, con
-  `timeline_state_unavailable`; y un archivo `.fm` junto al marcador que no tenga 512 bytes,
-  con `timeline_fm_sidecar_invalid`. El guion, el marcador y el `.fm` se fijan por SHA-256 como
-  cualquier material y entran en la identidad de las condiciones.
-- `--request-id` es opcional; una repetición intencional debe usar otra identidad.
-  Admite hasta 256 bytes de texto imprimible: una identidad más larga se rechaza antes de
-  crear el destino con `request_id_too_long: --request-id`, y una con caracteres de
-  control, con `request_id_invalid: --request-id`.
-  `--trust-registry` sólo puede omitirse cuando la política efectiva permite abrir
-  ese pack sin registro. La raíz `--output` mantiene el ledger y crea una ejecución
-  exclusiva sin reemplazar las anteriores. La evidencia de cada toma se escribe y se
-  reabre por la forma extendida de su ruta (`\\?\`), así que una raíz larga no deja
-  fragmentos por encima de los 260 caracteres de `MAX_PATH` sin publicar.
+## `check` options
 
-### Guiones de mando (spec 006)
+| Option | Value | Default | Rule |
+| --- | --- | --- | --- |
+| `--runtime` | path | required | Runtime executable. Must offer the four QA contracts 1.0 and the ten mandatory capabilities. |
+| `--rom` | path | required | Game image. |
+| `--take` | path, repeatable | — | Recorded take. Order is kept; repeats are separate positions. |
+| `--timeline` | path, repeatable | — | Pad timeline; runs after the takes. Requires `timeline_replay_v1`. |
+| `--output` | path | required | Evidence root (ledger plus one exclusive directory per run). |
+| `--core` | path | resolved | Libretro core. |
+| `--pack` | path | none | Pack; without it the request runs «Sin pack» and Runtime receives no `--pack`. |
+| `--pack-mode` | `hd` \| `original` | `hd` | `original` is equivalent to not loading the pack. |
+| `--trust-registry` | path | none | May be omitted only when the effective policy opens the pack without a registry. |
+| `--reference` | path | none | Supplies core and conditions not given explicitly. Must describe the same ROM. |
+| `--play-manifest` | path | none | Play CE `launch.toml`; same role as `--reference`. |
+| `--request-id` | text | generated | 1–256 printable bytes. Reuse it only for a resend; a deliberate repeat needs a new id. |
+| `--language` | `es` \| `en` | `es` | Message language of the checker and the replay window. |
+| `--presentation` | `none` \| `visible` | `none` | Headless run or visible replay window. |
+| `--at-end` | `inspect` \| `close` | `inspect` | Visible window at the natural end: stay paused for inspection, or close once the result is sent. `close` requires `close_at_end_v1`. No effect without presentation. |
+| `--profile` | id | — | Applies only with a loaded pack. |
+| `--subsystems` | unsigned integer | — | Condition. |
+| `--mute-buses` | unsigned integer | — | Condition. |
+| `--video-output` | id | — | Condition (Runtime `--output`). |
+| `--patch` | path | — | Condition. |
+| `--shaders` | `on` \| `off` | — | Condition. |
+| `--core-option` | `key=value`, repeatable | — | Condition. |
 
-Un guion de mando es un archivo de texto que maneja el mando en lugar de una toma. Una
-instrucción por línea; `#` abre un comentario al principio de la línea o tras un blanco;
-las palabras clave y los botones no distinguen mayúsculas.
+### Request rules
 
-```
-start power_on              # por defecto si falta; debe ser la primera instrucción
-start state ../bookmarks/prueba-audio.sav   # un marcador del Lab (.sav), relativo al guion
-wait 5s                     # pasan frames con los botones mantenidos
-press start                 # 4 frames pulsado y suelta
-press a 100ms               # duración explícita
-hold right 0.1s             # igual que press, con duración obligatoria
-down b                      # añade a los botones mantenidos; no pasa tiempo
+- At least one `--take` or `--timeline` is required; otherwise
+  `missing_required_material: --take`.
+- Run names: position 1 is `<run>`; further takes are `<run>-take-N`; a timeline
+  at position N (1-based) is `<run>-timeline-N`.
+- Core resolution: `--core`, then the Play manifest, then the reference, then
+  the Play CE configuration (`cores[<platform>]`, then `default_core` in
+  `%APPDATA%\Ayther\play_config.toml`, read only).
+- Condition precedence: explicit option, then Play manifest, then reference.
+- `--profile` without a pack (or with `--pack-mode original`) is accepted with
+  the same conditions: the summary shows `profile=<requested>` and
+  `profile_effective=none source=generated`, and Runtime receives no
+  `--profile`. With a pack, a profile the pack does not offer is rejected with
+  `profile_not_in_pack: --profile`.
+- Each take is fully validated before admission, including decompression of its
+  initial state (`take_initial_state_invalid: --take[i]`). A v9 take carries the
+  FM register shadow at its end; a damaged tail is rejected with
+  `take_fm_registers_invalid: --take[i]`. v2–v8 takes have none and are
+  accepted. A v10 take (embedded `take_id`) requires `take_format_v10`
+  (`runtime_missing_take_format_v10`).
+- `--request-id` longer than 256 bytes: `request_id_too_long: --request-id`;
+  with control characters: `request_id_invalid: --request-id`.
+- A missing trust registry is rejected before admission
+  (`material_not_found: --trust-registry`); an unusable pack is rejected with
+  the reason from `--probe-pack`. A valid pack without an audio catalog is not
+  an error: the take plays and records `assignments=0`.
+- Pasted paths wrapped in double quotes are used without the quotes.
+- Evidence files are written and reopened through the extended path form
+  (`\\?\`), so a long output root does not exceed `MAX_PATH`.
+
+### Pack probe
+
+Before admission the checker runs `ayther_runtime --probe-pack`. The registry is
+checked first with the same rules as a launch: a missing, unreadable or invalid
+registry (including a quoted path) exits 78 with `trust_registry_invalid`,
+which the checker reports on `--trust-registry`. `pack_untrusted` is reserved
+for a pack Engine refuses for its signature or trust policy (unknown or revoked
+key, validity, scope); any other open failure is `pack_open_failed`. The full
+reason list is in [`--probe-pack`](../../docs/process-protocol.md#probes).
+
+## Pad timelines
+
+A pad timeline is a text file that drives the pad instead of a take. One
+instruction per line; `#` starts a comment at the start of a line or after
+whitespace; keywords and buttons are case-insensitive.
+
+```text
+start power_on              # default if absent; must be the first instruction
+start state ../bookmarks/audio-test.sav   # a Lab bookmark (.sav), relative to the timeline
+wait 5s                     # frames pass with the held buttons
+press start                 # pressed for 4 frames, then released
+press a 100ms               # explicit duration
+hold right 0.1s             # like press, duration required
+down b                      # add to held buttons; no time passes
 wait 12f
-up b                        # quita de los botones mantenidos
-press a+c 6f                # combinación
+up b                        # remove from held buttons
+press a+c 6f                # combination
 ```
 
-- Botones Genesis: `a b c x y z start mode up down left right`, unidos con `+`. Se traducen al
-  RetroPad como lo hace Genesis Plus GX (A→Y, B→B, C→A, X→L, Y→X, Z→R, Mode→Select).
-- Duraciones: `<decimal>s`, `<decimal>ms` o `<entero>f`. Los segundos se convierten en frames
-  en el Runtime con el timing que informa el core (`llround(segundos × fps)`): `0.1s` son 6
-  frames a 59.92 fps y 5 a 49.70. Sólo `f` es independiente del timing. Un paso que redondea a
-  cero frames es un error.
-- La máscara de cada frame es la de los botones mantenidos más la del `press` en curso. Dos
-  `press` seguidos sin `wait` son una pulsación continua.
-- Límites: 64 KiB, 4 096 instrucciones y de 1 a 54 000 frames compilados (900 s al timing del
-  core).
-- Inicio. `power_on` arranca la ROM en la sesión recién creada, así que el detector de eventos
-  de audio observa cada escritura FM desde el primer frame. `state <ruta>` restaura un marcador
-  del Lab (`<proyecto>/bookmarks/<nombre>.sav`, el estado serializado crudo) o un estado del
-  Runtime (`.bin` con cabecera `AYTHSTAT`) antes de la frontera HD. Un marcador no lleva la
-  sombra de registros FM del detector: el Lab la escribe al lado, en `<nombre>.fm` (512 bytes).
-  Si existe, se fija como material y el Runtime la siembra tras la frontera HD, como la de una
-  toma v9 (`fm_seeded = true`). Sin `.fm` la evidencia dice `fm_sidecar = "absent"`, el informe
-  avisa `timeline_fm_seed_absent` y un guion que empiece con la música sonando tiene el mismo
-  riesgo que una toma a mitad de música.
-- Evidencia. La ejecución de un guion escribe la misma evidencia que una toma y, además, un
-  hecho `timeline_compiled` del productor `inspection` con `fps`, `frames`, `steps`, `start`
-  (`power_on` o `state`), `state_id`, `fm_sidecar` (`present`, `absent`, `not_applicable`) y
-  `fm_seeded`. La línea `audio_qa_replay` dice `material=timeline` y el resumen de la solicitud
-  (`schema_minor = 2`) escribe `kind = 'timeline'` en la fila del guion.
+- Genesis buttons: `a b c x y z start mode up down left right`, joined with
+  `+`. They map to the RetroPad as Genesis Plus GX does (A→Y, B→B, C→A, X→L,
+  Y→X, Z→R, Mode→Select).
+- Durations: `<decimal>s`, `<decimal>ms` or `<integer>f`. Seconds become frames
+  in Runtime at the core's timing (`llround(seconds × fps)`): `0.1s` is 6 frames
+  at 59.92 fps and 5 at 49.70. Only `f` is timing-independent. A step that
+  rounds to zero frames is an error.
+- Each frame's mask is the held buttons plus the current `press`. Two `press`
+  steps without a `wait` are one continuous press.
+- Limits: 64 KiB, 4 096 instructions, 1–54 000 compiled frames (900 s at the
+  core's timing).
+- `power_on` starts the ROM in the new session, so the audio event detector sees
+  every FM write from frame 0. `state <path>` restores a Lab bookmark
+  (`<project>/bookmarks/<name>.sav`, raw serialized state) or a Runtime state
+  (`.bin` with an `AYTHSTAT` header) before the HD boundary.
+- A bookmark has no FM register shadow; the Lab writes it beside it as
+  `<name>.fm` (512 bytes). If present it is pinned as a material and seeded
+  after the HD boundary, like a v9 take (`fm_seeded = true`). Without it the
+  evidence says `fm_sidecar = "absent"`, the report warns
+  `timeline_fm_seed_absent`, and a timeline starting with music playing has the
+  same risk as a take started mid-music.
+- Evidence: the same as a take plus a `timeline_compiled` fact (producer
+  `inspection`) with `fps`, `frames`, `steps`, `start` (`power_on` or `state`),
+  `state_id`, `fm_sidecar` (`present`, `absent`, `not_applicable`) and
+  `fm_seeded`. The `audio_qa_replay` line says `material=timeline`; the request
+  summary row says `kind = 'timeline'`.
 
-Antes de admitir la solicitud, cada valor efectivo se escribe con su origen:
-`audio_qa_effective: <clave>=<valor> source=explicit|play_manifest|reference|environment|default|generated`.
-El origen `explicit` significa que la opción se escribió, aunque su valor coincida con
-el predeterminado (`--language es`); `default`, que no se escribió (RF-1.6).
+Preflight rejections (field `--timeline[j]`):
 
-`ayther_audio_qa options --format toml` publica el inventario de opciones de la
-versión compilada, con el esquema de
-`specs/002-AYTHER-bug-render/evidence/rf1-option-inventory-beta8.toml` (RF-1.8): `ref`
-es la versión del Runtime y `commit`, el commit de las fuentes de la compilación (el
-`HEAD` del checkout al compilar, o `AYTHER_RUNTIME_SOURCE_COMMIT` si se indica).
+| Code | Cause |
+| --- | --- |
+| `timeline_syntax_invalid` | Syntax error; also prints `audio_qa_diagnostic: timeline_syntax_invalid field=--timeline[j] line=<n> reason=<code>`. |
+| `timeline_too_long` | More than 54 000 frames or 900 s at the core's timing. |
+| `timeline_empty` | No frames. |
+| `timeline_state_unavailable` | The bookmark cannot be read. |
+| `timeline_fm_sidecar_invalid` | The `.fm` beside the bookmark is not 512 bytes. |
 
-Los prefijos de diagnóstico tienen funciones distintas:
+Timeline, bookmark and `.fm` are pinned by SHA-256 like any material and are
+part of the conditions identity. The same grammar, limited to
+`start power_on`, drives Runtime's `--input-script`.
 
-- `audio_qa_status` informa admisión y estados técnicos.
-- `audio_qa_replay` identifica la toma, posiciones, relaciones y conservación.
-- `audio_qa_summary` contiene el resultado agregado y su código.
-- `audio_qa_error` conserva un código técnico estable.
-- `audio_qa_message[es|en]` aporta el texto localizado; no se analiza como código.
+## Output
 
-Los códigos de salida son 0 para todas las tomas completas, 2 para resultado o
-evidencia incompletos, 3 para invocación o solicitud inválida y 4 cuando no se
-puede conservar evidencia mínima. La prioridad agregada es 4, 3, 2, 0. El
-resultado no evalúa si el audio contiene un reinicio o una superposición.
+Before admission every effective value is printed with its origin:
 
-La prueba sintética pública reproduce el recorrido completo sin material
-privado. Genera su toma determinista, inicia Runtime real, conserva hechos y
-PCM, reabre relaciones y espera código 0 con resultado técnico `complete`. Los
-campos audibles permanecen en `false`: la prueba acredita ejecución e
-integridad, no un veredicto musical. Runtime usa una raíz de datos privada y el
-ensayo verifica que el árbol ordinario del usuario no cambie:
+```text
+audio_qa_effective: <key>=<value> source=explicit|play_manifest|reference|environment|default|generated
+```
+
+`explicit` means the option was written, even if its value equals the default;
+`default` means it was not written.
+
+| Prefix | Content |
+| --- | --- |
+| `audio_qa_status` | Admission and technical states. |
+| `audio_qa_replay` | Take identity, positions, relations and preservation. |
+| `audio_qa_summary` | Aggregate result and its code. |
+| `audio_qa_error` | Stable technical code. |
+| `audio_qa_message[es\|en]` | Localized text; never parse as a code. |
+| `audio_qa_diagnostic` | Detail of a preflight rejection. |
+
+Exit codes (aggregate priority 4, 3, 2, 0):
+
+| Code | Meaning |
+| ---: | --- |
+| 0 | Every take complete. |
+| 2 | Result or evidence incomplete. |
+| 3 | Invalid invocation or request. |
+| 4 | Minimal evidence could not be kept. |
+
+`options --format toml` uses the schema of
+`tests/audio_qa/fixtures/rf1-option-inventory-beta8.toml`: `ref` is the Runtime
+version and `commit` the source commit of the build (checkout `HEAD` at build
+time, or `AYTHER_RUNTIME_SOURCE_COMMIT` when set).
+
+## Tests
+
+Public end-to-end replay (synthetic core, generated take, no private material).
+It expects exit 0 with technical result `complete`, audible fields left
+unevaluated, a private Runtime data root and an unchanged user data tree:
 
 ```powershell
-cmake --build out/build/windows-ci-audio-qa --config RelWithDebInfo `
-  --target ayther_runtime ayther_audio_qa `
-           audio_qa_public_recording_fixture synthetic_libretro_core
-ctest --test-dir out/build/windows-ci-audio-qa -C RelWithDebInfo `
-  -R '^audio_qa_real_replay_integration$' --output-on-failure
+cmake --build --preset windows-qa --target ayther_runtime ayther_audio_qa `
+  audio_qa_public_recording_fixture synthetic_libretro_core
+ctest --preset windows-qa -R "^audio_qa_(public_recording_fixture|real_replay_integration)$" --output-on-failure
 ```
 
-La consulta de una relación ya conservada usa `query`:
+All checker tests: `ctest --preset windows-qa -L audio_qa -LE gpu`. Visible
+replay tests need `windows-qa-gpu` and a desktop session.
+
+| Test or tool | Purpose |
+| --- | --- |
+| `audio_qa_fact_throughput` | B06: sustained load then burst, up to 10 000 000 facts. |
+| `audio_qa_channel_disconnect_latency` | B10: 100 Windows channel breaks, each noticed within 10 ms. |
+| `audio_qa_legacy_runtime_cli` | Optional; given a historical Runtime binary via CMake, checks that no `.aqf`/`.aqp` appears. |
+| `audio_qa_private_frame_instrumentation_cost` | B13; built but not registered in CTest (needs private material). See below. |
+
+B13 measures producer work inside `set_input` and `step`, including delivery of
+every fact to an exact counter, separate from pacing (copies, queues and
+persistence are covered by B05/B06). It takes five positional paths, pins the
+measuring thread, warms up symmetrically and runs three pairs with three
+alternating repetitions per condition, using calibrated effective thread cycles
+on Windows. Each pair requires P95 on ≤ 1.05 × P95 off, P99 difference ≤ 1 ms,
+equal fact counts and identical state and decisions. Run once per selected
+take:
 
 ```powershell
-& $qa query --index 'C:\ruta\run\query-index.toml' `
-  --run-id '<RUN_ID>' --producer-id '<PRODUCTOR>' --sequence 1 --language es
+& '<build>/tests/audio_qa/RelWithDebInfo/audio_qa_private_frame_instrumentation_cost.exe' `
+  '<core>' '<rom>' '<pack>' '<trust-registry>' '<take>'
 ```
 
-Los formatos `.aqf` y `.aqp`, checkpoints, recuperación parcial, rechazo de
-versiones y preservación de originales se describen en
-[`docs/audio-qa-evidence.md`](../../docs/audio-qa-evidence.md).
-
-QA-090 añade el decodificador de la cabecera QA 1.0: consume solo los 40 bytes
-fijos, interpreta enteros little-endian y valida magic, versión exacta, tamaño,
-tipo, flags, longitud, dirección/canal, secuencia y reserva. El resultado solo
-expone metadatos después de validar; no lee ni reserva el payload. Admite de 1 a
-262104 bytes de cuerpo, para un mensaje total máximo de 256 KiB.
-
-QA-091 añade el primer mensaje de control completo: Request pendiente viaja en
-TOML sobre tipo request/canal 1 y la respuesta aceptada o rechazada vuelve como
-session_status/canal 2. Ambas rutas validan cabecera, secuencia, tamaño exacto,
-tipo, admisión y esquema antes de entregar el modelo; todos los campos de
-identidad y la lista ordenada de tomas sobreviven el recorrido.
-
-QA-092 añade `fact_batch`: entre 1 y 1024 registros, cada uno precedido por
-longitud u32 LE y limitado a 64 KiB incluido el prefijo. El lector conserva los
-esquemas TOML 1.0–1.3 y el binario detallado 1.4 `AQF4`; el escritor actual usa
-1.1 para hechos compactos y 1.4 para hechos con campos. Se conservan productor,
-secuencia, frame, causas, decisiones, asignación, ocurrencia, motivo, órdenes y
-campos tipados. Conteos, prefijos, versión y bytes residuales se validan antes
-de entregar el lote.
-
-QA-093 añade `audio_chunk`: dos longitudes u32 LE delimitan metadatos TOML y
-PCM intercalado dentro del mensaje de datos. El codec conserva S16LE, S24LE,
-S32LE y F32LE, tasa, canales, rango semiabierto, bytes, discontinuidades,
-causas, durabilidad y checkpoint. Exige y verifica SHA-256 de los bytes PCM,
-comprueba el producto sample frames × canales × ancho y rechaza mensajes que,
-sumados metadatos y prefijos, exceden 256 KiB.
-
-QA-094 añade el adaptador de canal de datos heredado. La pareja RAII deja el
-extremo lector del supervisor sin herencia y el extremo escritor destinado a
-Runtime heredable, valida el token recibido y ofrece lectura/escritura completa
-sin usar stdout ni stderr. En Windows, el supervisor debe crear al hijo con una
-lista explícita de handles; la integración prueba que un pipe heredable omitido
-no cruza el límite de proceso y que el cierre produce EOF y libera los handles.
-
-QA-095 añade el puente de observación Runtime sobre la API pública instalada de
-Engine. Reserva una cola SPSC fija por productor para hechos y PCM, copia todas
-las vistas prestadas dentro del callback y las entrega después al consumidor
-con el `run_id` inmutable de la sesión. Saturación, entradas inválidas y
-emisiones después del cierre se contabilizan fuera de las colas; el callback no
-serializa, espera ni realiza E/S.
-
-QA-096 añade la validación fija de la cabecera de toma por contenido. Reconoce
-`ARP1`, admite las versiones 2 a 10 de Engine (una toma v10, con el `take_id` embebido de la spec 007 del Engine, exige que el Runtime ofrezca `take_format_v10`: `runtime_missing_take_format_v10` si no) y devuelve códigos distintos para
-entrada vacía, cabecera truncada, magic inválido y versión no admitida. El
-lector no recibe el nombre de archivo, por lo que `.ayr` y `.arp` no influyen
-en la aceptación. Tamaños variables y descompresión continúan en QA-097.
-
-QA-097 valida el layout variable antes de reservar o descomprimir. Aplica B02:
-toma y estado inicial descomprimido de hasta 64 MiB y entre 1 y 54.000 cuadros.
-Con aritmética de rangos comprueba strings, estado comprimido e inputs contra el
-tamaño total, conserva sus offsets y rechaza exceso o truncamiento sin crear
-buffers a partir de longitudes externas.
-
-QA-098 adapta el rango validado de inputs a una fuente secuencial por cuadro.
-Entrega el bitmask RetroPad u16 little-endian desde el cuadro 0 hasta N−1 y
-finaliza sin repetir. No recibe ni consulta trim, estadísticas o historias
-autoradas, por lo que siempre consume la duración completa declarada.
-
-QA-099 descomprime el estado inicial acotado, valida la fuente antes de mutar
-Engine y conserva el resultado completo de la restauración. Solo después del
-éxito expone los inputs. El adaptador instalado llama directamente
-`AytherSession::unserialize`; el ensayo fija el orden restauración, entrada 0 y
-primer step.
-
-QA-100 fija la política ante fallo: un replay QA no consulta entrada ordinaria
-ni grabada y no ejecuta el cuadro cero; la partida ordinaria conserva el aviso
-y el arranque desde cero con su input habitual. Los códigos distinguen fallo de
-preparación, restauración no intentada y rechazo de Engine.
-
-QA-101 selecciona el origen HD inicial mediante una política de dominio y un
-adaptador del paquete Engine instalado. La ausencia usa `fresh` verificado sin
-volver incompleta la ejecución. Un estado aportado exige identidad, cuadro y
-los tres payloads completos; un rechazo conserva código y sección y ejecuta
-`fresh` para eliminar cualquier aplicación parcial.
-
-QA-102 añade una barrera propietaria de publicación. Valida que el juego esté
-restaurado y la descripción HD completa, entrega la instantánea una sola vez y
-solo después de la confirmación permite leer la entrada grabada siguiente. Un
-rechazo, estado incompleto o consumidor ausente mantiene intacto el cursor.
-
-QA-103 conecta esa fuente con las APIs públicas habituales de Engine. Cada
-bitmask grabado pasa una vez por `AytherSession::set_input(0, buttons)` y cada
-entrada confirmada produce un solo `AytherSession::step()`. El bucle no usa
-`replay_seek`, no ejecuta tras N y queda terminal si una operación falla.
-
-QA-104 incorpora una compuerta de controles externos alrededor del replay.
-Entrada de juego por teclado, rewind y fast-forward se descartan sin tocar el
-cursor grabado ni ejecutar cuadros. La cancelación permanece disponible como
-petición separada y consultable; su aplicación en un límite seguro pertenece a
-una tarea posterior.
-
-QA-105 fija perfil, máscara de mute y velocidad racional en un valor propietario
-durante la ejecución. Cambios de configuración y recargas externas se comparan
-con esa instantánea, informan los campos discrepantes y se rechazan sin mutarla;
-una recarga idéntica se reconoce como no-op.
-
-QA-106 conecta un publicador de progreso al bucle. La aceptación no se presenta
-como inicio efectivo; cada entrada consumida precede a su cuadro completado y el
-fin solo se emite tras comprobar N entradas y N cuadros, sin paso adicional.
-
-QA-107 conecta ese fin con las APIs públicas de cierre de Engine. Congela la
-producción, finaliza voces y drena solo el staging previo al límite, conservando
-los tres resultados y sin ofrecer una operación que pueda ejecutar otro cuadro.
-
-QA-108 añade la máquina pura de fases `preparing`, `ready`, `playing`, `closing`
-y `closed`. Rechaza saltos y resultados no terminales sin depender de procesos,
-SDL, serialización o disco.
-
-QA-109 separa el terminal de reproducción del resultado de conservación. Un
-fallo posterior puede dejar evidencia incompleta sin reescribir `natural_end`;
-un estado de evidencia pendiente no puede publicarse como ejecución cerrada.
-
-QA-110 reserva una sesión desde preparación hasta cierre completo. Otra
-solicitud independiente recibe `busy` con la identidad activa y nunca se encola
-ni interrumpe la ejecución; solo su fase `closed` libera la reserva.
-
-QA-111 registra solicitudes por identidad y contenido. Un reenvío idéntico
-devuelve el estado conocido sin duplicar la ejecución; reutilizar el ID con otra
-sesión, condiciones o lista de tomas se rechaza como conflicto.
-
-QA-112 distingue una repetición intencional mediante una identidad de solicitud
-nueva. La referencia puede coincidir, pero cada identidad conserva su propia
-ejecución y evidencia; admitir la repetición no reemplaza el resultado anterior.
-
-QA-113 convierte las tomas seleccionadas en ejecuciones ordenadas e
-independientes. Una toma no seleccionada no se programa y el resultado de una
-ejecución no puede sustituir el de otra.
-
-QA-114 captura la petición de cancelación y la aplica en un límite de cuadro.
-Conserva posiciones de petición y aplicación, último cuadro ejecutado y el
-terminal `cancelled`, sin consumir la siguiente entrada grabada.
-
-QA-115 arbitra los terminales de reproducción una sola vez. El primer terminal
-efectivo conserva resultado y coordenadas; las notificaciones tardías se
-reconocen sin reescribirlo.
-
-QA-116 resuelve el resultado de conservación por separado. Un fallo de drenaje
-o escritura cierra la evidencia como incompleta y conserva el terminal de juego
-y el último límite durable conocido.
-
-QA-117 modela la desconexión y el vencimiento sin confirmación como estados
-distintos de una salida observada. Conserva el último `Run` conocido y no lo
-presenta como cerrado hasta recibir evidencia explícita del cese.
-
-QA-118 identifica el ejecutable de Runtime y lo revalida antes de lanzarlo con
-la API de proceso Windows. Los argumentos se codifican individualmente, el
-entorno se crea desde una lista permitida y no se utiliza un intérprete de shell.
-
-QA-119 mantiene el inicio de juego detrás de la negociación de contratos,
-capacidades y límites. Un requisito ausente o incompatible deja diagnóstico y
-cero inicios; una oferta completa autoriza una sola transición.
-
-QA-120 drena hechos, PCM y logs con lectores y límites independientes. La
-presión en `stderr` no detiene los datos QA y ningún canal mezcla sus bytes con
-otro.
-
-QA-121 entrega la cancelación por un canal de control heredado y la representa
-como petición, acuse, aplicación con posición y cese confirmado. Cada estado es
-versionado y el cese solo se registra después de observar la salida del hijo.
-
-QA-122 vigila la preparación con límites de 120 segundos sin progreso y 300
-segundos totales. Solo una etapa nueva acredita avance; un heartbeat o repetir
-la misma etapa no amplían el plazo. El diagnóstico conserva la última etapa y
-declara la evidencia incompleta.
-
-QA-123 vigila la reproducción con un límite de 5 segundos sin cuadro
-completado. Heartbeats, repeticiones y retrocesos no acreditan avance; solo un
-cuadro mayor reinicia el plazo y queda conservado en el diagnóstico.
-
-QA-124 vigila el cierre con 10 segundos sin progreso durable y 30 segundos
-totales. Recibir bytes actualiza el diagnóstico, pero solo confirmar más bytes
-duraderos reinicia el plazo. Ambos contadores se conservan por separado.
-
-QA-125 acota la cancelación tras bloqueo o pérdida de canal. Conserva si la
-petición pudo entregarse, exige respuesta en 2 segundos y termina la espera a
-los 5 segundos desde la misma petición, sin confundir vencimiento con cese.
-
-QA-126 mantiene la sesión ocupada hasta observar `closed` y cese confirmado
-para la misma ejecución. Un cierre sin confirmación y un estado de proceso
-ajeno no liberan la reserva ni permiten iniciar otra toma.
-
-QA-127 conserva el orden de las tomas y exige una identidad de proceso nueva
-para cada una. Un fallo aislado permite continuar solo después de confirmar su
-cese; reutilizar el proceso anterior no consume la toma pendiente.
-
-QA-128 lee el `launch.toml` de Play CE como referencia inicial. Materiales y
-condiciones conservan la procedencia del manifiesto; ceros y cadenas vacías
-escritos siguen siendo explícitos, mientras que una clave ausente no recibe un
-valor predeterminado.
-
-QA-129 contrasta la selección resuelta del lock con el ejecutable configurado
-y medido. Solo una coincidencia de ruta y contenido hereda release y commit;
-una ruta diferente crea una referencia ampliada, conserva su procedencia y no
-se presenta como la versión fijada aunque los bytes coincidan.
-
-QA-130 fija la toma en una imagen propietaria de hasta 64 MiB e identifica
-exactamente esos bytes por SHA-256 y tamaño. El replay no vuelve a abrir la
-ruta; una sustitución posterior no cambia la imagen y una identidad esperada
-distinta rechaza la preparación.
-
-QA-131 fija el pack y sus recursos externos registrados en un directorio
-privado nuevo. La copia calcula SHA-256 y tamaño mientras consume los bytes,
-rechaza crecimiento, sustitución o identidad distinta y aplica 8 GiB al
-conjunto. La resolución posterior solo admite rutas lógicas registradas; un
-staging preexistente se conserva y la limpieza solo alcanza el creado por la
-operación.
-
-QA-132 fija ROM y core en rutas privadas estables que conservan la extensión
-necesaria para cargarlos. La ejecución recibe esas rutas verificadas; la vista
-de evidencia solo contiene rol, SHA-256 y tamaño con contenido excluido, y no
-expone rutas ni bytes privados.
-
-QA-133 crea un directorio de guardados privado y disjunto por sesión y lo
-selecciona mediante la precedencia existente de RuntimeConfig. Antes y después
-conserva una instantánea acotada de estructura, tamaños y SHA-256 del árbol del
-usuario; no sigue enlaces y detecta cualquier mutación sin escribir en ese
-árbol.
-
-QA-134 construye RuntimePaths sobre una raíz QA privada y disjunta. Preferencias
-por juego y pack, guardados predeterminados, capturas y diagnóstico quedan bajo
-esa raíz; la sesión normal conserva su directorio y sus bytes, verificados con
-la misma instantánea acotada.
-
-QA-135 añade una puerta de consumo para materiales que no pudieron fijarse. La
-identidad medida se conserva en una observación separada: solo una coincidencia
-con la referencia inicial entrega permiso. Un cambio o una identidad no
-verificable bloquean el consumo, marcan la evidencia incompleta y registran el
-material, la etapa, el rango de muestras y el último cuadro disponibles, sin
-reescribir la referencia inicial con los bytes encontrados.
-
-QA-136 inicia el almacén de evidencia con una reserva exclusiva por `run_id`.
-La creación de la ruta de ejecución es indivisible; una colisión conserva el
-contenido anterior y produce `evidence_directory_collision` con resultado
-incompleto. Cada ejecución distinta recibe otra ruta y los identificadores con
-separadores o recorrido ascendente se rechazan antes de tocar el filesystem.
-
-QA-137 escribe `reference.toml` 1.0 mediante creación exclusiva del sistema
-operativo. El documento conserva la referencia completa, hashes y tamaños,
-procedencia por campo y ausencias atribuidas. La reapertura calcula la identidad
-del documento y reproduce el valor original; otra iteración usa otro directorio
-y no puede truncar ni reemplazar la referencia anterior. El vaciado durable y
-los checkpoints se incorporan en sus tareas posteriores.
-
-QA-138 escribe lotes inmutables en `fragments/facts-<sequence>.aqf`. El sobre
-`AYTFACT1` 1.0 conserva secuencia, cantidad, tamaño y SHA-256 del mensaje
-`fact_batch`; el lector valida esos metadatos, el hash, la secuencia interna y
-los hechos antes de entregarlos. Una ruta existente nunca se reemplaza. El
-vaciado durable y la publicación mediante checkpoint se incorporan en
-QA-140–QA-142.
-
-QA-139 escribe cada bloque en `audio/pcm-<sequence>.aqp`. El sobre `AYTPCM01`
-1.0 autentica el mensaje `audio_chunk`, que conserva sus propios metadatos,
-rango, discontinuidades, bytes y SHA-256 PCM. La reapertura verifica ambos
-niveles sin depender de una cabecera WAV final; una ruta existente no se
-reemplaza. La fuerza durable empieza en QA-140.
-
-QA-140 publica bytes durables desde un temporal exclusivo situado en el mismo
-directorio. En Windows completa la escritura, ejecuta `FlushFileBuffers` y
-publica con `MoveFileExW` y `MOVEFILE_WRITE_THROUGH`; solo entonces devuelve
-éxito. Un fallo de reemplazo conserva el destino anterior y elimina el
-temporal. Los checkpoints empiezan en QA-141.
-
-QA-141 publica `checkpoints/current.toml` 1.0 con secuencia creciente. Solo
-acepta comprobantes emitidos por QA-140 y vuelve a validar tipo, secuencia,
-ruta relativa e identidad de cada fragmento antes de listarlo. La sustitución
-es durable y atómica; una actualización fallida conserva la versión anterior.
-
-QA-142 mantiene contadores separados de bytes recibidos y duraderos. Solicita
-una única publicación al primer umbral de 1 segundo o 1 MiB pendiente; alcanzar
-otro umbral durante esa escritura informa saturación. La solicitud no adelanta
-el límite durable: solo lo hace la confirmación de un `StoredCheckpoint`
-creciente emitido por QA-141. Los relojes y contadores que retroceden se
-rechazan sin cambiar el estado.
-
-QA-143 publica `request-ledger.toml` 1.0 en la raíz de salida. Conserva hasta
-1024 solicitudes con sus documentos Request/Run 1.0 y una generación creciente,
-dentro de un límite de 64 MiB. Cada alta o actualización se publica mediante
-la operación durable de QA-140 antes de mutar la vista en memoria. Al reabrir,
-un `request_id` idéntico devuelve `known` con su estado vigente y no autoriza
-otro lanzamiento; reutilizarlo con contenido distinto devuelve conflicto.
-
-QA-144 recupera un Run que no alcanzó `closed` sin reanudarlo. Reabre y valida
-el checkpoint vigente, conserva fase, terminal de reproducción, posiciones y
-estado de cese, y publica únicamente `evidence_result=incomplete` en el ledger.
-La vista distingue checkpoint verificado, ausente o ilegible y siempre expone
-`automatic_resume_allowed=false`. Repetir la recuperación es idempotente.
-
-QA-145 permite auditar un checkpoint cuyo artefacto ya no es verificable. Los
-artefactos se comprueban en el orden registrado; la vista conserva el prefijo
-íntegro e identifica el primer descriptor que falla junto con
-`artifact_invalid` o `artifact_changed`. La auditoría es de solo lectura: no
-borra, repara ni sustituye fragmentos truncados o corruptos.
-
-QA-146 fija lectura estricta 1.0 para ledger y checkpoint. Un major o minor
-desconocido se rechaza como incompatible y cualquier campo no declarado en el
-documento o sus artefactos se rechaza como malformado. La validación nunca
-reescribe ni migra el original rechazado.
-
-QA-147 deriva una vista RIFF/WAVE desde hasta 4096 bloques autenticados y 64 MiB
-de PCM. Todos deben pertenecer a la misma ejecución, punto de captura, formato y
-timeline, con rangos exactamente contiguos. Los bytes se concatenan sin
-conversión y la vista se publica durablemente. Un hueco devuelve
-`non_contiguous`; no se rellena con silencio ni se crea un WAV parcial.
-
-QA-148 añade un presupuesto opcional de bytes escribibles a la publicación
-durable. Al agotarlo después de un prefijo devuelve `storage_exhausted`, cierra
-y elimina el temporal y conserva el destino anterior. Los consumidores no
-reciben comprobante durable y el checkpoint informa `publish_failed`.
-
-QA-149 añade puntos de interrupción deterministas antes del vaciado y después
-del vaciado pero antes de la publicación. Ambos resultados siguen siendo datos
-pendientes: eliminan el temporal, preservan el destino confirmado y no emiten
-`DurablePublishedFile`. Solo la sustitución atómica confirma durabilidad. En
-Windows, una reserva que niega el borrado fuerza también el fallo de reemplazo
-sin modificar la última versión confirmada.
-
-QA-150 reabre los fragmentos autenticados y audita la continuidad de sus
-secuencias y de las secuencias propias de cada productor. Una retransmisión con
-el mismo `fact_id` y contenido idéntico se contabiliza como idempotente. Un
-salto o la reutilización del identificador con contenido distinto conserva el
-primer punto afectado y marca el tramo como `incomplete`.
-
-QA-151 difiere la resolución de `cause_ids` internos hasta haber reabierto el
-tramo completo. Un antecedente que llega en un fragmento posterior se resuelve;
-un `PreexistingContext` no se busca dentro de la ejecución. Si al cierre sigue
-faltando un antecedente interno, se conservan los dos identificadores del
-vínculo y el tramo queda `incomplete`.
-
-QA-152 mantiene separado el orden de llegada del orden efectivo. Los hechos
-con `shared_state_order=not_applicable` permanecen independientes. Para cada
-estado compartido con orden conocido, la auditoría reúne sus secuencias por
-ejecución y exige continuidad; un hueco identifica `state_id`, valor esperado
-y valor observado y deja la traza `incomplete`.
-
-QA-153 reabre bloques PCM autenticados y valida secuencia, identidad de captura,
-formato, timeline y continuidad de sample frames. Un hueco, solapamiento o
-retroceso conserva el intervalo afectado. Cada límite de efecto conocido debe
-estar contenido en su bloque; un límite desconocido o un silencio insertado sin
-rango de salida verificable deja el tramo `incomplete` sin generar audio.
-
-QA-154 resume inventario y carga con una fuente de expectativa explícita. La
-referencia inicial puede fijar 14, mientras otro pack deriva su esperado solo
-de un inventario completo propio. Las retransmisiones idénticas por
-`pack_content_id + ordinal` no aumentan cantidades; ordinales diferentes no se
-fusionan aunque compartan identidad autorada. Un duplicado conflictivo conserva
-la identidad afectada y no publica recuentos de carga inequívocos. El resumen
-mantiene separado inventario observado, esperado y estados desconocido,
-pendiente, cargado y rechazado, con un máximo de 4096 observaciones por llamada.
-
-QA-155 mantiene candidatura, selección, inicio, avance y final como etapas de
-cobertura independientes. Cada una conserva extensión, cantidad y hecho de la
-misma ejecución. Una cantidad positiva es observada; un cero completo es una
-ausencia observada y un cero parcial permanece desconocido. El resumen no
-infiere inicio desde selección, avance desde inicio ni final desde avance, y
-rechaza la mezcla de hechos pertenecientes a otra ejecución.
-
-QA-156 produce un informe de pendientes desde el inventario y las etapas
-observadas. Mantiene un contador de positivos aun con fuente parcial, pero solo
-publica un total de detecciones conocido cuando la fuente está completa. Una
-fuente ausente deja ese total desconocido y no lo convierte en cero. La lista de
-pendientes conserva identidades de pack y ordinal. La cobertura parcial se
-informa aparte y no modifica el resultado de integridad técnica recibido.
-
-QA-157 agrega cobertura de varias tomas por `pack_content_id + ordinal`. Una
-asignación repetida ocupa una sola entrada, mientras cada observación de etapa
-mantiene su `run_id` y sus datos originales. Esto conserva diferencias como
-inicio cero en una toma e inicio positivo en otra. Una segunda fila para la
-misma ejecución y asignación se rechaza para evitar duplicar cobertura.
-
-QA-158 consulta el recorrido de un evento hasta un tramo de audio. Las rutas
-explícitas se forman solo con `cause_ids` y devuelven todos los identificadores
-y el rango de salida conocido. Una correlación temporal requiere un enlace
-aportado con motivo y se etiqueta como tal; no se presenta como causalidad. La
-consulta está acotada a 4096 hechos, tramos y enlaces, valida referencias y no
-inventa un rango cuando el tramo relacionado no lo expone.
-
-QA-159 consulta coexistencia contra una marca de transición aportada. Intersecta
-solo intervalos con timeline y tasa iguales y conserva la procedencia de la
-marca y de cada ocurrencia. Las causas de inicio siguen siendo hechos,
-`PreexistingContext`, una combinación o desconocidas; el contexto previo nunca
-se transforma en un disparo. Más de una voz solapada acredita coexistencia.
-
-QA-039 añade CapabilitySet: versiones ofrecidas de los cuatro contratos, diez capacidades obligatorias de plan §4.1 y límites negociados. Solo acepta 1.0 explícitamente ofrecida; ausencia, duplicados, listas excesivas o capacidad insuficiente generan diagnóstico. Máximos: 64 capacidades y 16 versiones por contrato. No anuncia que el binario actual implemente esas capacidades.
-
-QA-038 añade Assignment/Coverage/Diagnostic: entradas por pack+ordinal, identidad autorada separada, etapas observadas independientes y diagnóstico técnico. Candidatura/carga/contexto previo no equivalen a selección; cero parcial o no observado no equivale a ausencia completa. No contiene veredicto musical. Detalles de diagnóstico: hasta 4096 bytes.
-
-QA-037 añade InitialState y versión HD 1.0: detector, ventanas, voces/posiciones, solicitudes y audio pendiente, con ausencia verificada diferenciada de desconocimiento. Las imágenes de continuación son propiedad de Engine. `has_complete_hd_description` valida que la descripción requerida está presente; QA-101 conecta la restauración pública y QA-102 ordena su publicación. Exportación durable y verificación de hashes siguen pendientes. Topes: 256 voces/colas, 4096 ventanas/solicitudes, 64 MiB por imagen y límite agregado B02 al importar.
-
-QA-033 añade reference_model: referencias inicial/ampliada, builds, condiciones y materiales con procedencia por campo, separando identidad identificada y consumida. well_formed comprueba consistencia estructural, no verifica archivos ni autentica evidencias. Límites: 4096 materiales, 256 condiciones, 256 diferencias y 4096 bytes por valor; las identidades mantienen 256 bytes. Referencias incompletas conservan sus ausencias y pueden servir de diagnóstico sin acreditarse equivalentes.
-
-QA-034 añade fact_model: identidad por ejecución/productor/secuencia, hasta 256 antecedentes y 256 órdenes de estado compartido por hecho, y disponibilidad explícita. Permite varios antecedentes, contexto previo y referencias futuras, sin inventar orden por llegada. La resolución final del grafo y emisión de productores son tareas posteriores; los límites codificados B06 siguen aplicándose además de los del modelo.
-
-QA-035 añade mix_model: identidades de ocurrencia separadas de clave, posiciones de pista y rangos semiabiertos en sample_frames con tasa y timeline. MixSpan admite 256 participantes, conserva original/gain/mute y diferencia rango de mezcla de salida. overlaps solo compara timelines y tasas iguales; la ausencia de correspondencia produce resultado desconocido. No es un detector de fallos musicales.
-
-QA-036 añade audio_chunk: PCM intercalado S16LE/S24LE/S32LE/F32LE con tasa, canales, rango de sample_frames, hash y checkpoint disponibles. Valida tamaño sin overflow y separa conocido/desconocido/no aplicable. Admite hasta 192 kHz, ocho canales, 256 KiB de payload y 256 discontinuidades; el framing aplica además su límite codificado. Validar el modelo no autentica un hash ni confirma persistencia física.
-
-model.h contiene valores propios del dominio sin Engine, SDL, TOML, procesos ni disco. Request identifica sesión, condiciones inmutables por identidad y tomas ordenadas; las repeticiones de una toma en la lista se conservan. Run separa phase, playback_result, evidence_result y equivalence_result. Los contadores ausentes son desconocidos; cero es un valor conocido. last_durable_sample es una frontera exclusiva en sample_frames.
-
-model_toml es un adaptador de memoria, basado en tomlplusplus 3.4.0 ya fijado por Runtime. No escribe ni confirma durabilidad. Su esquema 1.0 conserva los uint64 como cadenas decimales, sin conversión por float. Rechaza versiones no admitidas, tipos/campos/enum inválidos y metadatos superiores a 256 KiB antes del parser. Las identidades tienen 1–256 bytes sin controles y una solicitud admite 1–1024 tomas, sujeta además al máximo serializado. No se trunca ninguna entrada. Las transiciones y la idempotencia se implementarán en sus tareas posteriores; el codec no deduce resultados ni declara equivalencia.
-
-Desde Runtime, ensayo independiente con las dependencias instaladas:
-
-```powershell
-cmake -S tests/audio_qa -B out/build/qa-domain -G 'Visual Studio 18 2026' -A x64 -T v145 `
-  '-Dtomlplusplus_DIR=C:/Users/david/Workspaces/ayther/AYTHER-Runtime/out/build/rc9/vcpkg_installed/x64-windows/share/tomlplusplus'
-cmake --build out/build/qa-domain --config Release --parallel 4
-ctest --test-dir out/build/qa-domain -C Release --output-on-failure
-```
-
-También se registra en el CTest normal de Runtime. Los targets nuevos activan clang-tidy con el preset de calidad; las cabeceras del dominio están incluidas en su filtro y en la revisión de supresiones. La prueba usa la DLL de tomlplusplus correspondiente a la configuración Debug o Release del paquete existente.
-
-RF-3, RF-11, RF-12 y RF-13: pruebas de orden de tomas, cierre con reproducción natural y conservación incompleta, ausencia frente a cero, uint64 máximo, versiones/tipos inválidos y fronteras de tamaño. La evidencia de tareas y los contratos se mantienen en specs/001-AYTHER-bug-audio-qa del workspace.
-
-QA-170 conecta la entrada `check` con un proceso Runtime real mediante dos
-canales heredados explícitos. Runtime valida la solicitud AYQA 1.0, restaura la
-toma en `AytherSession`, prepara audio HD nuevo y ejecuta cada entrada grabada
-una vez por `set_input` y `step`. El terminal devuelve cantidad declarada,
-cantidad consumida e identidades SHA-256 de los estados inicial y final. La
-opción `--trust-registry` permite que el mismo Runtime valide el pack firmado;
-no se transmite una segunda sesión Engine ni se acepta un doble de Runtime.
-
-La integración pública se ejecuta con:
-
-```powershell
-ctest --preset windows-ci -R "^audio_qa_(public_recording_fixture|real_replay_integration)$" --output-on-failure
-```
-
-QA-171 activa el audio lógico de la sesión QA, conecta el observador de Engine
-al puente acotado de Runtime y drena sus hechos fuera de los productores. El
-verificador no usa orden de llegada: recorre `cause_ids` desde
-`detector_input_batch` hasta candidato, selección y solicitud, y exige las dos
-ramas de esa solicitud hacia decisión/efecto y `hd_mix_participant`. Solicitud,
-decisión, efecto y mezcla deben compartir la misma ocurrencia. El terminal AYQA
-1.1 conserva las identidades de esas siete etapas, la ocurrencia, el total de
-hechos y el estado de pérdidas. Una pérdida, identidad ajena o relación ausente
-produce `audio_trace_incomplete`.
-
-QA-172 transporta los hechos y bloques PCM reales antes del terminal. La CLI
-los publica bajo un directorio exclusivo con los formatos versionados `.aqf` y
-`.aqp`, abre de nuevo cada archivo y compara hechos, metadatos, hashes y bytes.
-Las relaciones de QA-171 se recorren otra vez sobre los hechos reabiertos. Solo
-entonces se informa `relationships_reopened=true`.
-
-La ejecución sintética conserva además un diagnóstico real: el orden compartido
-`audio_detector_live` contiene huecos aunque el puente no perdió hechos. Por
-eso se informa `fact_integrity_complete=false` y el resultado general continúa
-`incomplete`; la conservación no convierte el orden ausente en uno observado.
-
-QA-173 conecta la negociación de capacidades con la CLI real. Antes de crear
-canales o pasar core, ROM y pack, el comprobador ejecuta únicamente
-`--qa-capabilities`, captura hasta 64 KiB durante un máximo de 2 segundos y
-valida los cuatro contratos 1.0, las diez capacidades y sus límites. Un Runtime
-antiguo o una oferta inválida produce `runtime_incompatible` con resultado
-incompleto; no se abre una sesión de juego ni se acredita replay. La prueba
-opcional `audio_qa_legacy_runtime_cli` recibe por CMake la ruta de un binario
-histórico real y verifica que no aparecen fragmentos `.aqf` o `.aqp`.
-
-QA-186 aplica la cuota B04 antes de aceptar bytes de evidencia. Una ejecución
-requiere 10 GiB libres al admitirse y puede contabilizar hasta 8 GiB entre
-artefactos duraderos, temporales y escrituras en vuelo. Dentro de ese total se
-reservan 1 MiB para diagnóstico y checkpoint terminales. El exceso o la falta
-de espacio produce un diagnóstico de almacenamiento con resultado
-`incomplete` y conserva la secuencia del último checkpoint; no se contabilizan
-como aceptados los bytes rechazados.
-
-QA-187 aplica B03 al inventario privado seleccionado por una solicitud. El
-conjunto no puede superar 8 GiB y la comprobación exige, en cada ejecución, los
-bytes todavía por fijar más 2 GiB de margen y 10 GiB reservados para evidencia.
-Los materiales ya fijados cuentan para el máximo, pero no se reservan otra vez.
-Las entradas no seleccionadas no participan del presupuesto y no se entregan a
-las operaciones de staging.
-
-QA-188 mide B05 en procesos hijos aislados. Cada perfil compara captura
-apagada y encendida en tres pares, muestrea memoria privada cada 10 ms y valida
-el máximo de cada par sin promediar. El perfil de captura instancia el bridge
-real de producción con nueve productores, 128 hechos y ocho bloques PCM por
-productor; su tamaño agregado debe permanecer dentro de 64 MiB. Los incrementos
-se comprueban contra 256 MiB para el coordinador y 128 MiB para Runtime/Engine.
-
-## Configuración final y campaña Golden Axe
-
-La configuración final mantiene colas fijas de 4096 hechos para los productores
-3 y 5, 1024 para el productor 4, 384 para el productor 6 y 2048 bloques PCM de
-1024 bytes. La reserva agregada medida es 65.202.432 bytes, inferior al límite
-B05 de 64 MiB (67.108.864 bytes). El transporte detallado usa `AQF4` para que
-las trazas reales de millones de hechos terminen sin omitir campos.
-
-El comprobador prepara para cada consulta y replay una raíz privada de datos de
-Runtime, transmite esa raíz mediante el contrato de plataforma y compara una
-instantánea completa del árbol ordinario antes y después. La raíz privada se
-retira al cerrar, incluso ante error. Los diagnósticos estables son
-`runtime_data_isolation_failed` y `user_data_changed`.
-
-La campaña local final `golden-axe-final-qa208r37` acreditó una principal de
-7892 cuadros con 14/14 asignaciones seleccionadas y una complementaria de 2130
-cuadros con 4 asignaciones seleccionadas y 10 pendientes identificadas. Una
-repetición independiente de la complementaria produjo la misma cobertura. Las
-tres ejecuciones válidas terminaron con código 0, evidencia reabierta, audio
-completo e aislamiento confirmado. Los intentos que usaron una ruta histórica
-sin registro de confianza se conservaron como incompletos con
-`audio_assignment_catalog_empty`; el comprobador conserva ahora ese diagnóstico
-de Runtime en vez de sustituirlo por un desajuste de entradas.
-
-Desde la spec 002 ese caso ya no llega al Runtime: un registro de confianza que falta
-se rechaza antes de admitir (`material_not_found: --trust-registry`) y un pack que no
-se puede usar, con el motivo de `--probe-pack`. Un pack válido sin catálogo de audio
-ya no es un error: la toma se reproduce y registra `assignments=0` (RF-2.1, RF-2.2).
-
-`--probe-pack` comprueba primero el registro de confianza con las mismas reglas que un
-arranque: un registro que falta, no se puede leer o no es válido (también una ruta pegada
-entre comillas) termina con 78 y `trust_registry_invalid`, que el comprobador rechaza en
-`--trust-registry`. `pack_untrusted` queda sólo para el pack que el Engine rechaza por su
-firma o su política de confianza (clave desconocida o revocada, vigencia, ámbito); otro fallo
-al abrirlo es `pack_open_failed` (D-10).
-
-## Cierre local de presupuestos B06, B10 y B13
-
-`audio_qa_fact_throughput` ejecuta la carga sostenida seguida por la ráfaga y
-continúa hasta 10.000.000 de hechos; `audio_qa_channel_disconnect_latency`
-realiza cien roturas de canal Windows y exige aviso en un máximo de 10 ms. Ambas
-forman parte de CTest.
-
-La medición privada B13 se compila como
-`audio_qa_private_frame_instrumentation_cost` y no se registra en CTest porque
-requiere core, ROM, pack, confianza y toma privados. Recibe esos cinco caminos
-posicionales, fija el hilo de medida, realiza calentamiento simétrico y ejecuta
-tres parejas con tres repeticiones alternadas por condición. En Windows usa
-ciclos efectivos del hilo calibrados. Cada pareja exige P95 encendido ≤1,05×
-P95 apagado, diferencia P99 ≤1 ms, conteos de hechos iguales y estado y
-decisiones idénticos. Debe ejecutarse una vez por cada toma seleccionada:
-
-```powershell
-& '<BUILD>/tests/audio_qa/RelWithDebInfo/audio_qa_private_frame_instrumentation_cost.exe' `
-  '<CORE>' '<ROM>' '<PACK>' '<TRUST_REGISTRY>' '<TAKE>'
-```
-
-La copia, las colas y la persistencia se miden en B05/B06. B13 mide el trabajo
-del productor dentro de `set_input` y `step`, incluida la entrega de todos los
-hechos a un contador exacto, separado del pacing.
+## Normative reference
+
+Limits and rules the implementation enforces. Task ids (QA-*nnn*) name the
+originating requirement in the audio-QA spec.
+
+### Protocol and transport
+
+| Area | Rule |
+| --- | --- |
+| QA header (QA-090) | 40 fixed bytes, little-endian; validates magic, exact version, size, type, flags, length, direction/channel, sequence and reserved field before exposing metadata. Body 1–262 104 bytes; message at most 256 KiB. |
+| Control (QA-091) | Request in TOML on type `request`/channel 1; accepted or rejected answer as `session_status`/channel 2. Identity fields and the ordered take list survive the round trip. |
+| `fact_batch` (QA-092) | 1–1024 records, each with a u32 LE length prefix, at most 64 KiB including the prefix. See [fact format](../../docs/audio-qa-fact-format.md). |
+| `audio_chunk` (QA-036, QA-093) | Two u32 LE lengths delimit TOML metadata and interleaved PCM. S16LE/S24LE/S32LE/F32LE, up to 192 kHz, 8 channels, 256 discontinuities, 256 KiB payload. SHA-256 of the PCM bytes is required and verified; frames × channels × width must match. |
+| Channels (QA-094, QA-120) | Inherited pipe pair, never stdout/stderr; the child is created with an explicit handle list. Facts, PCM and logs are drained by independent readers with independent limits; stderr pressure never stalls QA data. |
+| Capabilities (QA-039, QA-119, QA-173) | Before any channel or material is passed, the checker runs only `--qa-capabilities`, captures at most 64 KiB within 2 s, and requires the four contracts at 1.0, the ten mandatory capabilities and their limits (at most 64 capabilities and 16 versions per contract). Otherwise `runtime_incompatible`, no game start. |
+| Process launch (QA-118) | The Runtime executable is identified and revalidated before launch; arguments are encoded individually, the environment comes from an allow list, no shell. |
+
+### Takes and replay
+
+| Area | Rule |
+| --- | --- |
+| Take header (QA-096) | Recognized by content (`ARP1`), not by extension; Engine versions 2–10. Distinct codes for empty input, truncated header, bad magic, unsupported version. |
+| Take layout (QA-097) | Take and decompressed initial state up to 64 MiB; 1–54 000 frames. Range arithmetic checks strings, compressed state and inputs before any allocation. |
+| Input source (QA-098, QA-103) | RetroPad u16 LE masks from frame 0 to N−1, never repeated; trims and statistics are ignored. Each mask goes once through `set_input(0, buttons)` and each confirmed input produces exactly one `step()`; no `replay_seek`, nothing after N. |
+| Restore (QA-099, QA-100) | The initial state is decompressed and the source validated before Engine is mutated; inputs are exposed only after a successful `unserialize`. A failed preparation runs no frame. |
+| HD origin (QA-037, QA-101, QA-102) | Absent HD state uses a verified `fresh` start. A supplied state needs identity, frame and the three payloads; a rejection keeps code and section and runs `fresh`. The snapshot is published once before the next recorded input is read. Caps: 256 voices/queues, 4096 windows/requests, 64 MiB per image. |
+| External controls (QA-104) | Keyboard game input, rewind and fast-forward are dropped without touching the cursor; cancellation stays available. |
+| Phases (QA-108, QA-109) | `preparing` → `ready` → `playing` → `closing` → `closed`; no skips. The playback terminal is separate from the evidence result. |
+| Progress and close (QA-106, QA-107) | The end is emitted only after N inputs and N frames. Close freezes production, finishes voices and drains only pre-boundary staging. |
+| Cancellation (QA-114, QA-121) | Applied at a frame boundary; keeps request and apply positions, last frame and terminal `cancelled`. Delivered over the control channel as request, ack, application and confirmed cessation (only after the child's exit is observed). |
+| Terminals (QA-115) | The first effective terminal wins; late notifications never rewrite it. |
+| Requests (QA-111–QA-113, QA-127) | Identical resend returns the known state; same id with different content is a conflict; a new id is an independent repeat. Each take runs in a new process, in order. |
+
+### Watchdogs
+
+| Phase | Limit |
+| --- | --- |
+| Preparation (QA-122) | 120 s without a new stage; 300 s total. Heartbeats and repeated stages do not extend it. |
+| Playback (QA-123) | 5 s without a higher completed frame. |
+| Close (QA-124) | 10 s without durable progress; 30 s total. Only more durable bytes reset it. |
+| Cancellation (QA-125) | Answer within 2 s; wait ends 5 s after the request. Timeout is never treated as cessation. |
+
+### Evidence storage
+
+| Area | Rule |
+| --- | --- |
+| Run directory (QA-136) | Exclusive per `run_id`; a collision keeps the old content and yields `evidence_directory_collision`. Ids with separators or `..` are rejected. |
+| `reference.toml` (QA-137) | Version 1.0, created exclusively; never truncated or replaced. |
+| Fragments (QA-138, QA-139) | `fragments/facts-<seq>.aqf` (`AYTFACT1`) and `audio/pcm-<seq>.aqp` (`AYTPCM01`); existing paths are never replaced. |
+| Durable publish (QA-140, QA-148, QA-149) | Exclusive temp file in the same directory, `FlushFileBuffers`, `MoveFileExW` with `MOVEFILE_WRITE_THROUGH`; failure keeps the previous target. A write budget exhausted mid-file yields `storage_exhausted`; the checkpoint reports `publish_failed`. |
+| Checkpoint (QA-141) | `checkpoints/current.toml` 1.0, increasing sequence; lists only durably published fragments, revalidated before listing. |
+| Ledger (QA-143) | `request-ledger.toml` 1.0: up to 1024 requests, increasing generation, 64 MiB. |
+| Recovery (QA-144–QA-146) | A run that did not reach `closed` is recovered as `incomplete` without resuming; audits are read-only and report `artifact_invalid` or `artifact_changed`. Unknown major/minor or undeclared fields are rejected; originals are never migrated. |
+| Live queues | Producers 3 and 5: 4096 facts; producer 4: 1024; producer 6: 384; 2048 PCM blocks of 1024 bytes. Aggregate 65 202 432 bytes, below the B05 limit of 64 MiB (67 108 864 bytes). |
+| Memory (QA-188, B05) | Increment at most 256 MiB for the checker and 128 MiB for Runtime/Engine, measured in isolated child processes. |
+
+### Audit and queries
+
+| Area | Rule |
+| --- | --- |
+| Fact sequences (QA-150, QA-151) | Identical retransmission (same `fact_id` and content) is idempotent; a gap or conflicting reuse marks the trace `incomplete`. Internal `cause_ids` are resolved after the whole trace is reopened. |
+| Shared state (QA-152) | Facts with `shared_state_order=not_applicable` stay independent; known orders must be continuous per run. |
+| PCM (QA-153) | Sequence, capture identity, format, timeline and sample continuity are checked; no audio is generated. |
+| Audio relations (QA-171, QA-172) | The trace from `detector_input_batch` through candidate, selection, request, decision/effect and `hd_mix_participant` must share one occurrence; otherwise `audio_trace_incomplete`. `relationships_reopened=true` only after re-walking reopened facts. |
+| Coverage (QA-154–QA-157) | Inventory and stages (candidacy, selection, start, progress, end) are independent; keyed by `pack_content_id + ordinal`; at most 4096 observations per call. A partial zero stays unknown. |
+| Trace query (QA-158) | Explicit paths use only `cause_ids`; temporal correlation needs a supplied link with a reason. At most 4096 facts, segments and links. |
+| Domain limits (QA-033–QA-035, model) | 4096 materials, 256 conditions, 256 differences, 4096 bytes per value, 256-byte identities; up to 256 causes and 256 shared orders per fact; 1–1024 takes per request; TOML metadata at most 256 KiB; `uint64` values as decimal strings. |
+
+### Library components not used by `check`
+
+These modules exist with unit tests but `check` does not call them in this
+version: pinned take, pack and game-material images (QA-130–QA-132), the
+material consumption guard (QA-135), the WAV view (QA-147), the coexistence
+query (QA-159), the condition lock (QA-105), the session reservation (QA-110),
+the checkpoint threshold (QA-142: one publication at the first of 1 s or
+1 MiB pending), the evidence quota (QA-186: 10 GiB free,
+8 GiB per run) and the staging budget (QA-187: 8 GiB plus 2 GiB margin). The
+material protection `check` applies is described in
+[isolation](../../docs/audio-qa-evidence.md#isolation-and-private-materials).
