@@ -25,7 +25,10 @@ Source of truth: `src/runtime_options.h` and `src/runtime_options.cpp` (parser),
 | Tessera diagnostic run | `ayther_runtime --provider tessera --rom <rom> --native-... ` | Selected by any `--native-*` option. Diagnostic; not a player session. |
 | QA capability query / session | `--qa-capabilities`, `--qa-session ...` | Started by `ayther_audio_qa`; see [tools/audio_qa](../tools/audio_qa/README.md). |
 
-Positional form: arguments that are not recognized options are collected as
+Unknown options: an argument that starts with `--` and names no option below
+is rejected with `cli.invalid_argument` (exit 64); it is never read as a path.
+
+Positional form: arguments that do not start with `--` are collected as
 positional values. With the libretro provider the first is the core and the
 second the ROM (`ayther_runtime <core> <rom>`); with `--provider tessera` the
 first is the ROM. The form remains for backward compatibility; new callers

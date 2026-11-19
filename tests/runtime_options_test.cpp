@@ -311,6 +311,19 @@ int main() {
     expect_error({"ayther_runtime", "--qa-control-channel"}, RuntimeOptionErrorCode::missing_value,
                  "--qa-control-channel", "QA control channel needs a token");
 
+    // An unknown "--" option is an error, not a positional core or ROM path.
+    expect_error({"ayther_runtime", "--core", "core.dll", "--rom", "game.md", "--colour", "red"},
+                 RuntimeOptionErrorCode::unknown_option, "--colour",
+                 "an unknown option is rejected");
+    expect_error({"ayther_runtime", "--", "core.dll", "game.md"},
+                 RuntimeOptionErrorCode::unknown_option, "--", "a bare -- is rejected");
+    {
+        const auto legacy = parse({"ayther_runtime", "core.dll", "game.md"});
+        check(legacy.options() && legacy.options()->core_path == "core.dll" &&
+                  legacy.options()->rom_path == "game.md",
+              "the legacy positional form still works");
+    }
+
     // Pause dialog customisation from the launcher.
     {
         const auto defaults = parse({"ayther_runtime", "--core", "core.dll", "--rom", "game.md"});

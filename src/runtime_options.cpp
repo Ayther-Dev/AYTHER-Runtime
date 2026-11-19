@@ -110,6 +110,8 @@ using CaptureListResult = std::variant<std::vector<std::uint64_t>, RuntimeOption
         return "se esperaba clave=valor con una clave no vacia";
     case RuntimeOptionErrorCode::provider_conflict:
         return "--provider tessera no carga un core libretro; quite --core";
+    case RuntimeOptionErrorCode::unknown_option:
+        return "opcion desconocida";
     }
     return "el valor no es valido";
 }
@@ -439,6 +441,10 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char *const argv
             options.qa_capabilities = true;
         } else if (argument == "--qa-session") {
             options.qa_session = true;
+        } else if (argument.starts_with("--")) {
+            return RuntimeOptionsParseResult{make_error(RuntimeOptionErrorCode::unknown_option,
+                                                        argument, {},
+                                                        static_cast<std::size_t>(index))};
         } else {
             positional.emplace_back(argument);
         }
