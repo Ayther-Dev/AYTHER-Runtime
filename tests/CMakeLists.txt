@@ -1124,7 +1124,7 @@ add_subdirectory(replay_inspection)
 if(AYTHER_ENABLE_TESSERA_NATIVE)
 set(AYTHER_TESSERA_TEST_FIXTURE_DIR "" CACHE PATH
     "Locally generated Tessera/Engine fixtures, outside the source checkout")
-if(NOT EXISTS "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/roms/fx03_rom.md"
+if(NOT EXISTS "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx03/fx03_rom.md"
         OR NOT EXISTS "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx03/fx03.ay"
         OR NOT EXISTS "${AYTHER_TESSERA_TEST_FIXTURE_DIR}/fx02/program.md")
     message(FATAL_ERROR "Generate native fixtures before configuring Runtime tests")
