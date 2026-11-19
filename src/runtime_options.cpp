@@ -265,6 +265,30 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char *const argv
                                                             argument, {},
                                                             static_cast<std::size_t>(index))};
             }
+        } else if (argument == "--accent-color") {
+            std::string color;
+            if (auto error = read_string(argument, color)) {
+                return RuntimeOptionsParseResult{std::move(*error)};
+            }
+            const auto rgb = ayther::parse_hex_rgb(color);
+            if (!rgb) {
+                return RuntimeOptionsParseResult{
+                    make_error(color.empty() ? RuntimeOptionErrorCode::empty_value
+                                             : RuntimeOptionErrorCode::value_out_of_domain,
+                               argument, color, static_cast<std::size_t>(index))};
+            }
+            options.pause_dialog.accent_rgb = *rgb;
+        } else if (argument == "--title" || argument == "--exit-button-text") {
+            std::string &target = argument == "--title" ? options.pause_dialog.title
+                                                        : options.pause_dialog.exit_button_text;
+            if (auto error = read_string(argument, target)) {
+                return RuntimeOptionsParseResult{std::move(*error)};
+            }
+            if (target.empty()) {
+                return RuntimeOptionsParseResult{make_error(RuntimeOptionErrorCode::empty_value,
+                                                            argument, {},
+                                                            static_cast<std::size_t>(index))};
+            }
         } else if (argument == "--rom-crc32") {
             if (auto error = read_string(argument, options.rom_crc32)) {
                 return RuntimeOptionsParseResult{std::move(*error)};

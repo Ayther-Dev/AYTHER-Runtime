@@ -33,12 +33,14 @@
 //   overlay.toggle_pause()                         // on Guide / Escape
 //   overlay.render(ctx, cmd, swap, hd_on, running) // after present, before finalize
 // ---------------------------------------------------------------------------
-#include <vulkan/vulkan.h>
 #include <SDL3/SDL_events.h>
 #include <cstdint>
+#include <utility>
 #include <vector>
+#include <vulkan/vulkan.h>
 
-#include "player_config.h"   // #299: preferences edited and persisted by the panel
+#include "pause_dialog_options.h"
+#include "player_config.h" // #299: preferences edited and persisted by the panel
 
 struct ImGuiContext;
 struct ImFont;
@@ -57,28 +59,32 @@ class AytherSession;
 /// originating `VkContext`. The owner must call shutdown() before that context
 /// or its device is destroyed.
 class PlayerOverlay {
-public:
-    PlayerOverlay()  = default;
-    ~PlayerOverlay() = default;   // shutdown() must be called explicitly
+  public:
+    PlayerOverlay() = default;
+    ~PlayerOverlay() = default; // shutdown() must be called explicitly
 
-    PlayerOverlay(const PlayerOverlay&)            = delete;
-    PlayerOverlay& operator=(const PlayerOverlay&) = delete;
+    PlayerOverlay(const PlayerOverlay &) = delete;
+    PlayerOverlay &operator=(const PlayerOverlay &) = delete;
 
     /// Create render resources and an independent ImGui context.
     /// @pre `swap` is ready and `window` is a valid borrowed SDL window.
     /// @return `true` when the overlay is ready to render.
-    bool init(VkContext& ctx, VkSwapchain& swap, SDL_Window* window);
+    bool init(VkContext &ctx, VkSwapchain &swap, SDL_Window *window);
+
+    /// Accent colour, caption and exit-button label of the dialog.
+    /// Call before init(): the accent is baked into the ImGui style there.
+    void set_dialog_options(PauseDialogOptions options) { dialog_ = std::move(options); }
 
     /// Recreate framebuffers after a swapchain resize.
     /// @pre init() succeeded and the resized swapchain is ready.
-    [[nodiscard]] bool rebuild(VkContext& ctx, VkSwapchain& swap);
+    [[nodiscard]] bool rebuild(VkContext &ctx, VkSwapchain &swap);
 
     /// Forward an SDL event to this overlay's ImGui context.
-    void handle_event(const SDL_Event& e);
+    void handle_event(const SDL_Event &e);
 
     /// Toggle the pause state, typically in response to Escape or Guide.
     void toggle_pause() noexcept { paused_ = !paused_; }
-    bool is_paused()    const noexcept { return paused_; }
+    bool is_paused() const noexcept { return paused_; }
 
     /// Record the pause overlay into the current command buffer.
     ///
@@ -90,44 +96,45 @@ public:
     ///
     /// @pre init() succeeded and `cmd` is recording for `swap`'s current image.
     /// @note No operation is recorded while the overlay is not paused.
-    void render(VkContext& ctx, const AcquiredFrame& frame,
-                bool& hd_on, bool& running,
-                AytherSession* session = nullptr,
-                PlayerConfig* cfg = nullptr, bool* shaders_on = nullptr);
+    void render(VkContext &ctx, const AcquiredFrame &frame, bool &hd_on, bool &running,
+                AytherSession *session = nullptr, PlayerConfig *cfg = nullptr,
+                bool *shaders_on = nullptr);
 
     /// Consume and return the pending configuration-change flag.
     /// Calling this function twice without a new edit returns `false` the
     /// second time, preventing redundant persistence on every frame.
     bool take_config_dirty() noexcept {
-        const bool d = cfg_dirty_; cfg_dirty_ = false; return d;
+        const bool d = cfg_dirty_;
+        cfg_dirty_ = false;
+        return d;
     }
 
     /// Destroy all owned Vulkan resources and the overlay ImGui context.
     /// Safe after partial initialization and safe to call more than once.
-    void shutdown(VkContext& ctx);
+    void shutdown(VkContext &ctx);
 
     bool is_ready() const noexcept { return render_pass_ != VK_NULL_HANDLE; }
 
-private:
-    bool create_render_pass  (VkContext& ctx, VkFormat fmt);
-    [[nodiscard]] bool create_framebuffers(
-        VkContext& ctx, VkSwapchain& swap,
-        std::vector<VkFramebuffer>& output) const;
-    void destroy_framebuffers(VkContext& ctx);
+  private:
+    bool create_render_pass(VkContext &ctx, VkFormat fmt);
+    [[nodiscard]] bool create_framebuffers(VkContext &ctx, VkSwapchain &swap,
+                                           std::vector<VkFramebuffer> &output) const;
+    void destroy_framebuffers(VkContext &ctx);
 
-    VkRenderPass               render_pass_ = VK_NULL_HANDLE;
+    VkRenderPass render_pass_ = VK_NULL_HANDLE;
     std::vector<VkFramebuffer> framebuffers_;
     uint32_t fb_w_ = 0, fb_h_ = 0;
 
-    ImGuiContext* overlay_ctx_ = nullptr;   // independent context (multi-context safe)
-    ImFont*       title_font_  = nullptr;   // owned by the context's font atlas
-    ImFont*       volume_font_ = nullptr;  // IBM Plex Mono 600, owned by the atlas
-    ImFont*       volume_label_font_ = nullptr; // Inter 400, owned by the atlas
-    bool          paused_      = false;
-    bool          imgui_ready_ = false;
+    ImGuiContext *overlay_ctx_ = nullptr; // independent context (multi-context safe)
+    ImFont *title_font_ = nullptr;        // owned by the context's font atlas
+    ImFont *volume_font_ = nullptr;       // IBM Plex Mono 600, owned by the atlas
+    ImFont *volume_label_font_ = nullptr; // Inter 400, owned by the atlas
+    PauseDialogOptions dialog_;
+    bool paused_ = false;
+    bool imgui_ready_ = false;
     /// A configuration change is awaiting persistence; consumed by
     /// take_config_dirty().
-    bool          cfg_dirty_   = false;
+    bool cfg_dirty_ = false;
 };
 
-}  // namespace ayther
+} // namespace ayther

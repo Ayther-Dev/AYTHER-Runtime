@@ -343,6 +343,8 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
                      "         [--input-map <controls.toml>]\n"
                      "         [--input-script <guion.txt>] [--frame-log <frames.csv>]\n"
                      "         [--trust-registry <file.toml>]\n"
+                     "         [--accent-color <#RRGGBB>] [--title <texto>]\n"
+                     "         [--exit-button-text <texto>]  (dialogo de pausa)\n"
                      "         [--rom-crc32 <hex>] [--load-state <estado.bin>]\n"
                      "         [--rom-revision <token>] [--pack-revision <token>]\n"
                      "         [--play-protocol-version <N>]\n"
@@ -972,6 +974,7 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
 
     // In-game pause overlay + HD↔Original toggle (M4).
     if (swap_ok) {
+        overlay.set_dialog_options(options.pause_dialog);
         if (!overlay.init(vulkan, swapchain, window))
             std::fprintf(stderr, "[main] PlayerOverlay::init failed — overlay disabled.\n");
     }

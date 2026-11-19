@@ -1,5 +1,6 @@
 #pragma once
 
+#include "pause_dialog_options.h"
 #include "runtime_error.h"
 
 #include <cstddef>
@@ -64,6 +65,9 @@ struct RuntimeOptions {
     std::string input_script_path;
     // A CSV with the timing of every displayed frame (dev/perf).
     std::string frame_log_path;
+    // Pause-dialog customisation from the launcher: --accent-color,
+    // --title and --exit-button-text.
+    ayther::PauseDialogOptions pause_dialog;
     std::vector<std::pair<std::string, std::string>> core_options;
     std::optional<std::uint32_t> subsystems;
     std::optional<std::uint32_t> mute_buses;
