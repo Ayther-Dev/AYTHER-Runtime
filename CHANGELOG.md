@@ -7,12 +7,14 @@ and the project intends to follow [Semantic Versioning](https://semver.org/spec/
 once stable compatibility guarantees are defined.
 
 > [!WARNING]
-> AYTHER Runtime is an internal prerelease (latest release `0.1.0-beta.18`) and
+> AYTHER Runtime is an internal prerelease (latest release `0.1.0-beta.19`) and
 > is not supported for production use. Only the Runtime–Play process protocol v1
 > is stable: its documented wire fields, reason identifiers and exit codes keep
 > their meaning within v1.
 
 ## [Unreleased]
+
+## [0.1.0-beta.19] - 2026-11-19
 
 ### Changed
 
@@ -21,7 +23,6 @@ once stable compatibility guarantees are defined.
 - New AYTHER Runtime logo and Windows executable icon.
 - An unknown `--` option is rejected with `cli.invalid_argument` (exit 64)
   instead of being read as a positional core or ROM path.
-
 - The Windows release archive and the Windows CI job build against the native
   Engine package (`native-v0.1.0-rc.28`) and Tessera `v0.2.0-rc.9`, so
   `--provider tessera` works in the released Runtime. Configuration fails
@@ -626,7 +627,8 @@ The beta.2 release and assets remain unchanged as historical reference.
 - Documented handling requirements for untrusted cores, ROMs, packs, patches,
   manifests, paths, and save states.
 
-[Unreleased]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.18...HEAD
+[Unreleased]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.19...HEAD
+[0.1.0-beta.19]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.18...v0.1.0-beta.19
 [0.1.0-beta.18]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.17...v0.1.0-beta.18
 [0.1.0-beta.17]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.16...v0.1.0-beta.17
 [0.1.0-beta.16]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.15...v0.1.0-beta.16

@@ -1,11 +1,10 @@
 # Project status
 
-Last updated: 2026-11-19, for `0.1.0-beta.18` and the unreleased changes on
-`main`.
+Last updated: 2026-11-19, for `0.1.0-beta.19`.
 
 ## Maturity
 
-AYTHER Runtime `0.1.0-beta.18` is an internal prerelease. It is for
+AYTHER Runtime `0.1.0-beta.19` is an internal prerelease. It is for
 engineering integration and focused testing. It is not production-ready, not
 generally available, and not backward compatible between betas.
 
@@ -22,9 +21,8 @@ generally available, and not backward compatible between betas.
 
 | Item | Value |
 | --- | --- |
-| Latest release | `v0.1.0-beta.18`, published 2026-11-19 ([notes](releases/v0.1.0-beta.18.md)) |
+| Latest release | `v0.1.0-beta.19`, published 2026-11-19 ([notes](releases/v0.1.0-beta.19.md)) |
 | Release assets | Windows x64 Runtime ZIP, Windows x64 QA Runtime ZIP, Linux x86-64 Runtime TGZ, one `SHA256SUMS-*.txt` per archive |
-| Unreleased | Default `--accent-color` is `#FF7300` (beta.18 shipped `#FB2C36`); new Runtime logo and Windows executable icon |
 | Engine lock (release and QA) | `v0.1.0-rc.28` |
 | Engine lock (Tessera route) | `native-v0.1.0-rc.28` with Tessera `v0.2.0-rc.9` |
 
@@ -36,7 +34,7 @@ them are described in [Runtime–Engine compatibility](runtime-engine-compatibil
 | Provider | Option | Status |
 | --- | --- | --- |
 | Libretro core supplied by the user | `--provider libretro` (default) with `--core` | Implemented in every release archive. |
-| Tessera, AYTHER's own Mega Drive core, through Engine's `tessera_native` provider | `--provider tessera`, no `--core` | Implemented. The Windows release archive includes it (unreleased: from the next release; `v0.1.0-beta.18` and earlier do not). Linux archives do not. Mega Drive only. |
+| Tessera, AYTHER's own Mega Drive core, through Engine's `tessera_native` provider | `--provider tessera`, no `--core` | Implemented. The Windows release archive includes it from `v0.1.0-beta.19`; earlier releases do not. Linux archives do not. Mega Drive only. |
 
 Save states record the emulator that wrote them; a state from the other
 provider is refused (exit 65). See [Architecture](architecture.md#3-emulation-providers).
@@ -48,13 +46,13 @@ GPU, driver, operating-system, core, or game compatibility.
 
 | Date | Build | Result |
 | --- | --- | --- |
-| 2026-11-19 | `fix/pause-accent-default` (PR #71), `windows-ci`, Engine `v0.1.0-rc.28` | CTest 227/227 passed. |
+| 2026-11-19 | `v0.1.0-beta.19` (PR #71), Engine `v0.1.0-rc.28` | `windows-ci` against the regular package: CTest 227/227. Against `native-v0.1.0-rc.28` + Tessera `v0.2.0-rc.9` with `AYTHER_REQUIRE_TESSERA_PROVIDER=ON`: CTest 227/227 (the `tessera_runtime_*` tests were not enabled). |
 | 2026-11-19 | `v0.1.0-beta.18` (PR #70), `windows-ci`, Engine `v0.1.0-rc.28` | CTest 227/227 passed. Bootstrap verified SHA-256 and SLSA provenance for the regular and native locks. Release workflow published all six assets. |
 | 2026-11-13 | `v0.1.0-beta.15`, Engine `v0.1.0-rc.23` | Regular package: 230/236 (the six `tessera_runtime_*` tests need the native package). Native package `native-v0.1.0-rc.23` with Tessera `v0.2.0-rc.9`: 236/236, including GPU presentation and device audio. |
 
 Results of earlier betas are in the git history of this file and in the
 [release notes](releases/). The Tessera integration tests and the `windows-qa`
-and `windows-qa-gpu` suites were not rerun for beta.16 to beta.18.
+and `windows-qa-gpu` suites were not rerun for beta.16 to beta.19.
 
 Branch protection on `main` requires `Windows / RelWithDebInfo`,
 `Linux / RelWithDebInfo`, `Linux / ASan-UBSan-Fuzz`, `Windows / QA`,

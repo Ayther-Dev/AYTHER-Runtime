@@ -9,7 +9,7 @@ original and HD-composed frames through Vulkan and owns input and the in-game
 pause overlay.
 
 > [!WARNING]
-> **Beta.** Version `0.1.0-beta.18` is an internal prerelease. Command-line
+> **Beta.** Version `0.1.0-beta.19` is an internal prerelease. Command-line
 > options, package boundaries, configuration and save-state formats may change
 > between betas. Only the Runtime–Play process protocol v1 is stable. See
 > [Project status](docs/status.md).
@@ -45,7 +45,7 @@ renderer. Details are in [Architecture](docs/architecture.md).
 
 - Runs a game with a Libretro core (`--core`) or with Tessera
   (`--provider tessera`, Mega Drive, Windows x64; in the Windows release archive
-  after `v0.1.0-beta.18`).
+  from `v0.1.0-beta.19`).
 - Applies AYTHER packs and IPS/BPS patches in memory, and opens signed packs
   against an explicit [trust registry](docs/trust-registry.md).
 - Presents aspect-correct Vulkan output with selectable output profiles.

@@ -23,7 +23,7 @@ that can be a color attachment and a transfer destination.
 | Provider | Platform | Result | Date | Notes |
 | --- | --- | --- | --- | --- |
 | `libretro` | Windows x64, Linux x86-64 | See core coverage | — | Default provider; in every release archive. |
-| `tessera` (Mega Drive) | Windows x64 | Validated locally; not promoted | 2026-11-13 | Six `tessera_runtime_*` tests, including GPU presentation and device audio, against `native-v0.1.0-rc.23` and Tessera `v0.2.0-rc.9`. From the next release the Windows archive includes the provider; the integration tests have no CI run. |
+| `tessera` (Mega Drive) | Windows x64 | Validated locally; not promoted | 2026-11-13 | Six `tessera_runtime_*` tests, including GPU presentation and device audio, against `native-v0.1.0-rc.23` and Tessera `v0.2.0-rc.9`. From `v0.1.0-beta.19` the Windows archive includes the provider; the integration tests have no CI run. |
 
 ## GPU coverage
 
