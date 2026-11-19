@@ -61,6 +61,12 @@ Assert-Condition ($workflowText -match '(?m)^    name: Release / Windows QA pack
     "The Windows QA package job needs its stable name."
 Assert-Condition ($workflowText -match 'tools/bootstrap_ayther_engine_qa\.ps1') `
     "The QA package must use the QA Engine bootstrap."
+Assert-Condition ($workflowText -match 'tools/bootstrap_tessera\.ps1') `
+    "The Windows build must bootstrap the locked Tessera package."
+Assert-Condition ($workflowText -match 'ayther-engine\.native-mvp\.lock\.json') `
+    "The Windows build must use the native Engine package."
+Assert-Condition ($workflowText -match '-DAYTHER_REQUIRE_TESSERA_PROVIDER=ON') `
+    "The Windows build must fail unless the Engine provides Tessera."
 Assert-Condition ($workflowText -notmatch 'AllowLocalArtifactForTest') `
     "A release must never accept an unattested local Engine."
 Assert-Condition ($workflowText -match 'cmake --preset windows-qa(\s|$)' -and

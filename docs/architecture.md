@@ -1,146 +1,203 @@
-# AYTHER Runtime Architecture
+# AYTHER Runtime architecture
 
 > [!WARNING]
-> This document describes the current `0.1.0` implementation, not a stable
-> public API. Package surfaces and ownership boundaries are still being narrowed.
+> This document describes the `0.1.0` beta implementation. It is not a stable
+> public API; package surfaces and ownership boundaries are still being narrowed.
+
+This document is for contributors who change Runtime and for integrators who
+need to know what Runtime owns. Command-line options, status events and exit
+codes are specified in the [process and CLI contract](process-protocol.md).
 
 ## 1. Purpose and scope
 
-`ayther_runtime` is the process that owns one game session. AYTHER Play starts it
-when a user launches a game and observes it until the session exits. Runtime
-keeps emulation failures outside the launcher while retaining an in-process,
-zero-copy path for latency-sensitive frame data.
+`ayther_runtime` is the process that owns one game session. AYTHER Play CE
+starts it when the user launches a game and observes it until it exits.
+Running each session in its own process keeps an emulation failure outside the
+launcher, while frame data still moves in-process and zero-copy from Engine to
+the renderer.
 
 Runtime owns:
 
-- session lifecycle and launcher-facing process events;
-- SDL3 window, keyboard, and gamepad handling;
-- Vulkan swapchain, presentation, aspect fitting, and CRT post-processing;
-- the Dear ImGui in-game overlay;
-- output-profile selection and per-game/per-pack player preferences;
-- comparative captures, diagnostics, and save-state placement; and
-- assembly of the pack layer stack used for presentation.
+- the session lifecycle and the launcher-facing status events;
+- the SDL3 window, keyboard and gamepad input;
+- the Vulkan swapchain, presentation, aspect fitting and CRT post-processing;
+- the Dear ImGui in-game pause overlay;
+- output profiles and per-game/per-pack player preferences;
+- comparison captures, diagnostics and save-state files; and
+- the pack layer stack used for presentation.
 
-The AYTHER engine owns emulation, the Libretro host, session state, HD
-substitution, audio processing, the offscreen renderer, and pack interpretation.
-AYTHER Play owns the library UI, downloads, accounts, and cloud synchronization.
+AYTHER Engine owns emulation (through either provider, see
+[section 3](#3-emulation-providers)), session state, HD substitution, audio
+processing, the offscreen renderer and pack interpretation. AYTHER Play CE owns
+the library UI, downloads and launch manifests.
 
 ## 2. Process boundary
 
 ```text
-+----------------------- AYTHER Play ------------------------+
-| Launcher | library | session manifests | cloud integration |
-+------------------------------+-----------------------------+
-                               | spawn, arguments
-                               | AYTHER_STATUS <json>
-+------------------------------v-----------------------------+
-|                     AYTHER Runtime                         |
-|                                                           |
-|  SDL input --> AytherSession::set_input()                  |
-|                  |                                        |
-|                  v                                        |
-|           AytherSession::step() --> borrowed FrameView     |
-|                  |                       |                 |
-|                  |                       v                 |
-|                  +--------------> AytherRenderer           |
-|                                           | offscreen image|
-|                                           v                |
-|                          post-process / present / overlay   |
-|                                           |                |
-|                                           v                |
-|                                      Vulkan swapchain      |
-+-----------------------------------------------------------+
-              |
-              `-- dynamically loaded user-supplied core
++------------------------- AYTHER Play CE -------------------------+
+| library | launch manifests | process supervision                  |
++--------------------------------+---------------------------------+
+                                 | spawn + arguments
+                                 | AYTHER_STATUS <json> lines
++--------------------------------v---------------------------------+
+|                         AYTHER Runtime                            |
+|                                                                   |
+|  SDL input --> AytherSession::set_input()                         |
+|                     |                                             |
+|                     v                                             |
+|              AytherSession::step() --> borrowed FrameView         |
+|                     |                         |                   |
+|                     |                         v                   |
+|                     +----------------> AytherRenderer            |
+|                                               | offscreen image   |
+|                                               v                   |
+|                              post-process / present / overlay     |
+|                                               |                   |
+|                                               v                   |
+|                                        Vulkan swapchain           |
++-------------------------------------------------------------------+
+                     |
+                     | AYTHER Engine emulation provider
+                     +-- libretro: user-supplied core loaded at run time
+                     `-- tessera_native: Tessera, linked into the native Engine package
 ```
 
-The launcher treats an `exit` status event as a clean protocol completion. A
-process termination without that event is an abnormal session failure. Human
-logs may share stdout, so consumers must parse only complete lines beginning
-with `AYTHER_STATUS `.
+The launcher treats an `exit` status event as a clean completion. A process
+that terminates without it is an abnormal session failure. Human-readable logs
+share stdout, so consumers parse only complete lines that begin with
+`AYTHER_STATUS `.
 
-## 3. Hard invariants
+## 3. Emulation providers
 
-1. **User-supplied core boundary.** Runtime dynamically loads a core selected by
-   the user. The project does not distribute the core as part of Runtime. This
-   is an architectural and distribution constraint, not legal advice; every
-   distribution still requires its own license review.
-2. **Content immutability.** Runtime does not modify the source ROM or core.
-   Optional IPS/BPS patches are applied to an in-memory ROM buffer. AYTHER packs
-   are the component's recognized content-extension mechanism.
+Engine runs the game through one of two providers. Runtime chooses the
+provider with `--provider` and builds the matching `AytherSession::Config`; the
+rest of the session (input, overlay, shaders, HD composition, capture, packs,
+save states) is the same for both.
+
+| | `libretro` (default) | `tessera` |
+| --- | --- | --- |
+| Engine provider | Libretro host | `EmulationProvider::tessera_native` |
+| Core | User-supplied core, `--core <path>` | Tessera, AYTHER's own clean-room Mega Drive core. `--core` is rejected (`args.provider_conflict`, exit 64). |
+| ROM delivery | Path passed to the core | Bytes read by Runtime and passed in `NativeConfig` (`src/native_session_config.cpp`) |
+| Systems | Whatever the core supports | Mega Drive only. Another system fails before SDL starts with `core.unsupported_system` (exit 3). |
+| Engine package | Regular package (`dependencies/ayther-engine.lock.json`) | Native package (`dependencies/ayther-engine.native-mvp.lock.json`) plus Tessera (`dependencies/tessera.native-mvp.lock.json`). The regular package does not contain the provider. |
+| Platforms | Windows x64, Linux x86-64 | Windows x64 |
+
+A pack baked against the libretro Genesis Plus GX core also plays under
+Tessera.
+
+**Emulator generation.** Engine reports an emulator generation (identifier,
+version and determinism contract). Runtime adds it to the `ready` event and
+writes it into every save state. Loading a state whose generation differs from
+the running session fails with `state.generation_mismatch` (exit 65), because a
+state from one emulator cannot restore the other. States written before the
+generation was recorded count as Genesis Plus GX (`gpgx`, contract 1).
+
+**Native QA driver.** In a build configured with
+`AYTHER_ENABLE_TESSERA_NATIVE=ON`, the `--native-*` options with
+`--provider tessera` select a separate, direct `NativeEmulation` driver
+(`src/native_runtime.cpp`) for traces, input masks, deactivation tests, GPU and
+audio-device probes. This driver is a development and QA tool, not the player
+path. The `--native-*` options are rejected with any other provider.
+
+## 4. Hard invariants
+
+1. **User-supplied core boundary.** With the libretro provider, Runtime
+   dynamically loads a core that the user selected. Runtime does not distribute
+   that core. This is an architectural and distribution constraint, not legal
+   advice; every distribution still needs its own license review.
+2. **Content immutability.** Runtime does not modify the source ROM or the core.
+   IPS/BPS patches are applied to an in-memory ROM buffer. AYTHER packs are the
+   only content-extension mechanism.
 3. **Frame-view lifetime.** `FrameView` is a borrowed, zero-copy view. Its
-   pointers remain valid only until the next session mutation, including a step,
-   rewind operation, or relevant reload.
-4. **Single-threaded session driver.** The main emulation thread drives the
-   session and renderer. Internally owned workers must stop and join before their
-   resources are destroyed.
-5. **Typed pack boundary.** Runtime obtains the core ABI revision, owned pack
-   metadata and validation findings, render tiers, and reload events through
-   `ayther::engine` C++ APIs. `PackView` borrows from the session; `PackWatcher`
-   owns its watcher. Runtime does not include or release raw core FFI handles.
+   pointers stay valid only until the next session mutation: a step, a rewind,
+   or a reload.
+4. **Single-threaded session driver.** The main thread drives the session and
+   the renderer. Workers that Runtime owns stop and join before their resources
+   are destroyed.
+5. **Typed pack boundary.** Runtime gets the core ABI revision, pack metadata,
+   validation findings, render tiers and reload events through the
+   `ayther::engine` C++ API. `PackView` borrows from the session; `PackWatcher`
+   owns its watcher. Runtime never includes or releases raw core FFI handles.
 6. **Explicit Vulkan ownership.** Runtime owns the instance, surface, physical
-   and logical devices, queues, VMA allocator, swapchain, presentation, and UI
-   resources. Engine owns only its offscreen renderer resources. The public
-   `VulkanContextView` and `RenderImageView` values borrow handles; neither side
+   and logical devices, queues, VMA allocator, swapchain, presentation and UI
+   resources. Engine owns only its offscreen renderer resources.
+   `VulkanContextView` and `RenderImageView` borrow handles; neither side
    destroys the other side's resources.
-7. **Single status boundary.** Only `StatusEmitter` frames process events. Every
-   event uses its typed model and the same JSON serializer, complete-line write,
-   and immediate flush path.
-8. **Checked Vulkan boundary.** Every Runtime-owned operation returning
-   `VkResult` is invoked through `VulkanCalls` and checked as a typed
-   `VkFailure`. Diagnostics retain the operation, symbolic result, and integer
-   code. Tests can replace individual calls to exercise lifecycle failures.
-9. **Single-purpose window.** The Runtime window contains gameplay and in-game
-   controls only. Library management belongs to AYTHER Play.
+7. **Single status boundary.** Only `StatusEmitter` writes process events. Every
+   event uses its typed model, one JSON serializer, one complete-line write and
+   an immediate flush. A source-contract test rejects framing elsewhere in
+   `src/`.
+8. **Checked Vulkan boundary.** Every Runtime-owned call that returns `VkResult`
+   goes through `VulkanCalls` and is checked as a typed `VkFailure` that keeps
+   the operation, symbolic result and integer code. Tests replace individual
+   calls to exercise failure paths.
+9. **Single-purpose window.** The Runtime window shows gameplay and in-game
+   controls only. Library management belongs to AYTHER Play CE.
 
-## 4. Component map
+## 5. Component map
 
 | Path | Responsibility |
 | --- | --- |
-| `src/main.cpp` | CLI parsing, lifecycle, session loop, protocol events, persistence, and orchestration. |
-| `src/input_map.*` | Startup-only TOML validation and resolved keyboard/gamepad binding ownership. |
-| `src/game_input.*` | Resolved SDL keyboard/gamepad state to normalized RetroPad state; no per-frame string parsing. |
-| `src/player_overlay.*` | In-game profile, subsystem, bus, shader, and HD controls. |
-| `src/player_config.*` | Per-game/per-pack player settings and tolerant local persistence. |
-| `src/capture.*` | Synchronized original/HD/comparison PNGs and non-content metadata. |
-| `src/diagnostics.*` | Pure diagnostic decision logic and Markdown report generation. |
-| `src/pack_layers.*` | Runtime-owned presentation stack derived from pack layers. |
-| `src/sonic_telemetry.*` | Bounds-checked Runtime-only decoding of game-specific work-RAM diagnostics. |
-| `src/vulkan_backend/vk_context.*` | Runtime-owned Vulkan instance, device, queues, surface, and VMA allocator; exports a borrowed Engine view. |
-| `src/vulkan_backend/vulkan_calls.*` | Injectable dispatch for Runtime-owned Vulkan/VMA creation, synchronization, presentation, and teardown calls. |
-| `src/vulkan_backend/vk_result.*` | Typed Vulkan failure classification, symbolic names, and diagnostics. |
-| `src/vulkan_backend/spirv_file.*` | Complete, aligned SPIR-V loading with RAII file ownership. |
-| `src/vulkan_backend/vk_swapchain.*` | Swapchain and two-frames-in-flight synchronization. |
-| `src/vulkan_backend/vk_present.*` | Aspect-correct blit, split presentation, and layout transitions. |
-| `src/vulkan_backend/vk_postprocess.*` | CRT/post-process pipeline and fallback behavior. |
+| `src/main.cpp` | Entry point; calls `run_runtime_application`. |
+| `src/runtime_application.*` | Process composition: startup order, session loop, persistence and teardown. |
+| `src/runtime_options.*` | Strict, typed command-line parsing (exit 64 on error). |
+| `src/runtime_error.h` | Stable reason identifiers and process exit codes. |
+| `src/status_emitter.*` | Typed `AYTHER_STATUS` events and their JSON serialization. |
+| `src/runtime_config.*` | Runtime-owned data, save and capture paths (`RuntimePaths`, `RuntimeConfig`). |
+| `src/trust_registry.*` | Resolution of the pack trust registry passed to Engine ([trust registry](trust-registry.md)). |
+| `src/file_reservation.h` | Optional ROM/pack reservations requested by Play ([reservations](specs/runtime-reservations.md)). |
+| `src/native_session_config.*` | Tessera `NativeConfig` for a Mega Drive ROM. |
+| `src/native_runtime.*` | Direct `NativeEmulation` QA driver; built only with `AYTHER_ENABLE_TESSERA_NATIVE`. |
+| `src/session_controller.h` | Engine session boundary, independent of UI and presentation state. |
+| `src/input_map.*` | Startup-only TOML validation of keyboard/gamepad bindings ([input map](input-map.md)). |
+| `src/game_input.*` | Resolved SDL keyboard/gamepad state to RetroPad state. |
+| `src/player_overlay.*`, `src/pause_dialog_options.h` | In-game pause dialog and controls; launcher-customizable accent, title and exit-button label. |
+| `src/player_config.*` | Per-game/per-pack player settings and tolerant persistence. |
+| `src/output_profile.h` | Runtime-owned output profiles (`lcd`, `crt`, `pixel`, `smooth`, `cinema`, `ntsc`). |
+| `src/save_state_store.*` | Versioned, transactional save-state files. |
+| `src/capture.*`, `src/capture_service.*` | Synchronized original/HD/comparison PNGs and metadata. |
+| `src/diagnostics.*`, `src/audio_diagnostic.*` | Diagnostic decisions, Markdown reports, rate-limited audio diagnostics. |
+| `src/pack_layers.*` | Presentation layer stack derived from pack layers. |
+| `src/sonic_telemetry.*` | Bounds-checked, game-specific work-RAM diagnostics. |
+| `src/presentation_controller.h` | Sole owner of the window-side Vulkan context, swapchain, post-process and overlay. |
+| `src/vulkan_backend/` | Vulkan context, checked call dispatch, SPIR-V loading, swapchain, presentation, post-process. |
+| `src/qa_*`, `src/audio_qa_*`, `src/replay_inspection/`, `src/music_*` | Replay QA session, inspection window and music-continuity logic; active only in QA builds with `--qa-session` ([audio QA evidence](audio-qa-evidence.md)). |
 
-## 5. Session lifecycle
+## 6. Session lifecycle
 
 ```text
-parse arguments
-  -> optional core probe and immediate exit
-  -> resolve and validate optional input map
-  -> initialize SDL subsystems
-  -> validate optional pack
-  -> create AytherSession
-  -> emit ready and now-playing events
-  -> initialize Vulkan presentation when available
-  -> apply persisted settings, then explicit launch overrides
-  -> run frame loop
-  -> serialize state to a temporary file and atomically rename
+parse arguments                                (error: exit 64)
+  -> tessera + --native-* : run the native QA driver and exit
+  -> --probe-core         : probe the core, emit `probe`, exit
+  -> tessera              : read the ROM, build NativeConfig (non-Mega Drive: exit 3)
+  -> optional file reservations, then AYTHER_RESERVATION 1
+  -> resolve the trust registry, inspect the --pack file   (failure: exit 4)
+  -> load the optional input map
+  -> initialize SDL video, gamepad and audio
+  -> initialize Vulkan presentation (missing Vulkan: warning, no GPU output)
+  -> validate the pack                       (rejected --pack: exit 4)
+  -> create AytherSession with the selected provider
+  -> optional --load-state (generation mismatch: exit 65)
+  -> emit `ready` and `now-playing`
+  -> apply persisted settings, then explicit launch options
+  -> run the frame loop
+  -> write the save state to a temporary file and rename it
   -> tear down in dependency order
-  -> emit exit event, optionally with the save-state path
+  -> emit `exit`, with the save-state path when one was written
 ```
 
-An invalid or rejected pack must not prevent original gameplay. Runtime disables
-pack derivation after an explicitly rejected pack so the engine cannot silently
-load a different file by convention.
+A pack named with `--pack` is mandatory: if it cannot be opened, fails
+validation, or Engine does not activate it, the launch ends with
+`pack.open_failed` (exit 4) instead of silently running the original game. A
+pack that Engine finds by naming convention is optional: if it is rejected,
+Runtime emits a `pack.rejected` warning, continues in original mode, and
+disables pack discovery so Engine cannot load a different pack instead.
 
-## 6. Frame and presentation flow
+## 7. Frame and presentation flow
 
-For each logical frame, Runtime applies current input and presentation settings
-before stepping the session. The engine returns a `FrameView`; the renderer uses
-that same logical frame to produce the offscreen image and any comparison image.
+For each frame, Runtime applies the current input and presentation settings,
+steps the session, and renders the returned `FrameView`:
 
 ```cpp
 session.set_input(input);
@@ -154,114 +211,104 @@ overlay.render(command_buffer, swapchain.image());
 swapchain.end_frame();
 ```
 
-The snippet is conceptual and intentionally omits error and fallback branches.
+The snippet is conceptual and omits error and fallback branches.
 
 Presentation rules:
 
-- `ayther::runtime::OutputProfile` owns the `lcd`, `crt`, `pixel`, `smooth`,
-  `cinema`, and `ntsc` presets, including filtering, scaling, and shader mixing.
-  Engine provides authored effect values and an optional recommendation id, but
-  knows no Runtime window profile or filter type.
-- Output is pillarboxed or letterboxed without stretching.
-- Integer scaling falls back to fit when a 1x image cannot fit; it does not crop.
-- `RenderImageView` borrows Engine-owned image/view/sampler handles and declares
-  their format, extent, handoff layout, access scope, and owning queue family.
-- Renderer images return to the layout declared by `RenderImageView` after
-  transfer use. Runtime never destroys their handles.
-- Swapchain images transition through transfer/render usage to `PRESENT_SRC_KHR`.
+- `ayther::runtime::OutputProfile` owns the output presets, including
+  filtering, scaling and shader mixing. Engine supplies authored effect values
+  and an optional recommended profile id; it knows no Runtime profile.
+- Output is pillarboxed or letterboxed, never stretched.
+- Integer scaling falls back to fit when a 1x image does not fit; it never crops.
+- `RenderImageView` borrows Engine-owned image, view and sampler handles and
+  declares their format, extent, handoff layout, access scope and queue family.
+  Renderer images return to that layout after transfer use.
 - Two frames are in flight. Per-filter descriptors prevent updates to resources
-  still in use by an earlier frame.
-- Missing post-process resources must degrade to a simple blit rather than make
-  the session unusable.
+  that an earlier frame still uses.
+- Missing post-process resources degrade to a plain blit.
 
-Pacing follows the core timing, including non-integer rates such as 59.9227 Hz,
-with audio dynamic-rate control used to maintain synchronization.
+Pacing follows the rate the core reports, including non-integer rates such as
+59.9227 Hz, with dynamic audio-rate control keeping audio in sync. A provider
+that reports its rate only after the first frame (Tessera) is re-paced as soon
+as the rate is known.
 
-## 7. Configuration and precedence
+## 8. Configuration and precedence
 
-Configuration is applied from least to most specific:
+Configuration applies from least to most specific:
 
-1. engine and pack defaults;
-2. persisted per-game/per-pack player settings; and
-3. explicit launch arguments from AYTHER Play or a developer.
+1. Engine and pack defaults;
+2. persisted per-game/per-pack player settings;
+3. explicit launch options from AYTHER Play CE or a developer.
 
-Session-creation inputs such as the core path, ROM path, patch, and core options
-are immutable after `AytherSession::create()`. Runtime controls such as output
-profile, HD mode, subsystem mask, and bus state may change during the session.
+Session-creation inputs (provider, core, ROM, patch, core options) are fixed
+after `AytherSession::create()`. Output profile, HD mode, subsystem mask and
+bus state can change during the session.
 
-For output presentation specifically, Runtime applies its neutral LCD default,
-then a recognized pack recommendation, then a recognized persisted or explicit
-user choice. Unknown ids fall through without invalidating the session.
+For the output profile, Runtime applies its LCD default, then a recognized pack
+recommendation, then a recognized persisted or explicit user choice. Unknown
+ids fall through without invalidating the session.
 
-The `--manifest` path is correlation metadata only. Runtime deliberately does
-not parse it; AYTHER Play remains the single translator from a launch manifest
-to process arguments.
+`--manifest` is correlation metadata only; Runtime does not parse it. AYTHER
+Play CE is the single translator from a launch manifest to process arguments.
 
-The optional `--input-map` is different: Runtime owns the executable input
-contract and therefore parses the TOML once before SDL initialization. Partial
-maps inherit compiled defaults. The frame loop receives only resolved SDL enum
-values, and invalid or ambiguous maps fail startup instead of silently changing
-controls.
+`--input-map` is parsed once, before SDL starts, because Runtime owns the input
+contract. Partial maps inherit the compiled defaults; invalid or ambiguous maps
+fail startup.
 
-`RuntimePaths` discovers Runtime's platform user-data root before core probing
-and before SDL initialization. `RuntimeConfig` resolves the effective save root,
-with a non-empty `--saves-dir` taking precedence. Player settings, captures,
-diagnostics, and default saves are therefore Runtime-owned and do not require
-an Engine configuration header or an Engine checkout.
+`RuntimePaths` finds Runtime's platform data root before core probing and SDL
+initialization. `RuntimeConfig` resolves the save root; a non-empty
+`--saves-dir` wins. Player settings, captures, diagnostics and default saves
+are Runtime-owned and need no Engine configuration.
 
-## 8. Persistence and generated artifacts
+## 9. Persistence and generated files
 
-- Player settings use a tolerant local TOML-like file keyed by sanitized game
-  and optional pack identifiers. Unknown keys are ignored and malformed input
-  falls back to defaults.
-- Save states use a temporary file followed by rename. The launcher receives the
-  final path only after a successful clean shutdown.
-- Comparative capture writes original, HD, comparison PNGs, and metadata below
-  Runtime's `capturas` directory. The metadata contract must not embed protected
-  game pixels or other game content.
-- Diagnostics are written as Markdown below Runtime's platform data directory.
+| File | Format | Compatibility |
+| --- | --- | --- |
+| Player settings | Tolerant TOML-like file keyed by sanitized game and optional pack ids, `format_version = 1` | The legacy unversioned field set reads as version 0. Unknown keys are ignored; malformed input falls back to defaults. |
+| Save state | `AYTHSTAT` envelope version 2: payload length, checksum and emulator generation | Version 1 and unwrapped files read as `gpgx / 1`. Unknown future versions and corrupt or truncated envelopes fail with `state.restore_failed`. |
+| Capture | Original, HD and comparison PNGs plus metadata below Runtime's `capturas` directory | Metadata never embeds game pixels or other game content. |
+| Diagnostics | Markdown below Runtime's data directory | Informational. |
 
-## 9. Build boundary
+Settings and save states are published through a temporary file and a rename.
+Fault-injection tests show that storage exhaustion or interruption keeps the
+previous valid file. The launcher receives the save-state path only after a
+clean shutdown.
 
-Both standalone and parent-tree builds consume the engine in the same way:
+`PresentationController` releases overlay, post-process, swapchain and context
+in that order from its destructor, so normal returns and partial startup
+failures need no manual presentation shutdown. Engine's renderer borrows the
+context and is released first.
+
+## 10. Build boundary
+
+Runtime consumes Engine only as an installed CMake package:
 
 ```cmake
-find_package(Ayther 0.1.0 CONFIG REQUIRED COMPONENTS engine)
+find_package(Ayther 0.1.0...<0.2.0 CONFIG REQUIRED COMPONENTS engine)
 target_link_libraries(ayther_runtime PRIVATE Ayther::engine)
 ```
 
-The current `engine` surface is intentionally marked for narrowing. Runtime
-still consumes broad engine headers for session, renderer, Vulkan interop,
-input constants, and pack operations. Core probing is already isolated behind
-the public `ayther::engine::CoreProbe` contract. The detailed evidence and target
-ownership decisions live in
-[`runtime-engine-dependency-audit.yaml`](runtime-engine-dependency-audit.yaml).
+Runtime includes only installed public headers. The `engine` surface is still
+broad (session, renderer, Vulkan interop, input constants, pack operations) and
+is marked for narrowing; core probing already goes through the public
+`ayther::engine::CoreProbe` contract. The evidence and ownership decisions are
+in [`runtime-engine-dependency-audit.yaml`](runtime-engine-dependency-audit.yaml);
+the supported versions and locks are in
+[Runtime–Engine compatibility](runtime-engine-compatibility.md).
 
-Runtime player configuration uses schema `format_version = 1` and accepts the
-legacy unversioned field set as version 0. Save states use the binary
-`AYTHSTAT` envelope version 1 with payload length and checksum; unwrapped files
-remain readable as legacy version 0. Unknown future versions and corrupt or
-truncated envelopes fail with the stable `state.restore_failed` reason. Both
-writers publish through a temporary path, and fault-injection tests prove that
-storage exhaustion or interruption preserves the previous valid file.
+## 11. Failure model
 
-`PresentationController` is the sole owner of the window-side Vulkan context,
-swapchain, post-processing pass, and ImGui overlay. Its destructor releases
-overlay → post-process → swapchain → context, so normal returns and partial
-startup failures need no manual presentation `shutdown()` calls. Engine's
-renderer remains a borrower of the context and is released before the
-controller leaves scope.
-
-## 10. Failure model
-
-- Core probing returns distinct nonzero codes for load failure and missing
-  Libretro symbols.
-- Vulkan initialization or post-process failure should preserve a degraded
-  execution path where possible.
-- Pack validation errors disable the pack, not original gameplay.
-- A failed resume preserves the supplied save file and starts a fresh session.
-- Clean shutdown emits `exit`; missing `exit` means the launcher must classify
+- Core probing returns distinct non-zero codes for load failure, missing
+  Libretro symbols and other probe verdicts (Engine probe contract v2).
+- Vulkan initialization or post-process failure keeps a degraded path where
+  possible.
+- A rejected `--pack` ends the launch (exit 4); a rejected convention-found
+  pack only disables HD substitution.
+- A failed resume keeps the supplied save file. A state from another emulator
+  generation ends the launch with exit 65.
+- Clean shutdown emits `exit`; a missing `exit` means the launcher classifies
   the session as abnormal.
 
-For exact process fields and current implementation limitations, see
-[`process-protocol.md`](process-protocol.md) and [`status.md`](status.md).
+Exact event fields, reason identifiers and exit codes are in
+[`process-protocol.md`](process-protocol.md) and
+[`runtime-play-protocol.md`](runtime-play-protocol.md).

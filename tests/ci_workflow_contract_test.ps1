@@ -63,6 +63,12 @@ Assert-Condition ($workflowText -match 'tools/bootstrap_ayther_engine\.ps1') `
     "CI must use Runtime's locked Engine bootstrap."
 Assert-Condition ($workflowText -match 'v0.1.0-rc.28') `
     "CI must reject any Engine lock other than v0.1.0-rc.28."
+Assert-Condition ($workflowText -match 'tools/bootstrap_tessera\.ps1') `
+    "The Windows build must bootstrap the locked Tessera package."
+Assert-Condition ($workflowText -match 'ayther-engine\.native-mvp\.lock\.json') `
+    "The Windows build must use the native Engine package."
+Assert-Condition ($workflowText -match '-DAYTHER_REQUIRE_TESSERA_PROVIDER=ON') `
+    "The Windows build must fail unless the Engine provides Tessera."
 Assert-Condition ($workflowText -match 'cmake --preset') `
     "CI configuration must use CMake presets."
 Assert-Condition ($workflowText -match 'cmake --build --preset') `

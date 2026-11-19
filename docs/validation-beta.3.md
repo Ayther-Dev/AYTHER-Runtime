@@ -1,5 +1,11 @@
 # Windows x86-64 acceptance — beta.3
 
+> [!NOTE]
+> Historical record of the `v0.1.0-beta.3` acceptance run (2026-09-09),
+> referenced by its [release notes](releases/v0.1.0-beta.3.md). It is not
+> updated for later releases; current results are in
+> [Project status](status.md#latest-validation).
+
 Validated on 2026-09-09 with MSVC v145 14.51.36231, Windows
 10.0.26200, Vulkan on NVIDIA GeForce RTX 3060 Laptop GPU, and Engine
 `v0.1.0-rc.6` **engine-vpx**. The Engine ZIP SHA-256 matches the dependency lock:

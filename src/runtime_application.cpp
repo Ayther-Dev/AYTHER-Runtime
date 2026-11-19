@@ -335,7 +335,7 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
                      "ayther_runtime — the Ayther game-session host (spawned by Ayther Play).\n"
                      "Usage: ayther_runtime --core <libretro.dll> --rom <rom>\n"
                      "       ayther_runtime --provider tessera --rom <rom>\n"
-                     "         [--provider external|tessera]  (tessera: sin --core)\n"
+                     "         [--provider libretro|tessera]  (tessera: sin --core)\n"
                      "         [--pack <ay>] [--patch <ips/bps>] [--profile <id>]\n"
                      "         [--subsystems <mask>] [--mute-buses <mask>] [--output <id>]\n"
                      "         [--core-option key=value]... [--no-shaders|--shaders]\n"

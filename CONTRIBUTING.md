@@ -1,7 +1,7 @@
 # Contributing to AYTHER Runtime
 
-Thank you for helping improve AYTHER Runtime. The project is in early development,
-so changes must preserve its process, ownership, content, and legal boundaries.
+Thank you for helping improve AYTHER Runtime. The project is a prerelease, so
+changes must preserve its process, ownership, content and legal boundaries.
 
 ## Current contribution policy
 
@@ -19,7 +19,8 @@ required unless maintainers state otherwise for a particular contribution.
 ## Before opening an issue
 
 - Search existing issues and the [project status](docs/status.md).
-- Confirm the behavior against the current default branch.
+- Confirm the behavior against the current `main` branch and say which
+  provider (`libretro` or `tessera`) and Engine lock you used.
 - Remove game content, personal paths, tokens, account data, and other sensitive
   information from logs and captures.
 - Use the security process in [SECURITY.md](SECURITY.md) for vulnerabilities.
@@ -27,26 +28,36 @@ required unless maintainers state otherwise for a particular contribution.
 
 ## Development workflow
 
-1. Read the [architecture](docs/architecture.md), [development guide](docs/development.md),
+1. Read the [architecture](docs/architecture.md), [development guide](docs/development.md)
    and [process contract](docs/process-protocol.md).
-2. Keep each change focused on one behavior or architectural decision.
-3. Add or update tests at the lowest practical layer. Prefer pure policy and
+2. Before starting, check open and recent pull requests so work is not
+   duplicated. Branch from an up-to-date `origin/main`, one branch per topic.
+3. Keep each change focused on one behavior or architectural decision.
+4. Add or update tests at the lowest practical layer. Prefer pure policy and
    geometry tests where a GPU is not essential.
-4. Build with CMake and run `ctest --test-dir build --output-on-failure`.
-5. Update all affected documentation, protocol examples, and status notes in the
-   same change.
-6. Complete the pull request template with evidence, risks, and rollback notes.
+5. Build and test with the presets, for example
+   `cmake --preset windows-ci`, `cmake --build --preset windows-ci` and
+   `ctest --preset windows-ci --output-on-failure`. Changes to replay QA also
+   need `windows-qa`; changes to the Tessera route need a Tessera-route build
+   ([how](docs/runtime-engine-compatibility.md#tessera-route-windows-x64)).
+6. Update the affected reference documents in the same change and add an entry
+   under `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md).
+7. Complete the pull request template with evidence, risks and rollback notes.
 
 ## Engineering requirements
 
-- Use C++20 and the existing CMake target model.
+- Use C++20 and the existing CMake target model. Format changed C++ files with
+  clang-format 18 (`.clang-format`); CI checks whole changed files.
 - Consume engine functionality through `find_package(Ayther ...)` and imported
   targets; do not add relative includes into engine source or private directories.
 - Preserve `FrameView` borrowing and invalidation rules.
 - Keep Runtime-owned Vulkan resources separate from engine-owned renderer
   resources. Document every cross-boundary borrowed handle.
 - Keep launcher events to complete, one-line `AYTHER_STATUS <json>` records.
-- Preserve original gameplay when optional pack or post-process features fail.
+- Preserve original gameplay when optional features fail (a convention-found
+  pack, post-processing). An explicitly requested `--pack` stays mandatory.
+- Keep both emulation providers working; a session feature must not assume a
+  Libretro core is loaded.
 - Do not weaken BYOC, content immutability, or third-party licensing boundaries.
 - Preserve license notices and identify files or dependencies governed by
   different terms.

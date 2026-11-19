@@ -24,10 +24,11 @@ function(require document relative)
     endforeach()
 endfunction()
 
-# BR-176: the launcher guide, in Spanish, with use, build and tests.
+# BR-176: the launcher guide, in English, with usage, build and tests. The Spanish
+# labels («Iniciar», «Cancelar», «Sin pack») are real UI strings of the launcher.
 read_doc(launcher "tools/replay_qa_launcher/README.md")
 require("${launcher}" "tools/replay_qa_launcher/README.md"
-    "## Uso" "## Compilación" "## Pruebas" "ayther_replay_qa" "Iniciar" "Cancelar"
+    "## Usage" "## Build" "## Tests" "ayther_replay_qa" "Iniciar" "Cancelar"
     "Sin pack" "--language" "es" "en" "--smoke-frames" "--self-test"
     "replay_qa_launcher_interface_smoke" "sdl3-renderer-binding")
 
@@ -42,12 +43,18 @@ require("${development}" "docs/development.md"
 # BR-177: traversal, visits and summary, and the corrected pinning of materials.
 read_doc(evidence "docs/audio-qa-evidence.md")
 require("${evidence}" "docs/audio-qa-evidence.md"
-    "traversal.toml" "request-summary.toml" "visita" "post_end_inspection" "inspection_event"
-    "render_frame" "material_changed" "FILE_SHARE_READ" "Espacio" "replay-result.toml")
-string(FIND "${evidence}" "Antes de iniciar, el comprobador fija las identidades" stale)
-if(NOT stale EQUAL -1)
-    message(FATAL_ERROR "docs/audio-qa-evidence.md still claims the old pinning of materials")
-endif()
+    "traversal.toml" "request-summary.toml" "visit" "post_end_inspection" "inspection_event"
+    "render_frame" "material_changed" "FILE_SHARE_READ" "Space" "replay-result.toml")
+# The old guide claimed the identities were pinned once before starting; materials are
+# re-verified per take instead. Reject the claim in either language.
+foreach(stale_claim IN ITEMS
+        "Antes de iniciar, el comprobador fija las identidades"
+        "Before starting, the checker pins the identities")
+    string(FIND "${evidence}" "${stale_claim}" stale)
+    if(NOT stale EQUAL -1)
+        message(FATAL_ERROR "docs/audio-qa-evidence.md still claims the old pinning of materials")
+    endif()
+endforeach()
 
 # BR-177: Space, the arrows and I in the replay window.
 read_doc(input_map "docs/input-map.md")

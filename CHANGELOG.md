@@ -7,13 +7,39 @@ and the project intends to follow [Semantic Versioning](https://semver.org/spec/
 once stable compatibility guarantees are defined.
 
 > [!WARNING]
-> AYTHER Runtime is in early development. The build reports product version
-> `0.1.0-beta.12`; this is an internal prerelease and is not supported for
-> production use. The Runtime–Play process
-> protocol v1 is the exception: its documented wire fields, reason identifiers,
-> and exit codes are stable within v1.
+> AYTHER Runtime is an internal prerelease (latest release `0.1.0-beta.19`) and
+> is not supported for production use. Only the Runtime–Play process protocol v1
+> is stable: its documented wire fields, reason identifiers and exit codes keep
+> their meaning within v1.
 
 ## [Unreleased]
+
+## [0.1.0-beta.19] - 2026-11-19
+
+### Changed
+
+- The default pause-dialog accent (`--accent-color`) is now `#FF7300`
+  (0.1.0-beta.18 shipped `#FB2C36`).
+- New AYTHER Runtime logo and Windows executable icon.
+- An unknown `--` option is rejected with `cli.invalid_argument` (exit 64)
+  instead of being read as a positional core or ROM path.
+- The Windows release archive and the Windows CI job build against the native
+  Engine package (`native-v0.1.0-rc.28`) and Tessera `v0.2.0-rc.9`, so
+  `--provider tessera` works in the released Runtime. Configuration fails
+  without the provider (`AYTHER_REQUIRE_TESSERA_PROVIDER=ON`);
+  `tools/bootstrap_tessera.ps1` downloads and verifies the locked Tessera
+  package. The package metadata records `tessera_provider` and
+  `tessera_version`, and the archives carry the Engine (and on Windows the
+  Tessera) licenses under `share/licenses/`.
+- Windows builds declare the `/MD` CRT (`CMAKE_MSVC_RUNTIME_LIBRARY`) that the
+  Engine, vcpkg and Tessera packages use.
+
+### Fixed
+
+- The usage text names `--provider libretro|tessera`, the values the parser
+  accepts (it said `external`).
+
+## [0.1.0-beta.18] - 2026-11-19
 
 ### Added
 
@@ -31,6 +57,32 @@ once stable compatibility guarantees are defined.
 
 - Frame pacing re-paces when the core reports its rate after the first frame
   (Tessera ran at 20 Hz).
+
+## [0.1.0-beta.17] - 2026-11-15
+
+### Changed
+
+- Engine release and QA locks move to `v0.1.0-rc.25`, and the native MVP lock
+  to `native-v0.1.0-rc.25`.
+
+### Fixed
+
+- Packless `tessera_native` sessions initialize the pack consumers
+  (`tile_sub`, `plane_sub`, `sprite_sub`, `pose_sub`, `tween`, `audio_sub`)
+  through `set_pack("")`, as the libretro open path does (Engine rc.25).
+
+## [0.1.0-beta.16] - 2026-11-14
+
+### Changed
+
+- Engine release and QA locks move to `v0.1.0-rc.24`, and the native MVP lock
+  to `native-v0.1.0-rc.24`.
+
+### Fixed
+
+- `AytherSession::reset()` with the native Tessera provider keeps the observer
+  subscriptions (VRAM/CRAM/VSRAM/SAT) attached after a session reset (Engine
+  rc.24).
 
 ## [0.1.0-beta.15] - 2026-11-13
 
@@ -575,6 +627,23 @@ The beta.2 release and assets remain unchanged as historical reference.
 - Documented handling requirements for untrusted cores, ROMs, packs, patches,
   manifests, paths, and save states.
 
-[Unreleased]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.2...HEAD
-[0.1.0-beta.2]: https://github.com/Ayther-Dev/AYTHER-Runtime/releases/tag/v0.1.0-beta.2
+[Unreleased]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.19...HEAD
+[0.1.0-beta.19]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.18...v0.1.0-beta.19
+[0.1.0-beta.18]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.17...v0.1.0-beta.18
+[0.1.0-beta.17]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.16...v0.1.0-beta.17
+[0.1.0-beta.16]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.15...v0.1.0-beta.16
+[0.1.0-beta.15]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.14...v0.1.0-beta.15
+[0.1.0-beta.14]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.13...v0.1.0-beta.14
+[0.1.0-beta.13]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.12...v0.1.0-beta.13
+[0.1.0-beta.12]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.11...v0.1.0-beta.12
+[0.1.0-beta.11]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.10...v0.1.0-beta.11
+[0.1.0-beta.10]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.9...v0.1.0-beta.10
+[0.1.0-beta.9]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.8...v0.1.0-beta.9
+[0.1.0-beta.8]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.7...v0.1.0-beta.8
+[0.1.0-beta.7]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.6...v0.1.0-beta.7
+[0.1.0-beta.6]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.5...v0.1.0-beta.6
+[0.1.0-beta.5]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.4...v0.1.0-beta.5
+[0.1.0-beta.4]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.3...v0.1.0-beta.4
+[0.1.0-beta.3]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.2...v0.1.0-beta.3
+[0.1.0-beta.2]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.1...v0.1.0-beta.2
 [0.1.0-beta.1]: https://github.com/Ayther-Dev/AYTHER-Runtime/releases/tag/v0.1.0-beta.1

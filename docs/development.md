@@ -1,198 +1,153 @@
-# Development Guide
+# Development guide
 
-## Supported development shape
+This guide is for contributors who build and test AYTHER Runtime from source.
+It is a maintainer workflow, not an end-user installation procedure. For what
+Runtime owns and how a session runs, read [Architecture](architecture.md).
 
-AYTHER Runtime is a C++20 CMake consumer of the installed AYTHER `engine`
-package. It can be added by the parent monorepo or configured as a standalone
-root project, but both modes must resolve the same `Ayther::engine` target.
-Direct includes from an engine source tree are not an accepted substitute.
-Public Engine headers must be included from the package include root (for
-example, `<ayther/ayther_session.h>`), never by adding `include/ayther` to a
-consumer include path.
+## Requirements
 
-The current repository is an early engineering snapshot. The documented build
-is a maintainer workflow, not a supported end-user installation procedure.
+| Requirement | Notes |
+| --- | --- |
+| CMake 3.25 or newer | Needed by `CMakePresets.json`. A plain `cmake -S . -B ...` configure needs 3.21. |
+| Windows: Visual Studio 2026, toolset v145 14.51 or newer | `cl` or `clang-cl` with the MSVC ABI, STL and linker. Older toolsets and MinGW/GNU are rejected at configure time. |
+| Linux: Ubuntu 24.04 with Clang 18 | Engine's Linux package is built for the Clang 18 + libstdc++ ABI. |
+| vcpkg | `VCPKG_ROOT` must point to it; dependencies come from `vcpkg.json` in manifest mode. |
+| PowerShell 7 | Bootstrap scripts and several contract tests. |
+| GitHub CLI (`gh`), authenticated | The Engine bootstrap verifies SLSA provenance with `gh attestation verify`. |
+| Vulkan loader and driver | Needed for interactive runs and GPU tests only. |
 
-## Toolchain and dependencies
+Ninja is used by the Linux presets. No Engine source checkout is needed.
 
-Required:
+### Dependencies
 
-- CMake 3.21 or newer;
-- a C++20 compiler;
-- on Windows, Microsoft `cl` or LLVM `clang-cl` using the MSVC ABI, STL and
-  linker from toolset v145 14.51+ (Visual Studio 2026), plus a matching or
-  newer Visual C++ Redistributable; the published Engine archive was compiled
-  with `clang-cl` 20.1.8 over that toolset; MinGW/GNU is not supported by the
-  current Windows artifact;
-- Vulkan headers, loader, and a working driver for interactive runs;
-- an installed AYTHER package with the `engine` component; and
-- the vcpkg dependencies pinned by `vcpkg.json`.
-
-Ninja and PowerShell 7 are recommended for the reference workflow. On Windows,
-the post-build step stages imported runtime DLLs next to the executable. System
-Vulkan DLLs are expected to resolve from the operating system.
-
-The bootstrap also requires GitHub CLI (`gh`) authenticated for access to the
-public artifact-attestation API. It does not require an Engine source checkout.
-
-Dependency ownership is explicit in the manifest:
-
-| Scope | Direct vcpkg entries |
+| Scope | vcpkg entries |
 | --- | --- |
 | `Ayther::engine` native closure | `sdl3[vulkan]`, `vulkan`, `vulkan-memory-allocator`, `tomlplusplus`, `zstd` |
-| Runtime-owned | `vk-bootstrap`, `imgui[sdl3-binding,vulkan-binding]`, `stb` |
+| Runtime-owned | `vk-bootstrap`, `imgui[sdl3-binding,vulkan-binding,sdl3-renderer-binding]`, `stb` |
 
-All entries remain top-level because `AytherConfig.cmake` must resolve its
-native packages while configuring a clean consumer. ImGui and stb are not part
-of Engine's exported contract and must not be removed or made accidental
-transitive dependencies. Runtime resolves stb with `find_package(Stb)`, exposes
-it internally through `ayther_runtime_stb`, and compiles the PNG writer with
-translation-unit-local linkage in `capture.cpp`.
+All entries are top-level because `AytherConfig.cmake` resolves its native
+packages while a clean consumer configures. ImGui and stb are Runtime
+dependencies, not part of Engine's exported contract; do not drop them or rely
+on them transitively. `capture.cpp` owns the stb PNG writer.
 
-Packages containing the `engine` component must export the absolute,
-relocatable `Ayther_SHADER_DIR` from `AytherConfig.cmake`. Runtime validates
-that contract during configuration and copies Engine SPIR-V only from that
-installed directory; it never derives an Engine checkout or package-layout
-path.
-
-## Pinned AYTHER Engine artifact
-
-[`dependencies/ayther-engine.lock.json`](../dependencies/ayther-engine.lock.json)
-pins AYTHER Engine `v0.1.0-rc.10` for Linux and Windows x86_64, with and without
-VPX. URLs and SHA-256 values are pinned from the official GitHub release assets.
-
-Validate the complete lock without network access:
+Check that the manifest still covers the Engine package's declared closure
+(offline):
 
 ```powershell
-& ./tools/bootstrap_ayther_engine.ps1 -ValidateOnly
+& ./tools/verify_vcpkg_manifest.ps1 -AytherConfig "$env:AYTHER_ENGINE_PREFIX/lib/cmake/Ayther/AytherConfig.cmake"
 ```
 
-Bootstrap the default Engine artifact for the current platform, or select the
-VPX variant explicitly. The command returns the extracted CMake prefix:
+## Get the Engine package
+
+Runtime consumes AYTHER Engine as an installed CMake package pinned by
+`dependencies/ayther-engine.lock.json`. The locks, the verification they
+perform and the Tessera route are described in
+[Runtime–Engine compatibility](runtime-engine-compatibility.md).
 
 ```powershell
-$enginePrefix = & ./tools/bootstrap_ayther_engine.ps1
-$vpxPrefix = & ./tools/bootstrap_ayther_engine.ps1 `
-  -Variant engine-vpx `
-  -DestinationDirectory .deps/ayther-engine
+# Validate the lock offline
+./tools/bootstrap_ayther_engine.ps1 -ValidateOnly
+
+# Download, verify and extract; prints the CMake prefix
+$env:AYTHER_ENGINE_PREFIX = & ./tools/bootstrap_ayther_engine.ps1 -Variant engine-vpx
 ```
 
-An existing archive can be checked without downloading it:
+`-Variant engine` (the default) selects the package without VP9 decoding;
+`engine-vpx` adds it and is what the Windows release archive uses. To verify an
+archive you already downloaded, pass `-ArchivePath <zip>`.
+
+Packages that contain the `engine` component export an absolute, relocatable
+`Ayther_SHADER_DIR`. Runtime validates it during configuration and copies Engine
+SPIR-V only from that directory. Include public Engine headers from the package
+include root (for example `<ayther/ayther_session.h>`); never add
+`include/ayther` or an Engine source path to the include path.
+
+## Build and test
+
+With `AYTHER_ENGINE_PREFIX` and `VCPKG_ROOT` set:
 
 ```powershell
-$enginePrefix = & ./tools/bootstrap_ayther_engine.ps1 `
-  -Platform windows `
-  -ArchivePath C:/downloads/ayther-engine-v0.1.0-rc.10-windows-x86_64.zip
-```
-
-The bootstrap fails if the filename, locked SHA-256, published release checksum,
-SLSA predicate, signer workflow, or source tag differs from the lock. It then
-extracts transactionally below `.deps/ayther-engine/prefixes/`. Existing cache
-entries are verified and reused, never overwritten.
-
-## Standalone build
-
-```powershell
-cmake -S . -B build -G Ninja `
-  -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
-  "-DCMAKE_PREFIX_PATH=$enginePrefix" `
-  -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build build
-```
-
-`CMAKE_PREFIX_PATH` must expose both the AYTHER package and any dependency
-prefixes not supplied by the vcpkg toolchain. Configuration is expected to fail
-when `Ayther::engine`, SDL3, Vulkan, Vulkan Memory Allocator, vk-bootstrap,
-toml++, zstd, ImGui, or stb cannot be resolved; do not work around that failure
-by adding private engine source paths.
-
-### Windows compiler and ABI contract
-
-The Windows `v0.1.0-rc.10` package has two independent compatibility axes:
-
-- **Frontend:** Microsoft `cl` or LLVM `clang-cl` is accepted. Engine itself
-  was built with `clang-cl` 20.1.8, but Runtime does not require that exact
-  frontend or version.
-- **ABI/toolset:** both frontends must consume Visual C++ v145 14.51 or newer
-  headers, STL, libraries and linker. This is the immediate binary contract.
-  MinGW/GNU uses a different ABI and is rejected for this artifact.
-
-During configure, `cmake/AytherWindowsToolchain.cmake` reports the detected
-frontend and toolset. After validating the minimum version, it performs a real
-`try_compile` executable link against `Ayther::engine`; merely compiling an
-Engine header is not considered sufficient. A failure names the detected
-toolset, the 14.51 minimum, Engine `v0.1.0-rc.10`, and the supported remedies.
-
-For the reference setup, launch a Visual Studio 2026 Developer PowerShell or
-Developer Command Prompt with v145 14.51+ selected before configuring. To use
-clang-cl, select the same developer environment and pass `clang-cl` as the C++
-compiler so it keeps the Visual C++ headers, libraries and linker. If that
-toolset cannot be installed, use or rebuild an Engine artifact for the intended
-ABI rather than attempting to link the current archive with MinGW.
-
-After bootstrapping Engine, verify that the manifest still covers the package's
-declared closure without accessing the network:
-
-```powershell
-& ./tools/verify_vcpkg_manifest.ps1 `
-  -AytherConfig "$enginePrefix/lib/cmake/Ayther/AytherConfig.cmake"
-```
-
-## Pull request CI presets
-
-`CMakePresets.json` provides the two RelWithDebInfo presets used by pull request
-CI: `windows-ci` selects Visual Studio 2026 with the v145 toolset, while
-`linux-ci` selects Ninja. They require CMake 3.25+, PowerShell 7, `VCPKG_ROOT`,
-and an Engine prefix produced from the locked `v0.1.0-rc.10` artifact:
-
-```powershell
-$env:AYTHER_ENGINE_PREFIX = & ./tools/bootstrap_ayther_engine.ps1 `
-  -Variant engine `
-  -DestinationDirectory .deps/ayther-engine
-$env:VCPKG_ROOT = "C:/dev/vcpkg"
-
 cmake --preset windows-ci
 cmake --build --preset windows-ci
-ctest --preset windows-ci --output-junit "$PWD/out/windows-ci-junit.xml"
+ctest --preset windows-ci --output-on-failure
+
+# List tests, or run a subset
+ctest --preset windows-ci -N
+ctest --preset windows-ci -R "runtime_options" --output-on-failure
 ```
 
-On Linux, export the same two environment variables and substitute `linux-ci`
-in all three commands. The presets disable the CMake user and system package
-registries so `Ayther::engine` is resolved from the bootstrapped prefix rather
-than an undeclared local installation.
+The executable and staged assets (Engine and Runtime shaders, fonts, imported
+DLLs on Windows) are in `out/build/<preset>/bin/<config>/`.
 
-`.github/workflows/ci.yml` runs those commands for pull requests targeting
-`main` on Windows and Linux. After the full build, each job runs the same build
-preset again and retains `incremental-build.log`; Ninja and MSBuild must report
-an already up-to-date tree before CTest starts. Each job uploads its bootstrap,
-configure, full-build, incremental-build, and test logs together with CTest's
-`LastTest.log` and JUnit report, including when an earlier step fails. External
-actions are pinned to full commit SHAs and the workflow token has only
-`contents: read` and `attestations: read`.
+| Configure preset | Platform | Purpose |
+| --- | --- | --- |
+| `windows-ci` | Windows | Visual Studio 2026, v145, RelWithDebInfo; the pull-request and release build. |
+| `windows-qa` | Windows | `windows-ci` against the QA Engine package; see [Replay QA](#replay-qa). |
+| `windows-qa-gpu` | Windows | `windows-qa` plus the GPU and desktop-session tests. |
+| `linux-ci` | Linux | Ninja, Clang, RelWithDebInfo; the Linux release build. |
+| `linux-quality` | Linux | `linux-ci` with clang-tidy and coverage. |
+| `linux-sanitizers` | Linux | `linux-ci` with ASan, UBSan and libFuzzer. |
 
-After two successful pull request executions on the same proposed CI setup,
-configure the `main` branch protection or ruleset to require both stable check
-names:
+Every preset builds in `out/build/<preset>` and disables the CMake user and
+system package registries, so `Ayther::engine` comes only from
+`AYTHER_ENGINE_PREFIX`. Each has matching build and test presets.
 
-- `Windows / RelWithDebInfo`
-- `Linux / RelWithDebInfo`
+Useful CMake options:
 
-Do not enable those required checks before GitHub has observed both contexts;
-otherwise every pull request will be blocked by checks that cannot yet be
-selected or satisfied. Debug and analysis presets remain part of MAD-004 and
-are intentionally outside this CI-only change.
+| Option | Default | Effect |
+| --- | --- | --- |
+| `AYTHER_STRICT_WARNINGS` | `ON` | `/W4 /WX /permissive-` or `-Wall -Wextra -Wpedantic -Werror`. |
+| `AYTHER_ENABLE_GPU_TESTS` | `OFF` | Adds the SDL/Vulkan tests that need a GPU. |
+| `AYTHER_ENABLE_TESSERA_NATIVE` | `OFF` | Native QA driver and Tessera integration tests; needs the native packages ([how](runtime-engine-compatibility.md#tessera-route-windows-x64)). |
+| `AYTHER_ENABLE_CLANG_TIDY`, `AYTHER_ENABLE_COVERAGE`, `AYTHER_ENABLE_SANITIZERS`, `AYTHER_ENABLE_FUZZING` | `OFF` | Analysis builds; see [Quality baseline](quality-baseline.md). |
+
+### Test labels
+
+CTest names are the reference for coverage; list them with `ctest --preset
+<preset> -N`. Useful label filters:
+
+| Label | Tests |
+| --- | --- |
+| `audio_qa` | Replay QA checker, protocol and evidence tests (QA build). |
+| `gpu` | Tests that need a GPU and a desktop session. |
+| `native`, `release` | Lock and release-workflow contract tests. |
+| `tessera` | Tessera integration tests (`AYTHER_ENABLE_TESSERA_NATIVE=ON`). |
+| `replay_inspection` | Replay inspection unit tests. |
+
+The suite does not establish GPU-driver compatibility, frame-perfect timing,
+broad core compatibility or release readiness.
+
+### Published-package smoke test
+
+`tools/runtime_oot_smoke.ps1` builds and tests Runtime out of tree against an
+installed Engine prefix (`-AytherPrefix`) or a downloaded Engine archive
+(`-EngineArchive`), which it verifies and extracts first. The two inputs are
+mutually exclusive; with neither, it downloads the locked artifact. It runs
+from any working directory, removes only its own temporary build directory, and
+keeps the verified download cache below `.deps/`. `-Keep` preserves the build
+directory; `-ConfigureOnly` stops after package discovery.
+
+```powershell
+& ./tools/runtime_oot_smoke.ps1 -AytherPrefix $env:AYTHER_ENGINE_PREFIX `
+  -ToolchainFile "$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+```
+
+Installed layout and the package smoke test are described in
+[Runtime package layout](packaging.md).
 
 ## Replay QA
 
-The audio and replay QA tools (`ayther_audio_qa`, the launcher `ayther_replay_qa` and the replay inspection of the Runtime) exist only in a build against the QA Engine package. That package is the published Windows `engine-vpx` artifact of the Engine release, pinned by `dependencies/ayther-engine.qa.lock.json` (separate from the release lock) with its SHA-256, the release `CHECKSUMS.sha256` and its SLSA provenance. The bootstrap downloads and verifies it, and needs an authenticated GitHub CLI.
+The audio and replay QA tools (`ayther_audio_qa`, the launcher
+`ayther_replay_qa` and Runtime's replay inspection) exist only in a build
+against the QA Engine package: the Windows `engine-vpx` artifact of the Engine
+release, pinned separately by `dependencies/ayther-engine.qa.lock.json`.
 
 ```powershell
 # Verify the QA lock and extract the pinned QA Engine package
 ./tools/bootstrap_ayther_engine_qa.ps1 -ValidateOnly
 $env:AYTHER_ENGINE_PREFIX = & ./tools/bootstrap_ayther_engine_qa.ps1
-$env:VCPKG_ROOT = "C:/dev/vcpkg"
 
-# Configure, build and test without GPU
+# Configure, build and test without GPU (the `Windows / QA` check)
 cmake --preset windows-qa
 cmake --build --preset windows-qa
 ctest --preset windows-qa -L audio_qa -LE gpu --output-on-failure
@@ -203,122 +158,105 @@ cmake --build --preset windows-qa-gpu
 ctest --preset windows-qa-gpu --output-on-failure
 ```
 
-- **Presets.**
-  - `windows-qa` inherits `windows-ci`, sets `AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE=ON` and excludes the `gpu` label.
-  - `windows-qa-gpu` adds `AYTHER_ENABLE_GPU_TESTS=ON`: the visible replay, the replay inspection with simulated events, and the launcher window and interface smoke tests.
-- **vcpkg.** The launcher draws its window with the SDL_Renderer backend of Dear ImGui, so `vcpkg.json` enables the `sdl3-renderer-binding` feature of `imgui` next to `sdl3-binding` and `vulkan-binding`.
-- **QA commands.**
-  - `ayther_audio_qa check --runtime <exe> --rom <rom> --take <take.ayr> --output <dir> [--pack <pack.ay>] [--presentation visible]` replays one or more takes and keeps the evidence. `ayther_audio_qa options --format toml` prints the option inventory.
-  - `ayther_replay_qa` is the launcher; see `tools/replay_qa_launcher/README.md`.
-- **Test hooks of the QA build.** They are read only inside `--qa-session` and never in an ordinary Runtime build:
-  - `AYTHER_QA_INPUT_SCRIPT=<file>` gives the replay window a scripted input: keys, focus, faults, closing, damaged checkpoints and overlay scrolling, each triggered by `frame=<k>`, `paused=<k>` or `after=<ms>`. The format is documented in `src/replay_inspection/input_script.h`.
-  - `AYTHER_QA_TIMING_LOG=<file>` writes the time marks of the key router and of the presentation, for the measurements of `tests/audio_qa/inspection_measurement.cpp` (spec 002, `evidence/perf.md`).
+- **Presets.** `windows-qa` inherits `windows-ci` and sets
+  `AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE=ON`. `windows-qa-gpu` adds
+  `AYTHER_ENABLE_GPU_TESTS=ON`: the visible replay, the replay inspection with
+  simulated events, and the launcher window and interface smoke tests.
+- **vcpkg.** The launcher draws its window with Dear ImGui's SDL_Renderer
+  backend, so `vcpkg.json` enables the `imgui` feature `sdl3-renderer-binding`
+  next to `sdl3-binding` and `vulkan-binding`.
+- **Commands.** `ayther_audio_qa check --runtime <exe> --rom <rom> --take
+  <take.ayr> --output <dir>` replays takes and keeps the evidence;
+  `ayther_audio_qa options --format toml` prints the option inventory. See
+  [`tools/audio_qa/README.md`](../tools/audio_qa/README.md),
+  [`tools/replay_qa_launcher/README.md`](../tools/replay_qa_launcher/README.md)
+  and [Audio QA evidence](audio-qa-evidence.md).
+- **Test hooks.** Read only inside `--qa-session`, never in an ordinary run:
+  - `AYTHER_QA_INPUT_SCRIPT=<file>` scripts the replay window: keys, focus,
+    faults, closing, damaged checkpoints and overlay scrolling, each triggered
+    by `frame=<k>`, `paused=<k>` or `after=<ms>`. The format is in
+    `src/replay_inspection/input_script.h`.
+  - `AYTHER_QA_TIMING_LOG=<file>` writes the time marks of the key router and
+    the presentation, used by `tests/audio_qa/inspection_measurement.cpp`.
 
-## Tests
+## Continuous integration
 
-```powershell
-ctest --test-dir build --output-on-failure
+| Workflow | Check | Runs |
+| --- | --- | --- |
+| `ci.yml` | `Windows / RelWithDebInfo` | `windows-ci` build, an incremental no-op build, full CTest. |
+| `ci.yml` | `Linux / RelWithDebInfo` | `linux-quality`: clang-format 18 on changed C++ files, clang-tidy, CTest, coverage floor. |
+| `ci.yml` | `Linux / ASan-UBSan-Fuzz` | `linux-sanitizers`: sanitizer build, CTest, fuzz smoke. |
+| `qa.yml` | `Windows / QA` | `windows-qa` build and `ctest -L audio_qa -LE gpu`. |
+| `security.yml` | `Security / Dependency Review`, `Security / Secret Scan` | See [SECURITY.md](../SECURITY.md). |
+| `release.yml` | `Release / *` | On a `v*-beta.*` tag: builds, tests and packages the three archives and publishes a prerelease with `docs/releases/<tag>.md` as notes. |
+
+Pull requests to `main` run the build and test jobs. On pushes to `main` and a
+weekly schedule the jobs only configure, to keep the vcpkg binary cache warm.
+Each job uploads its bootstrap, configure, build, test and CTest logs, including
+when a step fails. Actions are pinned to full commit SHAs and the workflow
+token is read-only. The required checks for `main` are listed in
+[Project status](status.md#latest-validation).
+
+Run the formatting check locally the way CI does (`clang-format` 18 formats
+whole changed files):
+
+```bash
+CLANG_FORMAT=clang-format-18 bash tools/run_clang_format_changed.sh origin/main HEAD
 ```
 
-Current CTest coverage includes:
+## Shaders
 
-| Test | Contract covered |
-| --- | --- |
-| `ayther_engine_lock` | offline validation of release identity, checksum manifest, attestation policy, and supported artifact matrix |
-| `vcpkg_manifest` | Engine package closure, pinned baseline, SDL3/ImGui features, and direct Runtime ownership of ImGui/stb |
-| `ci_workflow_contract` | PR triggers, least-privilege permissions, SHA-pinned actions, locked Engine bootstrap, retained diagnostics, and CI preset invariants |
-| `windows_toolchain_contract` | accepted `cl`/`clang-cl` frontends, v145 14.51 minimum, MinGW rejection, and complete failure diagnostics |
-| `runtime_config` | SDL/Engine-independent data paths and launcher save-root precedence |
-| `status_emitter` | typed event shapes, byte-exact JSON escaping, single-record writes, and flush behavior |
-| `status_emitter_json` | all event fixtures parsed by CMake's real JSON parser, including hostile text and UTF-8 round trips |
-| `status_emitter_source_contract` | rejects protocol framing anywhere below `src/` except `status_emitter.cpp` |
-| `runtime_options` | strict typed parsing and positive/negative domain cases for all numeric CLI options |
-| `cli_errors` | real-process exit code `64` and option-specific stderr diagnostics for malformed CLI input |
-| `output_profile` | Runtime-owned presets, selection precedence, scaling geometry, filtering, and shader mixing |
-| `player_config` | key generation, defaults, persistence distinctions, and tolerant parsing |
-| `split_geometry` | comparison geometry and zero-width edge cases without a GPU |
-| `capture` | image-source selection, metadata that excludes protected content, and standalone stb linkage without Engine |
-| `pack_layers` | default/custom layer composition and deterministic ordering |
-| `diagnostics` | pure recommendation rules without SDL or Vulkan |
-| `core_probe_api` | installed `CoreProbe` ownership, JSON, and loader-error contract |
-| `probe_core` | codes 0/2/3 and parsed `AYTHER_STATUS` JSON using a deterministic synthetic Libretro core, a missing path, and a loadable non-core library |
-| `vulkan_result` | typed Vulkan failures retain operation, symbolic result, and integer code |
-| `vulkan_result_source_contract` | result-returning Vulkan calls cannot bypass the injectable dispatch |
-| `spirv_file` | complete aligned SPIR-V reads and RAII file ownership |
-| `runtime_oot_smoke_contract` | standalone source-root discovery, explicit Engine package inputs, and mutual exclusion |
-
-The test suite does not establish full GPU-driver compatibility, frame-perfect
-timing, broad Libretro-core compatibility, or release readiness.
-
-## Published-package smoke test
-
-Use an installed Engine package prefix:
+Runtime commits SPIR-V next to its GLSL sources so a build needs no shader
+compiler. When a GLSL file changes, regenerate and commit its SPIR-V in the
+same change:
 
 ```powershell
-& ./tools/runtime_oot_smoke.ps1 `
-  -AytherPrefix C:/deps/ayther-engine `
-  -ToolchainFile "$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+glslc src/vulkan_backend/shaders/postprocess.vert -o src/vulkan_backend/shaders/postprocess.vert.spv
+glslc src/vulkan_backend/shaders/postprocess.frag -o src/vulkan_backend/shaders/postprocess.frag.spv
 ```
 
-Or provide a downloaded Engine release archive for checksum and attestation
-verification followed by extraction:
+The build copies Engine shaders from `Ayther_SHADER_DIR` and Runtime's
+post-process shaders into `bin/shaders/`.
+
+## Run and debug
+
+AYTHER Play CE normally launches Runtime. Direct invocations for development:
 
 ```powershell
-& ./tools/runtime_oot_smoke.ps1 `
-  -EngineArchive C:/downloads/ayther-engine-v0.1.0-rc.10-windows-x86_64.zip `
-  -ToolchainFile "$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+$exe = "out/build/windows-ci/bin/RelWithDebInfo/ayther_runtime.exe"
+
+# Libretro core
+& $exe --core <core.dll> --rom <game.md> [--pack <pack.ay>]
+
+# Tessera (needs a Tessera-route build)
+& $exe --provider tessera --rom <game.md>
+
+# Probe a core without SDL or a ROM
+& $exe --probe-core <core.dll>
 ```
 
-The two inputs are mutually exclusive. With neither input, the script downloads
-the artifact pinned by Runtime. It derives the Runtime source root from
-`$PSScriptRoot/..`, so the command may be launched from any working directory
-inside or outside an independent Runtime clone. The selected package prefix is
-passed to CMake before Runtime is built in a temporary directory, packaged
-shaders are verified, and CTest runs. No Engine/monorepo source tree is resolved
-or read. Use `-Keep` to preserve the temporary build directory for inspection,
-or `-ConfigureOnly` to exercise only bootstrap and CMake package discovery.
+- Running without the required options prints the usage text.
+- `--frames N` ends a session after N frames; `--capture-at N[,M...]` takes
+  synchronized captures.
+- `--input-script <file>` drives port 0 from power-on with a pad timeline (the
+  grammar of `tools/audio_qa/pad_timeline.h`); the run ends with the script's
+  last frame. `--frame-log <csv>` writes one timing row per displayed frame.
+  Together they time the same game reproducibly under both providers.
+- Only complete `AYTHER_STATUS ` lines are protocol; everything else on stdout
+  and stderr is a diagnostic log. A process that ends without an `exit` event
+  is an abnormal session.
 
-> [!CAUTION]
-> The smoke script removes only the unique temporary build directory it creates.
-> Its verified download and extraction cache remains below `.deps/`.
-
-## Shader workflow
-
-Runtime commits SPIR-V files beside its GLSL sources so consumers do not need a
-shader compiler to build:
-
-```powershell
-glslc src/vulkan_backend/shaders/postprocess.vert `
-  -o src/vulkan_backend/shaders/postprocess.vert.spv
-glslc src/vulkan_backend/shaders/postprocess.frag `
-  -o src/vulkan_backend/shaders/postprocess.frag.spv
-```
-
-Whenever GLSL changes, regenerate and commit the matching SPIR-V binaries in the
-same change. The build copies engine shaders from `Ayther_SHADER_DIR` and Runtime
-post-process shaders into `build/bin/shaders/`.
-
-## Debugging and diagnostics
-
-- Invoke Runtime without required arguments to print the implemented CLI usage.
-- Use `--probe-core <path>` to exercise Engine's public RAII probe and isolate
-  dynamic-load and Libretro-symbol failures without initializing SDL.
-- Use `--frames N` for bounded development and CI sessions.
-- Use `--capture-at N[,M...]` for deterministic comparative captures.
-- Treat only complete `AYTHER_STATUS ` lines as launcher protocol; all other
-  stdout and stderr content is diagnostic logging.
-- A process that terminates without an `exit` event is an abnormal session.
+All options are specified in the [process and CLI contract](process-protocol.md).
 
 ## Change discipline
 
-- Preserve the Runtime/Engine ownership boundary documented in
-  [architecture.md](architecture.md).
+- Keep the Runtime/Engine ownership boundary in [Architecture](architecture.md).
 - Keep `FrameView` borrowing rules explicit at every new call site.
-- Add tests around pure policy and geometry before introducing GPU-dependent
-  coverage.
-- Update source, tests, CLI documentation, and protocol documentation together.
-- Do not commit ROMs, cores, packs, captures containing protected content,
-  secrets, local configuration, build trees, or generated IDE state.
+- Test pure policy and geometry before adding GPU-dependent coverage.
+- Change source, tests, the CLI contract and the protocol documents together,
+  and add a `CHANGELOG.md` entry under `[Unreleased]`.
+- Do not commit ROMs, cores, packs, captures with protected content, secrets,
+  local configuration, build trees or IDE state.
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for the review checklist, MPL-2.0
-contribution terms, and third-party content restrictions.
+See [CONTRIBUTING.md](../CONTRIBUTING.md) for the review checklist and the
+contribution terms.

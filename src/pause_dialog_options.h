@@ -14,8 +14,8 @@
 namespace ayther {
 
 struct PauseDialogOptions {
-    /// Accent colour as 0xRRGGBB (default #FB2C36).
-    std::uint32_t accent_rgb = 0xFB2C36U;
+    /// Accent colour as 0xRRGGBB (default #FF7300).
+    std::uint32_t accent_rgb = 0xFF7300U;
     /// Small accent-coloured caption above «EN PAUSA».
     std::string title = "Runtime";
     /// Label of the button that closes the Runtime.

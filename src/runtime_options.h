@@ -28,6 +28,8 @@ enum class RuntimeOptionErrorCode {
     // Spec 008 (RF-5.3): --core names a libretro core, which the native
     // provider does not load.
     provider_conflict,
+    // An argument that starts with "--" names no option this Runtime knows.
+    unknown_option,
 };
 
 struct RuntimeOptionError {

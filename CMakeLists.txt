@@ -11,7 +11,7 @@
 #   cmake -S . -B build_rt -DCMAKE_PREFIX_PATH=<Engine bootstrap prefix>
 #   cmake --build build_rt
 # ---------------------------------------------------------------------------
-set(AYTHER_RUNTIME_VERSION "0.1.0-beta.18")
+set(AYTHER_RUNTIME_VERSION "0.1.0-beta.19")
 set(AYTHER_RUNTIME_PROJECT_VERSION "0.1.0")
 set(AYTHER_ENGINE_MIN_VERSION "0.1.0")
 set(AYTHER_ENGINE_MAX_VERSION_EXCLUSIVE "0.2.0")
@@ -36,11 +36,6 @@ configure_file(
     "${AYTHER_RUNTIME_GENERATED_DIR}/ayther_runtime_version.h"
     @ONLY
 )
-configure_file(
-    cmake/ayther-runtime-package.json.in
-    "${AYTHER_RUNTIME_GENERATED_DIR}/ayther-runtime-package.json"
-    @ONLY
-)
 # Spec 002, contracts.md C5 (RF-1.8): the commit of the sources, written at build time so that
 # the published option inventory names the revision it was built from. An archive without git
 # can pass it explicitly.
@@ -59,6 +54,12 @@ add_custom_target(ayther_runtime_source_commit
 # Reject unsupported Windows frontends and Visual C++ toolsets before package
 # discovery can obscure the ABI mismatch with a secondary dependency error.
 if(WIN32)
+    # The Engine, vcpkg's x64-windows triplet and the Tessera package all use
+    # the release DLL CRT (/MD); Tessera's package config requires it to be
+    # declared before its targets are imported.
+    if(NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
+        set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
+    endif()
     include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/AytherWindowsToolchain.cmake")
     ayther_validate_windows_engine_toolchain(
         ENGINE_RELEASE "${AYTHER_ENGINE_LOCKED_RELEASE}"
@@ -95,6 +96,33 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
             "with libstdc++, but __GLIBCXX__ is unavailable.")
     endif()
 endif()
+# The Tessera native provider (--provider tessera) exists only when the Engine
+# package was built with it (the native-v* package plus the Tessera package).
+option(AYTHER_REQUIRE_TESSERA_PROVIDER
+    "Fail configuration unless the Engine package provides the Tessera native provider" OFF)
+if(Ayther_HAS_TESSERA)
+    set(AYTHER_RUNTIME_TESSERA_PROVIDER true)
+    set(AYTHER_RUNTIME_TESSERA_VERSION "${Tessera_VERSION}")
+else()
+    set(AYTHER_RUNTIME_TESSERA_PROVIDER false)
+    set(AYTHER_RUNTIME_TESSERA_VERSION "")
+endif()
+if(AYTHER_REQUIRE_TESSERA_PROVIDER AND NOT Ayther_HAS_TESSERA)
+    message(FATAL_ERROR
+        "AYTHER_REQUIRE_TESSERA_PROVIDER is ON, but the Engine package at "
+        "${Ayther_DIR} does not provide the Tessera native provider. Use the "
+        "native Engine package (dependencies/ayther-engine.native-mvp.lock.json) "
+        "and put the Tessera package (tools/bootstrap_tessera.ps1) on "
+        "CMAKE_PREFIX_PATH.")
+endif()
+message(STATUS "AYTHER Tessera native provider: ${AYTHER_RUNTIME_TESSERA_PROVIDER} "
+    "${AYTHER_RUNTIME_TESSERA_VERSION}")
+configure_file(
+    cmake/ayther-runtime-package.json.in
+    "${AYTHER_RUNTIME_GENERATED_DIR}/ayther-runtime-package.json"
+    @ONLY
+)
+
 if(NOT DEFINED Ayther_SHADER_DIR OR Ayther_SHADER_DIR STREQUAL "")
     message(FATAL_ERROR
         "The installed Ayther engine package does not export "
@@ -392,6 +420,24 @@ install(FILES ${AYTHER_RUNTIME_SHADER_FILES}
         DESTINATION bin/shaders COMPONENT Runtime)
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
         DESTINATION share/licenses/ayther-runtime COMPONENT Runtime)
+# The Engine (and, when present, Tessera) is linked statically into the
+# executable, so its licenses and third-party notices travel with it.
+get_filename_component(_ayther_engine_prefix "${Ayther_DIR}/../../.." ABSOLUTE)
+if(IS_DIRECTORY "${_ayther_engine_prefix}/share/licenses/Ayther")
+    install(DIRECTORY "${_ayther_engine_prefix}/share/licenses/Ayther/"
+            DESTINATION share/licenses/ayther-engine COMPONENT Runtime)
+endif()
+if(Ayther_HAS_TESSERA)
+    get_filename_component(_ayther_tessera_share "${Tessera_DIR}/../../../share/tessera" ABSOLUTE)
+    if(NOT IS_DIRECTORY "${_ayther_tessera_share}/licenses")
+        message(FATAL_ERROR "The Tessera package has no licenses: ${_ayther_tessera_share}")
+    endif()
+    install(DIRECTORY "${_ayther_tessera_share}/licenses/"
+            DESTINATION share/licenses/tessera COMPONENT Runtime)
+    install(FILES "${_ayther_tessera_share}/THIRD_PARTY_NOTICES.md"
+                  "${_ayther_tessera_share}/SOURCE_AVAILABILITY.md"
+            DESTINATION share/licenses/tessera COMPONENT Runtime)
+endif()
 install(FILES "${AYTHER_RUNTIME_GENERATED_DIR}/ayther-runtime-package.json"
         DESTINATION share/ayther-runtime COMPONENT Runtime)
 
