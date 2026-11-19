@@ -254,6 +254,17 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char *const argv
                                                             argument, {},
                                                             static_cast<std::size_t>(index))};
             }
+        } else if (argument == "--input-script" || argument == "--frame-log") {
+            std::string &target =
+                argument == "--input-script" ? options.input_script_path : options.frame_log_path;
+            if (auto error = read_string(argument, target)) {
+                return RuntimeOptionsParseResult{std::move(*error)};
+            }
+            if (target.empty()) {
+                return RuntimeOptionsParseResult{make_error(RuntimeOptionErrorCode::empty_value,
+                                                            argument, {},
+                                                            static_cast<std::size_t>(index))};
+            }
         } else if (argument == "--rom-crc32") {
             if (auto error = read_string(argument, options.rom_crc32)) {
                 return RuntimeOptionsParseResult{std::move(*error)};

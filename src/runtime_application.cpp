@@ -7,6 +7,7 @@
 #include <cctype>
 #include <chrono>
 #include <cinttypes>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -35,6 +36,7 @@
 #include "output_profile.h" // #296: perfiles de salida (CRT/LCD/pixel)
 #include "pack_layers.h"    // #561: el stack de Acetatos del pack
 #include "pack_probe.h"
+#include "pad_timeline.h"   // --input-script: el guion de mando del replay QA
 #include "player_config.h"  // #299: lo que el panel ajusta y se recuerda
 #include "player_overlay.h" // in-game pause menu + HD↔Original toggle (M4)
 #include "presentation_controller.h"
@@ -339,6 +341,7 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
                      "         [--core-option key=value]... [--no-shaders|--shaders]\n"
                      "         [--manifest <launch.toml>] [--saves-dir <dir>]\n"
                      "         [--input-map <controls.toml>]\n"
+                     "         [--input-script <guion.txt>] [--frame-log <frames.csv>]\n"
                      "         [--trust-registry <file.toml>]\n"
                      "         [--rom-crc32 <hex>] [--load-state <estado.bin>]\n"
                      "         [--rom-revision <token>] [--pack-revision <token>]\n"
@@ -879,16 +882,93 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
     // visible audio/video drift over time.  Clamped [20, 120] Hz to guard
     // against corrupt core metadata.
     // ---------------------------------------------------------------------------
-    const double core_fps = sess->timing_fps(); // from retro_system_av_info
-    const double fps_clamped = (core_fps < 20.0) ? 20.0 : (core_fps > 120.0) ? 120.0 : core_fps;
-    const Uint64 frame_ns = static_cast<Uint64>(1'000'000'000.0 / fps_clamped);
-    std::fprintf(stdout, "[main] Frame pacing: %.4f Hz  →  %" PRIu64 " ns/frame\n", fps_clamped,
-                 frame_ns);
+    //
+    // Tessera only knows its rate after the first frame (the Engine derives
+    // it from the frame's tick span), so timing_fps() is 0 at this point and
+    // the clamp would pin the session at 20 Hz. The pacing follows
+    // timing_fps() whenever it reports a different rate.
+    double pacing_fps = sess->timing_fps(); // from retro_system_av_info
+    Uint64 frame_ns = 0;
+    const auto set_frame_pacing = [&frame_ns](double fps) {
+        const double fps_clamped = (fps < 20.0) ? 20.0 : (fps > 120.0) ? 120.0 : fps;
+        frame_ns = static_cast<Uint64>(1'000'000'000.0 / fps_clamped);
+        std::fprintf(stdout, "[main] Frame pacing: %.4f Hz  →  %" PRIu64 " ns/frame\n", fps_clamped,
+                     frame_ns);
+    };
+    set_frame_pacing(pacing_fps);
     Uint64 next_frame_ns = SDL_GetTicksNS() + frame_ns;
+
+    // --input-script: a pad timeline drives port 0 instead of the keyboard and
+    // the gamepad, from power-on, and the run ends with its last frame. The
+    // same masks reach libretro and Tessera, so both can be timed over the
+    // same game. Seconds become frames at the console rate: Tessera reports
+    // its rate only after the first frame.
+    std::vector<std::uint16_t> script_buttons;
+    std::size_t script_frame = 0;
+    if (!options.input_script_path.empty()) {
+        std::ifstream file(options.input_script_path, std::ios::binary);
+        std::string text{std::istreambuf_iterator<char>{file}, std::istreambuf_iterator<char>{}};
+        if (!file && !file.eof()) {
+            std::fprintf(stderr, "[script] no se pudo leer %s\n",
+                         options.input_script_path.c_str());
+            return 64;
+        }
+        const auto parsed = ayther::audio_qa::parse_pad_timeline(text);
+        if (parsed.error != ayther::audio_qa::TimelineParseError::none ||
+            parsed.timeline.start.kind != ayther::audio_qa::TimelineStartKind::power_on) {
+            std::fprintf(
+                stderr, "[script] guion inválido (%s, línea %zu)\n",
+                parsed.error == ayther::audio_qa::TimelineParseError::none
+                    ? "start_state_unsupported"
+                    : std::string(ayther::audio_qa::timeline_parse_error_code(parsed.error))
+                          .c_str(),
+                parsed.line);
+            return 64;
+        }
+        const double script_fps = pacing_fps > 0.0 ? pacing_fps : 59.922743;
+        auto compiled = ayther::audio_qa::compile_pad_timeline(parsed.timeline, script_fps);
+        if (compiled.error != ayther::audio_qa::TimelineCompileError::none) {
+            std::fprintf(
+                stderr, "[script] guion inválido (%s, línea %zu)\n",
+                std::string(ayther::audio_qa::timeline_compile_error_code(compiled.error)).c_str(),
+                compiled.line);
+            return 64;
+        }
+        script_buttons = std::move(compiled.compiled.buttons);
+        std::fprintf(stdout, "[script] %s: %zu pasos, %zu frames a %.4f Hz\n",
+                     options.input_script_path.c_str(), parsed.timeline.steps.size(),
+                     script_buttons.size(), script_fps);
+    }
+    const bool script_on = !script_buttons.empty();
+
+    // --frame-log: one row per displayed frame. step = emulation and
+    // substitution (AytherSession::step), work = the whole iteration before
+    // the pacing wait, interval = from the previous iteration's start.
+    std::ofstream frame_log;
+    if (!options.frame_log_path.empty()) {
+        frame_log.open(options.frame_log_path, std::ios::binary | std::ios::trunc);
+        if (!frame_log) {
+            std::fprintf(stderr, "[frame-log] no se pudo abrir %s\n",
+                         options.frame_log_path.c_str());
+            return 64;
+        }
+        frame_log
+            << "frame,t_ms,step_ms,work_ms,interval_ms,pacing_hz,tile_ms,sprite_ms,audio_ms\n";
+    }
+    const Uint64 frame_log_t0 = SDL_GetTicksNS();
+    Uint64 iteration_start_ns = 0, previous_iteration_ns = 0, step_ns = 0;
 
     // Input source (M3): SDL keyboard + gamepad → libretro RetroPad bitfield,
     // fed into the motor each frame via AytherSession::set_input.
     ayther::GameInput input{std::move(input_map)};
+    // The pad of the next frame: the script's while it lasts, else the
+    // keyboard and the gamepad.
+    const auto next_input = [&]() -> std::uint16_t {
+        const std::uint16_t polled = input.poll().bits();
+        if (!script_on)
+            return polled;
+        return script_frame < script_buttons.size() ? script_buttons[script_frame++] : 0;
+    };
 
     // In-game pause overlay + HD↔Original toggle (M4).
     if (swap_ok) {
@@ -1078,6 +1158,9 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
     bool running = true;
     bool was_paused = false;
     while (running) {
+        previous_iteration_ns = iteration_start_ns;
+        iteration_start_ns = SDL_GetTicksNS();
+        step_ns = 0;
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             // M4: overlay consumes the event first (ImGui keyboard/gamepad nav).
@@ -1276,16 +1359,18 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
                     last_fv = rv; // walked back one frame
                 // else: buffer exhausted — hold on the oldest frame
             } else {
-                sess->set_input(0, input.poll());
+                const Uint64 step_start_ns = SDL_GetTicksNS();
+                sess->set_input(0, next_input());
                 last_fv = &sess->step();
                 if (ffwd) {
                     // Run a few extra frames this display tick (capped) — each
                     // still feeds the rewind ring + audio. ~4× speed.
                     for (int i = 0; i < 3; ++i) {
-                        sess->set_input(0, input.poll());
+                        sess->set_input(0, next_input());
                         last_fv = &sess->step();
                     }
                 }
+                step_ns = SDL_GetTicksNS() - step_start_ns;
             }
         }
         const ayther::FrameView &fv = last_fv ? *last_fv : kEmptyFrame;
@@ -1301,6 +1386,11 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
             std::fprintf(stdout, "[main] --frames %" PRIu64 " reached; exiting cleanly.\n",
                          frames_limit);
             running = false; // the authoritative exit status is emitted post-loop
+        }
+        if (script_on && script_frame >= script_buttons.size() && running) {
+            std::fprintf(stdout, "[script] fin del guion (%zu frames); saliendo.\n",
+                         script_buttons.size());
+            running = false;
         }
         if (fv.video_y != nullptr && fv.video_seq != last_video_sequence) {
             ++video_decoded_frames;
@@ -1606,7 +1696,28 @@ int ayther::runtime::run_runtime(const int argc, char *argv[]) {
         // (audio SFX reaping now happens inside AytherSession::step())
 
         {
+            if (const double fps = sess->timing_fps();
+                fps > 0.0 && std::abs(fps - pacing_fps) > 0.001) {
+                pacing_fps = fps;
+                set_frame_pacing(fps);
+            }
             const Uint64 now_ns = SDL_GetTicksNS();
+            if (frame_log.is_open()) {
+                char row[160];
+                const int n = std::snprintf(
+                    row, sizeof(row), "%" PRIu64 ",%.3f,%.3f,%.3f,%.3f,%.4f,%.3f,%.3f,%.3f\n",
+                    static_cast<std::uint64_t>(fv.frame_index),
+                    static_cast<double>(now_ns - frame_log_t0) / 1e6,
+                    static_cast<double>(step_ns) / 1e6,
+                    static_cast<double>(now_ns - iteration_start_ns) / 1e6,
+                    previous_iteration_ns
+                        ? static_cast<double>(iteration_start_ns - previous_iteration_ns) / 1e6
+                        : 0.0,
+                    1e9 / static_cast<double>(frame_ns), static_cast<double>(fv.tile_ms),
+                    static_cast<double>(fv.sprite_ms), static_cast<double>(fv.audio_ms));
+                if (n > 0)
+                    frame_log.write(row, std::min<std::streamsize>(n, sizeof(row) - 1));
+            }
             if (now_ns < next_frame_ns)
                 SDL_DelayNS(next_frame_ns - now_ns);
             else

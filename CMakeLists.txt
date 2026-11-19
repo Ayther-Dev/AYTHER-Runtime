@@ -252,7 +252,14 @@ target_include_directories(ayther_runtime PRIVATE
     src/vulkan_backend
     "${AYTHER_RUNTIME_GENERATED_DIR}"
     # Public ayther/*.h and ayther/engine/*.hpp headers: Ayther::engine
+    tools/audio_qa # pad_timeline.h: --input-script
 )
+# --input-script compiles the pad timeline of the replay QA (std-only
+# sources). The QA build already links them through ayther_audio_qa_domain.
+if(NOT AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE)
+    target_sources(ayther_runtime PRIVATE tools/audio_qa/pad_timeline.cpp
+        tools/audio_qa/recording_header.cpp tools/audio_qa/recording_input_source.cpp)
+endif()
 
 # `Ayther::engine` owns the transitive Engine, Rust core, system-library, and
 # bridge dependencies. Runtime intentionally depends only on the package target.
