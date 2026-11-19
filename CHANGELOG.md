@@ -15,6 +15,13 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+### Changed
+
+- The default pause-dialog accent (`--accent-color`) is now `#FF7300`
+  (0.1.0-beta.18 shipped `#FB2C36`).
+
+## [0.1.0-beta.18] - 2026-11-19
+
 ### Added
 
 - Pause-dialog options for the launcher: `--accent-color <#RRGGBB>` (default

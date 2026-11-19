@@ -32,7 +32,7 @@ backward compatibility. New callers SHOULD use named options.
 | `--trust-registry` | path | Public-key TOML registry, resolved relative to the launch working directory before session creation; retained for pack reloads. See [format](trust-registry.md). |
 | `--patch` | path | Optional IPS/BPS patch applied to the in-memory ROM buffer. |
 | `--input-map` | path | Optional TOML keyboard/gamepad map, parsed once before SDL initialization. Omitted entries inherit Runtime defaults. |
-| `--accent-color` | `#RRGGBB` (the `#` is optional) | Accent of the pause dialog: caption, primary button, checkboxes, sliders and hover states. Default `#FB2C36`. Any other spelling is `value_out_of_domain`. |
+| `--accent-color` | `#RRGGBB` (the `#` is optional) | Accent of the pause dialog: caption, primary button, checkboxes, sliders and hover states. Default `#FF7300`. Any other spelling is `value_out_of_domain`. |
 | `--title` | text | Caption shown above «EN PAUSA» in the pause dialog. Default `Runtime`. Must not be empty. |
 | `--exit-button-text` | text | Label of the pause-dialog button that closes the Runtime. Default `Salir`. Must not be empty. |
 | `--profile` | id | Engine content profile selected before the first frame. |

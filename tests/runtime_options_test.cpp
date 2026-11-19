@@ -315,10 +315,10 @@ int main() {
     {
         const auto defaults = parse({"ayther_runtime", "--core", "core.dll", "--rom", "game.md"});
         const auto *options = defaults.options();
-        check(options != nullptr && options->pause_dialog.accent_rgb == 0xFB2C36U &&
+        check(options != nullptr && options->pause_dialog.accent_rgb == 0xFF7300U &&
                   options->pause_dialog.title == "Runtime" &&
                   options->pause_dialog.exit_button_text == "Salir",
-              "the pause dialog defaults to #FB2C36, «Runtime» and «Salir»");
+              "the pause dialog defaults to #FF7300, «Runtime» and «Salir»");
     }
     {
         const auto custom = parse({"ayther_runtime", "--core", "core.dll", "--rom", "game.md",
