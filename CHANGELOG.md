@@ -19,6 +19,24 @@ once stable compatibility guarantees are defined.
 - The default pause-dialog accent (`--accent-color`) is now `#FF7300`
   (0.1.0-beta.18 shipped `#FB2C36`).
 - New AYTHER Runtime logo and Windows executable icon.
+- An unknown `--` option is rejected with `cli.invalid_argument` (exit 64)
+  instead of being read as a positional core or ROM path.
+
+- The Windows release archive and the Windows CI job build against the native
+  Engine package (`native-v0.1.0-rc.28`) and Tessera `v0.2.0-rc.9`, so
+  `--provider tessera` works in the released Runtime. Configuration fails
+  without the provider (`AYTHER_REQUIRE_TESSERA_PROVIDER=ON`);
+  `tools/bootstrap_tessera.ps1` downloads and verifies the locked Tessera
+  package. The package metadata records `tessera_provider` and
+  `tessera_version`, and the archives carry the Engine (and on Windows the
+  Tessera) licenses under `share/licenses/`.
+- Windows builds declare the `/MD` CRT (`CMAKE_MSVC_RUNTIME_LIBRARY`) that the
+  Engine, vcpkg and Tessera packages use.
+
+### Fixed
+
+- The usage text names `--provider libretro|tessera`, the values the parser
+  accepts (it said `external`).
 
 ## [0.1.0-beta.18] - 2026-11-19
 

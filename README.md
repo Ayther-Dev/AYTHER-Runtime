@@ -44,7 +44,8 @@ renderer. Details are in [Architecture](docs/architecture.md).
 ## Capabilities
 
 - Runs a game with a Libretro core (`--core`) or with Tessera
-  (`--provider tessera`, Mega Drive, Windows x64, needs a Tessera-route build).
+  (`--provider tessera`, Mega Drive, Windows x64; in the Windows release archive
+  after `v0.1.0-beta.18`).
 - Applies AYTHER packs and IPS/BPS patches in memory, and opens signed packs
   against an explicit [trust registry](docs/trust-registry.md).
 - Presents aspect-correct Vulkan output with selectable output profiles.
@@ -80,11 +81,11 @@ Run a game directly (AYTHER Play CE normally does this):
 ```powershell
 $exe = "out/build/windows-ci/bin/RelWithDebInfo/ayther_runtime.exe"
 & $exe --core <core.dll> --rom <game.rom> --pack <pack.ay>
-& $exe --provider tessera --rom <game.md>     # Tessera-route build only
+& $exe --provider tessera --rom <game.md>     # needs a Tessera-route build
 & $exe --probe-core <core.dll>                # inspect a core without a ROM
 ```
 
-The Tessera route needs the native Engine package and Tessera; see
+Building the Tessera route needs the native Engine package and Tessera; see
 [Runtime–Engine compatibility](docs/runtime-engine-compatibility.md#tessera-route-windows-x64).
 Every option is specified in the [process and CLI contract](docs/process-protocol.md).
 

@@ -82,7 +82,7 @@ jobs:
           restore-keys: |
             vcpkg-${{ runner.os }}-${{ github.job }}-${{ matrix.preset || 'default' }}-
 
-      - name: Bootstrap locked Engine rc.28
+      - name: Bootstrap locked native Engine rc.28 and Tessera
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -93,15 +93,29 @@ jobs:
 
           Start-Transcript -Path artifacts/bootstrap.log
           try {
+              # Windows builds what the release ships: the native Engine package of
+              # the same Engine release, with the Tessera provider, plus Tessera.
+              $nativeLock = Get-Content dependencies/ayther-engine.native-mvp.lock.json -Raw |
+                  ConvertFrom-Json
+              if ($nativeLock.release.tag -cne "native-$($lock.release.tag)") {
+                  throw "The native Engine lock does not match $($lock.release.tag)."
+              }
               $enginePrefix = & ./tools/bootstrap_ayther_engine.ps1 `
+                  -LockFile dependencies/ayther-engine.native-mvp.lock.json `
                   -Platform $env:ENGINE_PLATFORM `
                   -Architecture x86_64 `
-                  -Variant engine `
+                  -Variant engine-vpx `
                   -DestinationDirectory .deps/ayther-engine
               if (-not $enginePrefix -or @($enginePrefix).Count -ne 1) {
                   throw "Engine bootstrap did not return exactly one package prefix."
               }
-              "AYTHER_ENGINE_PREFIX=$([IO.Path]::GetFullPath([string]$enginePrefix))" |
+              $tesseraPrefix = & ./tools/bootstrap_tessera.ps1 -DestinationDirectory .deps/tessera |
+                  Select-Object -Last 1
+              $prefixes = @([IO.Path]::GetFullPath([string]$enginePrefix),
+                  [IO.Path]::GetFullPath([string]$tesseraPrefix)) -join ';'
+              "AYTHER_ENGINE_PREFIX=$prefixes" |
+                  Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+              "AYTHER_ENGINE_LOCKED_RELEASE=$($nativeLock.release.tag)" |
                   Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           } finally {
               Stop-Transcript
@@ -111,7 +125,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
-          & cmake --preset $env:CI_PRESET 2>&1 |
+          & cmake --preset $env:CI_PRESET `
+              "-DAYTHER_REQUIRE_TESSERA_PROVIDER=ON" `
+              "-DAYTHER_ENGINE_LOCKED_RELEASE=$env:AYTHER_ENGINE_LOCKED_RELEASE" 2>&1 |
               Tee-Object -FilePath artifacts/configure.log
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) { exit $exitCode }

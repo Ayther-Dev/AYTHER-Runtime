@@ -36,7 +36,7 @@ them are described in [Runtime–Engine compatibility](runtime-engine-compatibil
 | Provider | Option | Status |
 | --- | --- | --- |
 | Libretro core supplied by the user | `--provider libretro` (default) with `--core` | Implemented in every release archive. |
-| Tessera, AYTHER's own Mega Drive core, through Engine's `tessera_native` provider | `--provider tessera`, no `--core` | Implemented. Needs a Runtime built against the native Engine package; the published release archives are built against the regular package and do not include it. Mega Drive only, Windows x64 only. |
+| Tessera, AYTHER's own Mega Drive core, through Engine's `tessera_native` provider | `--provider tessera`, no `--core` | Implemented. The Windows release archive includes it (unreleased: from the next release; `v0.1.0-beta.18` and earlier do not). Linux archives do not. Mega Drive only. |
 
 Save states record the emulator that wrote them; a state from the other
 provider is refused (exit 65). See [Architecture](architecture.md#3-emulation-providers).
@@ -72,10 +72,13 @@ and `Analyze (c-cpp)`. See
 3. GPU validation covers one discrete NVIDIA adapter on Windows 11. Integrated
    GPUs and Linux display stacks are untested. See the
    [compatibility matrix](compatibility-matrix-v1.md).
-4. The Tessera route is not in the release archives, and its integration tests
-   need locally generated fixtures and a GPU. No CI job runs them.
-5. Release archives are not code-signed, and there is no distribution license
-   and notice bundle.
+4. The Tessera integration tests (`tessera_runtime_*`) need locally generated
+   fixtures and a GPU, so no CI job runs them. CI and the release only prove
+   that the Windows build links the Tessera provider
+   (`AYTHER_REQUIRE_TESSERA_PROVIDER=ON`).
+5. Release archives are not code-signed. They carry the Runtime, Engine and
+   (on Windows) Tessera licenses and notices under `share/licenses/`, but not a
+   complete third-party inventory for the vcpkg-provided DLLs.
 
 ## Stable-release gates
 
@@ -87,6 +90,6 @@ A stable release needs, at minimum:
 - protocol v1 preserved, with any breaking wire change in a new version;
 - declared supported platforms, compilers, Vulkan requirements and test cores;
 - save-state and configuration migration policies; and
-- a decision on whether the Tessera route ships in the release archives.
+- Tessera integration tests running in CI.
 
 This list defines release readiness. It is not a schedule.

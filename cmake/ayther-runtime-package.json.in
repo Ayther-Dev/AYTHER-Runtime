@@ -4,5 +4,7 @@
   "protocol_version": 1,
   "engine_release": "@AYTHER_ENGINE_LOCKED_RELEASE@",
   "engine_min_version": "@AYTHER_ENGINE_MIN_VERSION@",
-  "engine_max_version_exclusive": "@AYTHER_ENGINE_MAX_VERSION_EXCLUSIVE@"
+  "engine_max_version_exclusive": "@AYTHER_ENGINE_MAX_VERSION_EXCLUSIVE@",
+  "tessera_provider": @AYTHER_RUNTIME_TESSERA_PROVIDER@,
+  "tessera_version": "@AYTHER_RUNTIME_TESSERA_VERSION@"
 }

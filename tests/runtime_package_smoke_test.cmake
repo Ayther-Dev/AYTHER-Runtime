@@ -62,12 +62,25 @@ endif()
 file(READ "${package_metadata}" metadata)
 foreach(field IN ITEMS layout_version runtime_version protocol_version
                        engine_release engine_min_version
-                       engine_max_version_exclusive)
+                       engine_max_version_exclusive tessera_provider tessera_version)
     string(JSON field_type ERROR_VARIABLE field_error TYPE "${metadata}" "${field}")
     if(NOT field_error STREQUAL "NOTFOUND")
         message(FATAL_ERROR "Package metadata omits '${field}': ${field_error}")
     endif()
 endforeach()
+# The statically linked Engine ships its licenses; so does Tessera when the
+# package provides the native provider.
+if(NOT EXISTS "${SMOKE_DIR}/share/licenses/ayther-engine/LICENSE")
+    message(FATAL_ERROR "Installed Engine license is missing")
+endif()
+string(JSON tessera_provider GET "${metadata}" tessera_provider)
+if(tessera_provider)
+    foreach(notice IN ITEMS LICENSE THIRD_PARTY_NOTICES.md SOURCE_AVAILABILITY.md)
+        if(NOT EXISTS "${SMOKE_DIR}/share/licenses/tessera/${notice}")
+            message(FATAL_ERROR "Installed Tessera notice is missing: ${notice}")
+        endif()
+    endforeach()
+endif()
 
 set(clean_working_directory "${SMOKE_DIR}-cwd")
 file(REMOVE_RECURSE "${clean_working_directory}")

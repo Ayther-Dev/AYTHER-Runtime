@@ -14,11 +14,13 @@ bin/
 share/
   ayther-runtime/ayther-runtime-package.json
   licenses/ayther-runtime/LICENSE
+  licenses/ayther-engine/      Engine license and third-party notices
+  licenses/tessera/            Windows: Tessera licenses, notices, source availability
 ```
 
 | Component | Contents | Release archive |
 | --- | --- | --- |
-| `Runtime` | Runtime executable, shared dependencies, fonts, Engine and Runtime shaders, package metadata, license | `ayther-runtime-<version>-Windows-AMD64-Runtime.zip`, `ayther-runtime-<version>-Linux-x86_64-Runtime.tar.gz` |
+| `Runtime` | Runtime executable, shared dependencies, fonts, Engine and Runtime shaders, package metadata, Runtime/Engine/Tessera licenses | `ayther-runtime-<version>-Windows-AMD64-Runtime.zip`, `ayther-runtime-<version>-Linux-x86_64-Runtime.tar.gz` |
 | `qa` | The replay QA coordinator `ayther_audio_qa` and launcher `ayther_replay_qa` | Part of the QA Runtime archive `ayther-runtime-qa-<version>-Windows-AMD64.zip`, built against the QA Engine package |
 
 Each archive is published with a `SHA256SUMS-*.txt` file.
