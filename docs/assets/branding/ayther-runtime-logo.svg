@@ -1,24 +1,21 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <defs>
-    <style>
-      .cls-1 {
-        fill: #2d2f33;
-      }
-
-      .cls-1, .cls-2 {
-        stroke-width: 0px;
-      }
-
-      .cls-2 {
-        fill: #ffd500;
-      }
-    </style>
-  </defs>
-  <g id="backgound">
-    <rect class="cls-1" width="1024" height="1024"/>
-  </g>
-  <g id="Logos">
-    <polygon class="cls-2" points="788.59 112 628.59 112 671.46 272 628.59 432 479.15 432 522.03 272 585.59 272 628.46 112 468.46 112 425.59 272 362.03 272 190.54 912 350.54 912 436.14 592.53 522.01 913 694.01 913 608 592 678.49 592 721.36 432 788.59 432 831.46 272 788.59 112"/>
-  </g>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 4267 4267" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:affinity="https://www.affinity.studio/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
+    <g transform="matrix(1,0,0,1,0,-4800)">
+        <g id="Runtime" transform="matrix(4.166667,0,0,4.166667,0,4800)">
+            <rect x="0" y="0" width="1024" height="1024" style="fill:none;"/>
+            <g id="backgound">
+            </g>
+            <g id="Palette">
+            </g>
+            <g id="Icons">
+            </g>
+            <g id="Logos">
+                <rect x="0" y="0" width="1024" height="1024" style="fill:rgb(45,47,51);"/>
+                <g transform="matrix(1,0,0,1,714.0703,792)">
+                    <path d="M0,-560L-111.86,-560L-81.887,-448.14L-111.86,-336.28L-231.335,-336.28L-201.362,-448.14L-141.923,-448.14L-111.95,-560L-223.81,-560L-253.783,-448.14L-314.222,-448.14L-434.113,-0.699L-322.253,-0.699L-262.406,-224.051L-202.372,0L-82.122,0L-142.255,-224.419L-76.976,-224.419L-47.003,-336.28L0,-336.28L29.973,-448.14L0,-560Z" style="fill:rgb(255,115,0);fill-rule:nonzero;"/>
+                </g>
+            </g>
+        </g>
+    </g>
 </svg>
