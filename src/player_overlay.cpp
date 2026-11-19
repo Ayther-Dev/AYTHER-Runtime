@@ -18,7 +18,6 @@
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <cfloat>
-#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -51,23 +50,6 @@ ImVec4 mix(const ImVec4 &a, const ImVec4 &b, float t) {
 ImVec4 with_alpha(ImVec4 c, float alpha) {
     c.w = alpha;
     return c;
-}
-
-// WCAG relative luminance, to pick a readable label on the accent fill.
-float luminance(const ImVec4 &c) {
-    const auto lin = [](float v) {
-        return v <= 0.04045f ? v / 12.92f : std::pow((v + 0.055f) / 1.055f, 2.4f);
-    };
-    return 0.2126f * lin(c.x) + 0.7152f * lin(c.y) + 0.0722f * lin(c.z);
-}
-
-ImVec4 text_on(const ImVec4 &fill) {
-    const ImVec4 dark = play_color(27, 26, 16);
-    const ImVec4 light = play_color(255, 255, 255);
-    const float l = luminance(fill);
-    const float on_dark = (l + 0.05f) / (luminance(dark) + 0.05f);
-    const float on_light = (luminance(light) + 0.05f) / (l + 0.05f);
-    return on_dark >= on_light ? dark : light;
 }
 
 // Text size of the pause-menu controls: checkbox labels and buttons share it.
@@ -606,7 +588,8 @@ void PlayerOverlay::render(VkContext &, const AcquiredFrame &frame, bool &hd_on,
 
     // Primary action uses the same yellow fill and dark text as Play CE.
     const ImVec4 accent = accent_color();
-    ImGui::PushStyleColor(ImGuiCol_Text, text_on(accent));
+    // The launcher picks the label colour on the accent (--accent-text).
+    ImGui::PushStyleColor(ImGuiCol_Text, accent_rgb(dialog_.accent_text_rgb));
     ImGui::PushStyleColor(ImGuiCol_Button, accent);
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, mix(accent, play_color(255, 255, 255), 0.3f));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, mix(accent, play_color(0, 0, 0), 0.2f));

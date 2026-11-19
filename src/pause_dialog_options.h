@@ -3,7 +3,7 @@
 // pause_dialog_options.h — what the launcher may customise in the pause dialog.
 //
 // The launcher that spawns the Runtime passes these through the CLI
-// (--accent-color, --title, --exit-button-text); without them the dialog shows
+// (--accent-color, --accent-text, --title, --exit-button-text); without them the dialog shows
 // the Runtime's own defaults.
 // ---------------------------------------------------------------------------
 #include <cstdint>
@@ -16,6 +16,8 @@ namespace ayther {
 struct PauseDialogOptions {
     /// Accent colour as 0xRRGGBB (default #FF7300).
     std::uint32_t accent_rgb = 0xFF7300U;
+    /// Label colour on accent-filled buttons, as 0xRRGGBB (default #FFFFFF).
+    std::uint32_t accent_text_rgb = 0xFFFFFFU;
     /// Small accent-coloured caption above «EN PAUSA».
     std::string title = "Runtime";
     /// Label of the button that closes the Runtime.

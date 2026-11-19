@@ -14,6 +14,12 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+### Added
+
+- `--accent-text <#RRGGBB>`: label colour on the pause dialog's accent-filled
+  buttons. Default `#FFFFFF`. It replaces the automatic choice between dark and
+  white text, which put dark text on `#FB2C36`.
+
 ## [0.1.0-beta.19] - 2026-11-19
 
 ### Changed

@@ -267,7 +267,7 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char *const argv
                                                             argument, {},
                                                             static_cast<std::size_t>(index))};
             }
-        } else if (argument == "--accent-color") {
+        } else if (argument == "--accent-color" || argument == "--accent-text") {
             std::string color;
             if (auto error = read_string(argument, color)) {
                 return RuntimeOptionsParseResult{std::move(*error)};
@@ -279,7 +279,8 @@ RuntimeOptionsParseResult RuntimeOptions::parse(const int argc, char *const argv
                                              : RuntimeOptionErrorCode::value_out_of_domain,
                                argument, color, static_cast<std::size_t>(index))};
             }
-            options.pause_dialog.accent_rgb = *rgb;
+            (argument == "--accent-color" ? options.pause_dialog.accent_rgb
+                                          : options.pause_dialog.accent_text_rgb) = *rgb;
         } else if (argument == "--title" || argument == "--exit-button-text") {
             std::string &target = argument == "--title" ? options.pause_dialog.title
                                                         : options.pause_dialog.exit_button_text;
