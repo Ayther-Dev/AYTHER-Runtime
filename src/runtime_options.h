@@ -1,5 +1,6 @@
 #pragma once
 
+#include "pause_dialog_options.h"
 #include "runtime_error.h"
 
 #include <cstddef>
@@ -59,6 +60,14 @@ struct RuntimeOptions {
     std::string rom_crc32;
     std::string load_state;
     std::string input_map_path;
+    // A pad timeline («guion de mando», tools/audio_qa/pad_timeline.h) that
+    // drives port 0 from power-on; the run ends with its last frame.
+    std::string input_script_path;
+    // A CSV with the timing of every displayed frame (dev/perf).
+    std::string frame_log_path;
+    // Pause-dialog customisation from the launcher: --accent-color,
+    // --title and --exit-button-text.
+    ayther::PauseDialogOptions pause_dialog;
     std::vector<std::pair<std::string, std::string>> core_options;
     std::optional<std::uint32_t> subsystems;
     std::optional<std::uint32_t> mute_buses;

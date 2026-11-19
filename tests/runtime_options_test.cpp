@@ -311,6 +311,40 @@ int main() {
     expect_error({"ayther_runtime", "--qa-control-channel"}, RuntimeOptionErrorCode::missing_value,
                  "--qa-control-channel", "QA control channel needs a token");
 
+    // Pause dialog customisation from the launcher.
+    {
+        const auto defaults = parse({"ayther_runtime", "--core", "core.dll", "--rom", "game.md"});
+        const auto *options = defaults.options();
+        check(options != nullptr && options->pause_dialog.accent_rgb == 0xFB2C36U &&
+                  options->pause_dialog.title == "Runtime" &&
+                  options->pause_dialog.exit_button_text == "Salir",
+              "the pause dialog defaults to #FB2C36, «Runtime» and «Salir»");
+    }
+    {
+        const auto custom = parse({"ayther_runtime", "--core", "core.dll", "--rom", "game.md",
+                                   "--accent-color", "#facc2d", "--title", "AYTHER PLAY CE",
+                                   "--exit-button-text", "Volver al launcher"});
+        const auto *options = custom.options();
+        check(options != nullptr && options->pause_dialog.accent_rgb == 0xFACC2DU &&
+                  options->pause_dialog.title == "AYTHER PLAY CE" &&
+                  options->pause_dialog.exit_button_text == "Volver al launcher",
+              "the launcher sets the accent, caption and exit label");
+        const auto bare = parse({"ayther_runtime", "--accent-color", "00FF7f"});
+        check(bare.options() && bare.options()->pause_dialog.accent_rgb == 0x00FF7FU,
+              "the accent accepts RRGGBB without '#'");
+    }
+    for (const std::string_view bad : {"#FB2C3", "#FB2C366", "#GG2C36", "red", "#"}) {
+        expect_error({"ayther_runtime", "--accent-color", bad},
+                     RuntimeOptionErrorCode::value_out_of_domain, "--accent-color",
+                     "the accent must be #RRGGBB");
+    }
+    expect_error({"ayther_runtime", "--accent-color", ""}, RuntimeOptionErrorCode::empty_value,
+                 "--accent-color", "the accent cannot be empty");
+    expect_error({"ayther_runtime", "--title", ""}, RuntimeOptionErrorCode::empty_value, "--title",
+                 "the caption cannot be empty");
+    expect_error({"ayther_runtime", "--exit-button-text"}, RuntimeOptionErrorCode::missing_value,
+                 "--exit-button-text", "the exit label needs a value");
+
     std::printf("\n%d passed, %d failed\n", passed, failed);
     return failed == 0 ? 0 : 1;
 }

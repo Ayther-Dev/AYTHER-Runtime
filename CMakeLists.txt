@@ -11,12 +11,12 @@
 #   cmake -S . -B build_rt -DCMAKE_PREFIX_PATH=<Engine bootstrap prefix>
 #   cmake --build build_rt
 # ---------------------------------------------------------------------------
-set(AYTHER_RUNTIME_VERSION "0.1.0-beta.17")
+set(AYTHER_RUNTIME_VERSION "0.1.0-beta.18")
 set(AYTHER_RUNTIME_PROJECT_VERSION "0.1.0")
 set(AYTHER_ENGINE_MIN_VERSION "0.1.0")
 set(AYTHER_ENGINE_MAX_VERSION_EXCLUSIVE "0.2.0")
 # Spec 002, BR-174: the QA build uses the engine-vpx artifact of the same release.
-set(AYTHER_ENGINE_LOCKED_RELEASE "v0.1.0-rc.25" CACHE STRING "Engine release tag recorded in Runtime package metadata")
+set(AYTHER_ENGINE_LOCKED_RELEASE "v0.1.0-rc.28" CACHE STRING "Engine release tag recorded in Runtime package metadata")
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     cmake_minimum_required(VERSION 3.21)
@@ -252,7 +252,14 @@ target_include_directories(ayther_runtime PRIVATE
     src/vulkan_backend
     "${AYTHER_RUNTIME_GENERATED_DIR}"
     # Public ayther/*.h and ayther/engine/*.hpp headers: Ayther::engine
+    tools/audio_qa # pad_timeline.h: --input-script
 )
+# --input-script compiles the pad timeline of the replay QA (std-only
+# sources). The QA build already links them through ayther_audio_qa_domain.
+if(NOT AYTHER_REQUIRE_AUDIO_QA_ENGINE_PACKAGE)
+    target_sources(ayther_runtime PRIVATE tools/audio_qa/pad_timeline.cpp
+        tools/audio_qa/recording_header.cpp tools/audio_qa/recording_input_source.cpp)
+endif()
 
 # `Ayther::engine` owns the transitive Engine, Rust core, system-library, and
 # bridge dependencies. Runtime intentionally depends only on the package target.

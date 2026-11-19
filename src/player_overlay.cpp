@@ -18,6 +18,7 @@
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <cfloat>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -32,6 +33,41 @@ namespace {
 // AYTHER-Play-CE/ui/tokens.slint: keep the pause surface in the launcher palette.
 ImVec4 play_color(int r, int g, int b, int a = 255) {
     return ImVec4(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
+}
+
+// The accent the launcher chose (--accent-color); init() stores it as the
+// style's CheckMark colour so every helper reads the same value.
+ImVec4 accent_color() { return ImGui::GetStyleColorVec4(ImGuiCol_CheckMark); }
+
+ImVec4 accent_rgb(std::uint32_t rgb) {
+    return play_color(static_cast<int>((rgb >> 16U) & 0xFFU), static_cast<int>((rgb >> 8U) & 0xFFU),
+                      static_cast<int>(rgb & 0xFFU));
+}
+
+ImVec4 mix(const ImVec4 &a, const ImVec4 &b, float t) {
+    return ImVec4(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t, 1.0f);
+}
+
+ImVec4 with_alpha(ImVec4 c, float alpha) {
+    c.w = alpha;
+    return c;
+}
+
+// WCAG relative luminance, to pick a readable label on the accent fill.
+float luminance(const ImVec4 &c) {
+    const auto lin = [](float v) {
+        return v <= 0.04045f ? v / 12.92f : std::pow((v + 0.055f) / 1.055f, 2.4f);
+    };
+    return 0.2126f * lin(c.x) + 0.7152f * lin(c.y) + 0.0722f * lin(c.z);
+}
+
+ImVec4 text_on(const ImVec4 &fill) {
+    const ImVec4 dark = play_color(27, 26, 16);
+    const ImVec4 light = play_color(255, 255, 255);
+    const float l = luminance(fill);
+    const float on_dark = (l + 0.05f) / (luminance(dark) + 0.05f);
+    const float on_light = (luminance(light) + 0.05f) / (l + 0.05f);
+    return on_dark >= on_light ? dark : light;
 }
 
 // Text size of the pause-menu controls: checkbox labels and buttons share it.
@@ -58,9 +94,9 @@ bool play_checkbox(const char *label, bool *value) {
     const ImVec2 box = origin;
     draw->AddRectFilled(box, ImVec2(box.x + 28, box.y + 28),
                         ImGui::GetColorU32(play_color(38, 38, 43)));
-    draw->AddRect(ImVec2(box.x + 0.5f, box.y + 0.5f), ImVec2(box.x + 27.5f, box.y + 27.5f),
-                  ImGui::GetColorU32(ImGui::IsItemHovered() ? play_color(250, 204, 45)
-                                                            : play_color(75, 75, 85)));
+    draw->AddRect(
+        ImVec2(box.x + 0.5f, box.y + 0.5f), ImVec2(box.x + 27.5f, box.y + 27.5f),
+        ImGui::GetColorU32(ImGui::IsItemHovered() ? accent_color() : play_color(75, 75, 85)));
     if (*value) {
         // Exact check-bold outline exported from Q28ru/GrNOx (14-unit viewBox).
         // Scale the source path into the design's centered 20px icon.
@@ -94,7 +130,7 @@ bool play_checkbox(const char *label, bool *value) {
         curve(0, 0.27344f, -0.16406f, 0.49219f);
         line(-6.125f, 6.07031f);
         curve(-0.21875f, 0.21875f, -0.49219f, 0.21875f);
-        draw->PathFillConcave(ImGui::GetColorU32(play_color(250, 204, 45)));
+        draw->PathFillConcave(ImGui::GetColorU32(accent_color()));
     }
     draw->AddText(ImVec2(origin.x + 40, origin.y + 2),
                   ImGui::GetColorU32(play_color(214, 214, 220)), label);
@@ -149,7 +185,7 @@ VolumeEdit play_volume(const char *label, float &gain, bool &muted, ImFont *valu
     ImDrawList *draw = ImGui::GetWindowDrawList();
     const ImU32 background = ImGui::GetColorU32(play_color(38, 38, 43));
     const ImU32 border = ImGui::GetColorU32(play_color(75, 75, 85));
-    const ImU32 accent = ImGui::GetColorU32(play_color(250, 204, 45));
+    const ImU32 accent = ImGui::GetColorU32(accent_color());
 
     ImGui::PushFont(label_font ? label_font : ImGui::GetIO().FontDefault, 16);
     // Use one label column so tracks line up across the three audio buses.
@@ -385,7 +421,7 @@ bool PlayerOverlay::init(VkContext &ctx, VkSwapchain &swap, SDL_Window *window) 
     volume_font_ = load_play_font(io, "IBMPlexMono-SemiBold.ttf", 16.0f);
     volume_label_font_ = load_play_font(io, "Inter.ttf", 16.0f);
 
-    // Graphite surfaces, square controls and the Play CE yellow accent.
+    // Graphite surfaces, square controls and the launcher's accent.
     ImGui::StyleColorsDark();
     ImGuiStyle &style = ImGui::GetStyle();
     style.WindowRounding = 6.0f;
@@ -403,19 +439,23 @@ bool PlayerOverlay::init(VkContext &ctx, VkSwapchain &swap, SDL_Window *window) 
     style.Colors[ImGuiCol_Border] = play_color(75, 75, 85);
     style.Colors[ImGuiCol_Separator] = play_color(75, 75, 85);
     style.Colors[ImGuiCol_FrameBg] = play_color(38, 38, 43);
-    style.Colors[ImGuiCol_FrameBgHovered] = play_color(72, 68, 44);
-    style.Colors[ImGuiCol_FrameBgActive] = play_color(94, 83, 38);
+    // Accent-tinted states: the graphite surface mixed 15 % / 25 % towards
+    // the accent, as the original yellow tints were.
+    const ImVec4 accent = accent_rgb(dialog_.accent_rgb);
+    const ImVec4 surface = play_color(38, 38, 43);
+    style.Colors[ImGuiCol_FrameBgHovered] = mix(surface, accent, 0.15f);
+    style.Colors[ImGuiCol_FrameBgActive] = mix(surface, accent, 0.25f);
     style.Colors[ImGuiCol_Button] = play_color(59, 59, 66);
-    style.Colors[ImGuiCol_ButtonHovered] = play_color(72, 68, 44);
-    style.Colors[ImGuiCol_ButtonActive] = play_color(94, 83, 38);
-    style.Colors[ImGuiCol_CheckMark] = play_color(250, 204, 45);
-    style.Colors[ImGuiCol_SliderGrab] = play_color(250, 204, 45);
-    style.Colors[ImGuiCol_SliderGrabActive] = play_color(252, 221, 111);
-    style.Colors[ImGuiCol_Header] = play_color(250, 204, 45, 26);
-    style.Colors[ImGuiCol_HeaderHovered] = play_color(250, 204, 45, 46);
-    style.Colors[ImGuiCol_HeaderActive] = play_color(250, 204, 45, 82);
-    style.Colors[ImGuiCol_NavHighlight] = play_color(250, 204, 45);
-    style.Colors[ImGuiCol_TextSelectedBg] = play_color(250, 204, 45, 82);
+    style.Colors[ImGuiCol_ButtonHovered] = mix(surface, accent, 0.15f);
+    style.Colors[ImGuiCol_ButtonActive] = mix(surface, accent, 0.25f);
+    style.Colors[ImGuiCol_CheckMark] = accent;
+    style.Colors[ImGuiCol_SliderGrab] = accent;
+    style.Colors[ImGuiCol_SliderGrabActive] = mix(accent, play_color(255, 255, 255), 0.3f);
+    style.Colors[ImGuiCol_Header] = with_alpha(accent, 26 / 255.0f);
+    style.Colors[ImGuiCol_HeaderHovered] = with_alpha(accent, 46 / 255.0f);
+    style.Colors[ImGuiCol_HeaderActive] = with_alpha(accent, 82 / 255.0f);
+    style.Colors[ImGuiCol_NavHighlight] = accent;
+    style.Colors[ImGuiCol_TextSelectedBg] = with_alpha(accent, 82 / 255.0f);
 
     // ---- SDL3 backend --------------------------------------------------------
     if (!ImGui_ImplSDL3_InitForVulkan(window)) {
@@ -556,7 +596,7 @@ void PlayerOverlay::render(VkContext &, const AcquiredFrame &frame, bool &hd_on,
 
     ImGui::Begin("##pause_overlay", nullptr, kWinFlags);
 
-    centered_text(play_color(250, 204, 45), "AYTHER PLAY CE");
+    centered_text(accent_color(), dialog_.title.c_str());
     ImGui::PushFont(title_font_ ? title_font_ : ImGui::GetIO().FontDefault, 32.0f);
     centered_text(play_color(240, 240, 245), "EN PAUSA");
     ImGui::PopFont();
@@ -565,10 +605,11 @@ void PlayerOverlay::render(VkContext &, const AcquiredFrame &frame, bool &hd_on,
     ImGui::Spacing();
 
     // Primary action uses the same yellow fill and dark text as Play CE.
-    ImGui::PushStyleColor(ImGuiCol_Text, play_color(27, 26, 16));
-    ImGui::PushStyleColor(ImGuiCol_Button, play_color(250, 204, 45));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, play_color(252, 221, 111));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, play_color(201, 160, 6));
+    const ImVec4 accent = accent_color();
+    ImGui::PushStyleColor(ImGuiCol_Text, text_on(accent));
+    ImGui::PushStyleColor(ImGuiCol_Button, accent);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, mix(accent, play_color(255, 255, 255), 0.3f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, mix(accent, play_color(0, 0, 0), 0.2f));
     if (play_button("Continuar", ImVec2(-1, 40)))
         paused_ = false;
     ImGui::PopStyleColor(4);
@@ -749,7 +790,7 @@ void PlayerOverlay::render(VkContext &, const AcquiredFrame &frame, bool &hd_on,
     ImGui::Spacing();
 
     // Returning to the library is a secondary navigation action.
-    if (play_button("Volver al launcher", ImVec2(-1, 40)))
+    if (play_button(dialog_.exit_button_text.c_str(), ImVec2(-1, 40)))
         running = false;
 
     ImGui::Spacing();

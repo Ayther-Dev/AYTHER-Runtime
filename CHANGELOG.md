@@ -15,6 +15,23 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+### Added
+
+- Pause-dialog options for the launcher: `--accent-color <#RRGGBB>` (default
+  `#FB2C36`), `--title <text>` (default `Runtime`) and `--exit-button-text
+  <text>` (default `Salir`, formerly `Volver al launcher`).
+- Dev options `--input-script <file>` and `--frame-log <csv>`.
+
+### Changed
+
+- Engine release and QA locks move to `v0.1.0-rc.28`, and the native MVP lock
+  to `native-v0.1.0-rc.28`.
+
+### Fixed
+
+- Frame pacing re-paces when the core reports its rate after the first frame
+  (Tessera ran at 20 Hz).
+
 ## [0.1.0-beta.15] - 2026-11-13
 
 ### Added
