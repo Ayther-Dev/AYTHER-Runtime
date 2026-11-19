@@ -3,18 +3,18 @@
   "dependency": "AYTHER Engine",
   "repository": "https://github.com/Ayther-Dev/AYTHER-Engine",
   "release": {
-    "tag": "v0.1.0-rc.25",
-    "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/tag/v0.1.0-rc.25",
+    "tag": "v0.1.0-rc.28",
+    "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/tag/v0.1.0-rc.28",
     "checksums": {
       "fileName": "CHECKSUMS.sha256",
-      "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/v0.1.0-rc.25/CHECKSUMS.sha256",
-      "sha256": "6c86ff369c7dc9dbf1fef0d387d2e8b86075df1c63f17e546dd35dd537ed3969"
+      "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/v0.1.0-rc.28/CHECKSUMS.sha256",
+      "sha256": "791a64ddb7cb58baeef49bf65073101aced2adbb5a55386bf717fc07f6c3a258"
     }
   },
   "attestation": {
     "repository": "Ayther-Dev/AYTHER-Engine",
     "signerWorkflow": "Ayther-Dev/AYTHER-Engine/.github/workflows/release.yml",
-    "sourceRef": "refs/tags/v0.1.0-rc.25",
+    "sourceRef": "refs/tags/v0.1.0-rc.28",
     "predicateType": "https://slsa.dev/provenance/v1"
   },
   "artifacts": [
@@ -23,36 +23,36 @@
       "architecture": "x86_64",
       "variant": "engine",
       "vpx": false,
-      "fileName": "ayther-engine-v0.1.0-rc.25-linux-x86_64.zip",
-      "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/v0.1.0-rc.25/ayther-engine-v0.1.0-rc.25-linux-x86_64.zip",
-      "sha256": "181412fc9c71e50a3677562474a38ff969d2479929b42a4e82de94150ca2283e"
+      "fileName": "ayther-engine-v0.1.0-rc.28-linux-x86_64.zip",
+      "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/v0.1.0-rc.28/ayther-engine-v0.1.0-rc.28-linux-x86_64.zip",
+      "sha256": "7cec991d9c5d7b71d66ea257f5f7c1d880cb7a751eb1d888254dc756b3e95391"
     },
     {
       "platform": "windows",
       "architecture": "x86_64",
       "variant": "engine",
       "vpx": false,
-      "fileName": "ayther-engine-v0.1.0-rc.25-windows-x86_64.zip",
-      "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/v0.1.0-rc.25/ayther-engine-v0.1.0-rc.25-windows-x86_64.zip",
-      "sha256": "428f4ac4d84c5355053795e4a8b7c6f9c26fc341cc9e4249b8d85b62ba9f4347"
+      "fileName": "ayther-engine-v0.1.0-rc.28-windows-x86_64.zip",
+      "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/v0.1.0-rc.28/ayther-engine-v0.1.0-rc.28-windows-x86_64.zip",
+      "sha256": "757a3ea5ce2fcce91dd7263be2f7be211a6d35ea921f6d0ce4238472c1ededcf"
     },
     {
       "platform": "linux",
       "architecture": "x86_64",
       "variant": "engine-vpx",
       "vpx": true,
-      "fileName": "ayther-engine-vpx-v0.1.0-rc.25-linux-x86_64.zip",
-      "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/v0.1.0-rc.25/ayther-engine-vpx-v0.1.0-rc.25-linux-x86_64.zip",
-      "sha256": "07ca29c87bf11cbb353270520193da873bc87a3325ff753795e679aa4e7bbbf9"
+      "fileName": "ayther-engine-vpx-v0.1.0-rc.28-linux-x86_64.zip",
+      "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/v0.1.0-rc.28/ayther-engine-vpx-v0.1.0-rc.28-linux-x86_64.zip",
+      "sha256": "6426bf5063222178dbd9c64af9dc03f7d1a1761fc3dfff21d0076df14df0e59e"
     },
     {
       "platform": "windows",
       "architecture": "x86_64",
       "variant": "engine-vpx",
       "vpx": true,
-      "fileName": "ayther-engine-vpx-v0.1.0-rc.25-windows-x86_64.zip",
-      "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/v0.1.0-rc.25/ayther-engine-vpx-v0.1.0-rc.25-windows-x86_64.zip",
-      "sha256": "2f2a2967bddaaf506b87177c45eebd0cc3c8e111a61dca0e2cd6efa1d211b4e6"
+      "fileName": "ayther-engine-vpx-v0.1.0-rc.28-windows-x86_64.zip",
+      "url": "https://github.com/Ayther-Dev/AYTHER-Engine/releases/download/v0.1.0-rc.28/ayther-engine-vpx-v0.1.0-rc.28-windows-x86_64.zip",
+      "sha256": "5011f7fcefa91fbd707edff8ed732932508b9cb5ad010dfebbe7005963450b14"
     }
   ]
 }
