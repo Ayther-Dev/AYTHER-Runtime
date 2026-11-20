@@ -329,16 +329,19 @@ int main() {
         const auto defaults = parse({"ayther_runtime", "--core", "core.dll", "--rom", "game.md"});
         const auto *options = defaults.options();
         check(options != nullptr && options->pause_dialog.accent_rgb == 0xFF7300U &&
+                  options->pause_dialog.accent_text_rgb == 0xFFFFFFU &&
                   options->pause_dialog.title == "Runtime" &&
                   options->pause_dialog.exit_button_text == "Salir",
-              "the pause dialog defaults to #FF7300, «Runtime» and «Salir»");
+              "the pause dialog defaults to #FF7300, white labels, «Runtime» and «Salir»");
     }
     {
-        const auto custom = parse({"ayther_runtime", "--core", "core.dll", "--rom", "game.md",
-                                   "--accent-color", "#facc2d", "--title", "AYTHER PLAY CE",
-                                   "--exit-button-text", "Volver al launcher"});
+        const auto custom =
+            parse({"ayther_runtime", "--core", "core.dll", "--rom", "game.md", "--accent-color",
+                   "#facc2d", "--accent-text", "#1b1a10", "--title", "AYTHER PLAY CE",
+                   "--exit-button-text", "Volver al launcher"});
         const auto *options = custom.options();
         check(options != nullptr && options->pause_dialog.accent_rgb == 0xFACC2DU &&
+                  options->pause_dialog.accent_text_rgb == 0x1B1A10U &&
                   options->pause_dialog.title == "AYTHER PLAY CE" &&
                   options->pause_dialog.exit_button_text == "Volver al launcher",
               "the launcher sets the accent, caption and exit label");
@@ -351,6 +354,11 @@ int main() {
                      RuntimeOptionErrorCode::value_out_of_domain, "--accent-color",
                      "the accent must be #RRGGBB");
     }
+    expect_error({"ayther_runtime", "--accent-text", "white"},
+                 RuntimeOptionErrorCode::value_out_of_domain, "--accent-text",
+                 "the label colour must be #RRGGBB");
+    expect_error({"ayther_runtime", "--accent-text"}, RuntimeOptionErrorCode::missing_value,
+                 "--accent-text", "the label colour needs a value");
     expect_error({"ayther_runtime", "--accent-color", ""}, RuntimeOptionErrorCode::empty_value,
                  "--accent-color", "the accent cannot be empty");
     expect_error({"ayther_runtime", "--title", ""}, RuntimeOptionErrorCode::empty_value, "--title",

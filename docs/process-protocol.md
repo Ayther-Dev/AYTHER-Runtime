@@ -72,6 +72,7 @@ Every option accepted by the parser appears exactly once below.
 | `--rom-revision` | token | Windows file reservation for the ROM. Must not be empty. See [file reservations](runtime-play-protocol.md#optional-file-reservations). |
 | `--pack-revision` | token | Windows file reservation for the pack. Must not be empty. |
 | `--accent-color` | `#RRGGBB` (`#` optional, hex digits in any case) | Pause-dialog accent: caption, primary button, checkboxes, sliders and hover states. Default `#FF7300`. Any other spelling is `value_out_of_domain`. |
+| `--accent-text` | `#RRGGBB` (same spelling as `--accent-color`) | Label colour on accent-filled buttons (the primary «Continuar» button). Default `#FFFFFF`. |
 | `--title` | text | Caption shown above «EN PAUSA» in the pause dialog. Default `Runtime`. Must not be empty. |
 | `--exit-button-text` | text | Label of the pause-dialog button that closes Runtime. Default `Salir`. Must not be empty. |
 

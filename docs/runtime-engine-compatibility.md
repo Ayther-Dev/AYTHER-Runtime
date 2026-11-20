@@ -6,7 +6,7 @@ are in the [Development guide](development.md).
 
 ## Supported package range
 
-AYTHER Runtime `0.1.0-beta.19` accepts an installed AYTHER Engine package in
+AYTHER Runtime `0.1.0-beta.20` accepts an installed AYTHER Engine package in
 the range `>=0.1.0,<0.2.0` (`AYTHER_ENGINE_MIN_VERSION` and
 `AYTHER_ENGINE_MAX_VERSION_EXCLUSIVE` in `CMakeLists.txt`).
 

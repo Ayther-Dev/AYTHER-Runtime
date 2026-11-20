@@ -1,7 +1,7 @@
 # Windows executable dependencies
 
 Checked: 2026-11-19, by listing the imports of the installed `windows-ci`
-RelWithDebInfo tree (Runtime `0.1.0-beta.19`, MSVC
+RelWithDebInfo tree (Runtime `0.1.0-beta.20`, MSVC
 v145, x86-64, Engine `v0.1.0-rc.28`). The set is unchanged since the first audit on 2026-09-03.
 
 Non-system libraries that the installed tree must contain:
