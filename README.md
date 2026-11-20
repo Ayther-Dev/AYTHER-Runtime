@@ -20,6 +20,17 @@ pause overlay.
 > content, and AYTHER trademarks are outside that grant unless their rights
 > holder states otherwise. See [Legal and content boundaries](#legal-and-content-boundaries).
 
+## Download
+
+Windows and Linux builds are published on the
+[releases page](https://github.com/Ayther-Dev/AYTHER-Runtime/releases), each
+with a SHA-256 checksum file. Windows releases are code-signed through the
+SignPath Foundation open-source program: free code signing provided by
+[SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org). Releases published before the
+SignPath project is approved are unsigned. See the
+[code signing policy](docs/code-signing-policy.md).
+
 ## Role in the AYTHER system
 
 ```text

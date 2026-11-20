@@ -359,6 +359,7 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          SIGNPATH_CONFIGURED: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
         run: |
           $ErrorActionPreference = "Stop"
           $project = Get-Content CMakeLists.txt -Raw
@@ -374,6 +375,22 @@ jobs:
           if (-not (Test-Path -LiteralPath $notes -PathType Leaf)) {
               throw "Release notes are missing: $notes"
           }
+          # Every release page names the code-signing provider (SignPath
+          # Foundation terms; docs/code-signing-policy.md).
+          $published = Join-Path $env:RUNNER_TEMP "release-notes.md"
+          $status = if ($env:SIGNPATH_CONFIGURED -eq "true") {
+              "The Windows executable of this release is code-signed."
+          } else {
+              "This release is not signed yet: signing starts once the SignPath project is approved."
+          }
+          $signing = @(
+              "",
+              "## Code signing",
+              "",
+              "$status Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org). See the [code signing policy](https://github.com/Ayther-Dev/AYTHER-Runtime/blob/main/docs/code-signing-policy.md)."
+          )
+          @(Get-Content -LiteralPath $notes) + $signing |
+              Set-Content -LiteralPath $published -Encoding utf8
           $assets = @(Get-ChildItem artifacts -File |
               ForEach-Object { $_.FullName })
           if ($assets.Count -ne 6) {
@@ -383,5 +400,5 @@ jobs:
               --verify-tag `
               --prerelease `
               --title "AYTHER Runtime $env:GITHUB_REF_NAME" `
-              --notes-file $notes
+              --notes-file $published
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
