@@ -1,10 +1,10 @@
 # Project status
 
-Last updated: 2026-11-20, for `0.1.0-beta.20`.
+Last updated: 2026-11-20, for `0.1.0-beta.21`.
 
 ## Maturity
 
-AYTHER Runtime `0.1.0-beta.20` is an internal prerelease. It is for
+AYTHER Runtime `0.1.0-beta.21` is an internal prerelease. It is for
 engineering integration and focused testing. It is not production-ready, not
 generally available, and not backward compatible between betas.
 
@@ -21,7 +21,7 @@ generally available, and not backward compatible between betas.
 
 | Item | Value |
 | --- | --- |
-| Latest release | `v0.1.0-beta.20`, published 2026-11-20 ([notes](releases/v0.1.0-beta.20.md)) |
+| Latest release | `v0.1.0-beta.21`, published 2026-11-20 ([notes](releases/v0.1.0-beta.21.md)) |
 | Release assets | Windows x64 Runtime ZIP, Windows x64 QA Runtime ZIP, Linux x86-64 Runtime TGZ, one `SHA256SUMS-*.txt` per archive |
 | Engine lock (release and QA) | `v0.1.0-rc.28` |
 | Engine lock (Tessera route) | `native-v0.1.0-rc.28` with Tessera `v0.2.0-rc.9` |
@@ -46,6 +46,7 @@ GPU, driver, operating-system, core, or game compatibility.
 
 | Date | Build | Result |
 | --- | --- | --- |
+| 2026-11-20 | `v0.1.0-beta.21`, Engine `v0.1.0-rc.28` | Release-workflow and documentation changes only; no code change since beta.20. Release contract test passes; the published release is unsigned. |
 | 2026-11-20 | `v0.1.0-beta.20`, `windows-ci`, Engine `v0.1.0-rc.28` | CTest 227/227. Adds `--accent-text`. |
 | 2026-11-19 | `v0.1.0-beta.19` (PR #71), Engine `v0.1.0-rc.28` | `windows-ci` against the regular package: CTest 227/227. Against `native-v0.1.0-rc.28` + Tessera `v0.2.0-rc.9` with `AYTHER_REQUIRE_TESSERA_PROVIDER=ON`: CTest 227/227 (the `tessera_runtime_*` tests were not enabled). |
 | 2026-11-19 | `v0.1.0-beta.18` (PR #70), `windows-ci`, Engine `v0.1.0-rc.28` | CTest 227/227 passed. Bootstrap verified SHA-256 and SLSA provenance for the regular and native locks. Release workflow published all six assets. |
@@ -53,7 +54,7 @@ GPU, driver, operating-system, core, or game compatibility.
 
 Results of earlier betas are in the git history of this file and in the
 [release notes](releases/). The Tessera integration tests and the `windows-qa`
-and `windows-qa-gpu` suites were not rerun for beta.16 to beta.20.
+and `windows-qa-gpu` suites were not rerun for beta.16 to beta.21.
 
 Branch protection on `main` requires `Windows / RelWithDebInfo`,
 `Linux / RelWithDebInfo`, `Linux / ASan-UBSan-Fuzz`, `Windows / QA`,

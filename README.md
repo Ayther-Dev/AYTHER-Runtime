@@ -9,7 +9,7 @@ original and HD-composed frames through Vulkan and owns input and the in-game
 pause overlay.
 
 > [!WARNING]
-> **Beta.** Version `0.1.0-beta.20` is an internal prerelease. Command-line
+> **Beta.** Version `0.1.0-beta.21` is an internal prerelease. Command-line
 > options, package boundaries, configuration and save-state formats may change
 > between betas. Only the Runtime–Play process protocol v1 is stable. See
 > [Project status](docs/status.md).

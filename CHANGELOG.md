@@ -14,6 +14,8 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+## [0.1.0-beta.21] - 2026-11-20
+
 ### Added
 
 - The README has a Download section pointing to the releases page and the
@@ -647,7 +649,8 @@ The beta.2 release and assets remain unchanged as historical reference.
 - Documented handling requirements for untrusted cores, ROMs, packs, patches,
   manifests, paths, and save states.
 
-[Unreleased]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.20...HEAD
+[Unreleased]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.21...HEAD
+[0.1.0-beta.21]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.20...v0.1.0-beta.21
 [0.1.0-beta.20]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.19...v0.1.0-beta.20
 [0.1.0-beta.19]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.18...v0.1.0-beta.19
 [0.1.0-beta.18]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.17...v0.1.0-beta.18
