@@ -24,12 +24,8 @@ pause overlay.
 
 Windows and Linux builds are published on the
 [releases page](https://github.com/Ayther-Dev/AYTHER-Runtime/releases), each
-with a SHA-256 checksum file. Windows releases are code-signed through the
-SignPath Foundation open-source program: free code signing provided by
-[SignPath.io](https://about.signpath.io), certificate by
-[SignPath Foundation](https://signpath.org). Releases published before the
-SignPath project is approved are unsigned. See the
-[code signing policy](docs/code-signing-policy.md).
+with a SHA-256 checksum file. Releases are not code-signed: Windows may show
+a SmartScreen warning, so check the archive against its checksum file.
 
 ## Role in the AYTHER system
 
@@ -129,7 +125,6 @@ Every option is specified in the [process and CLI contract](docs/process-protoco
 | [Development guide](docs/development.md) | Builds, presets, tests, CI, replay QA. |
 | [Runtime–Engine compatibility](docs/runtime-engine-compatibility.md) | Engine range, locks, Tessera route. |
 | [Runtime package layout](docs/packaging.md) | Installed tree and release archives. |
-| [Code signing policy](docs/code-signing-policy.md) | What is signed, by whom, and the privacy statement. |
 | [Project status](docs/status.md) | Maturity, latest validation, known gaps. |
 | [Specification index](docs/specs.md) | Map of all normative documents. |
 | [Changelog](CHANGELOG.md), [release notes](docs/releases/) | Changes per release. |
