@@ -18,6 +18,11 @@ jobs:
     name: Release / Windows package
     runs-on: windows-2025-vs2026
     timeout-minutes: 45
+    permissions:
+      # actions: read lets SignPath download the unsigned package artifact.
+      actions: read
+      attestations: read
+      contents: read
     env:
       CI_PRESET: windows-ci
       ENGINE_PLATFORM: windows
@@ -93,6 +98,60 @@ jobs:
               $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
               "$hash  $($_.Name)"
           } | Set-Content artifacts/SHA256SUMS-windows.txt
+
+      # Code signing (docs/code-signing-policy.md): SignPath Foundation signs
+      # bin/ayther_runtime.exe inside the archive with its free open-source
+      # certificate. The provider is swappable: only these three steps know it.
+      # Until the repository variable SIGNPATH_ORGANIZATION_ID exists the
+      # release is published unsigned, as before.
+      - name: Upload unsigned Windows package for signing
+        id: unsigned-windows
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unsigned-windows
+          path: artifacts/*.zip
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Sign the Windows package (SignPath)
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@c92b958760219087e01f8d67a1669ed57afe2627 # v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'AYTHER-Runtime' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY || 'release-signing' }}
+          artifact-configuration-slug: windows-package
+          github-artifact-id: ${{ steps.unsigned-windows.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      - name: Verify the signature and replace the package
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        shell: pwsh
+        env:
+          SIGNING_POLICY: ${{ vars.SIGNPATH_SIGNING_POLICY || 'release-signing' }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $signed = @(Get-ChildItem signed -File -Filter *.zip)
+          if ($signed.Count -ne 1) { throw "Expected one signed ZIP, found $($signed.Count)." }
+          $unsigned = @(Get-ChildItem artifacts -File -Filter *.zip)
+          if ($signed[0].Name -ne $unsigned[0].Name) {
+              throw "Signed archive $($signed[0].Name) does not match $($unsigned[0].Name)."
+          }
+          Expand-Archive -LiteralPath $signed[0].FullName -DestinationPath signed/check
+          $signature = Get-AuthenticodeSignature signed/check/bin/ayther_runtime.exe
+          if (-not $signature.SignerCertificate) { throw "ayther_runtime.exe is not signed." }
+          if (-not $signature.TimeStamperCertificate) { throw "ayther_runtime.exe has no timestamp." }
+          # The test-signing policy uses a certificate Windows does not trust.
+          if ($env:SIGNING_POLICY -eq "release-signing" -and $signature.Status -ne "Valid") {
+              throw "ayther_runtime.exe signature status is $($signature.Status)."
+          }
+          Write-Host "Signed by $($signature.SignerCertificate.Subject) ($($signature.Status))"
+          Copy-Item -LiteralPath $signed[0].FullName -Destination $unsigned[0].FullName -Force
+          $hash = (Get-FileHash -Algorithm SHA256 $unsigned[0].FullName).Hash.ToLower()
+          "$hash  $($unsigned[0].Name)" | Set-Content artifacts/SHA256SUMS-windows.txt
 
       - name: Upload Windows package
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
