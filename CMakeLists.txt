@@ -418,7 +418,7 @@ install(DIRECTORY "${Ayther_SHADER_DIR}/"
         DESTINATION bin/shaders COMPONENT Runtime)
 install(FILES ${AYTHER_RUNTIME_SHADER_FILES}
         DESTINATION bin/shaders COMPONENT Runtime)
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE" "${CMAKE_CURRENT_SOURCE_DIR}/NOTICE.md"
         DESTINATION share/licenses/ayther-runtime COMPONENT Runtime)
 # The Engine (and, when present, Tessera) is linked statically into the
 # executable, so its licenses and third-party notices travel with it.

@@ -13,7 +13,7 @@ bin/
   ayther_replay_qa[.exe]       qa component only
 share/
   ayther-runtime/ayther-runtime-package.json
-  licenses/ayther-runtime/LICENSE
+  licenses/ayther-runtime/     LICENSE (MPL-2.0) and NOTICE.md (project notice)
   licenses/ayther-engine/      Engine license and third-party notices
   licenses/tessera/            Windows: Tessera licenses, notices, source availability
 ```

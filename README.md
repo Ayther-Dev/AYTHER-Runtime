@@ -20,6 +20,17 @@ pause overlay.
 > content, and AYTHER trademarks are outside that grant unless their rights
 > holder states otherwise. See [Legal and content boundaries](#legal-and-content-boundaries).
 
+## Download
+
+Windows and Linux builds are published on the
+[releases page](https://github.com/Ayther-Dev/AYTHER-Runtime/releases), each
+with a SHA-256 checksum file. Windows releases are code-signed through the
+SignPath Foundation open-source program: free code signing provided by
+[SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org). Releases published before the
+SignPath project is approved are unsigned. See the
+[code signing policy](docs/code-signing-policy.md).
+
 ## Role in the AYTHER system
 
 ```text
@@ -118,6 +129,7 @@ Every option is specified in the [process and CLI contract](docs/process-protoco
 | [Development guide](docs/development.md) | Builds, presets, tests, CI, replay QA. |
 | [Runtime–Engine compatibility](docs/runtime-engine-compatibility.md) | Engine range, locks, Tessera route. |
 | [Runtime package layout](docs/packaging.md) | Installed tree and release archives. |
+| [Code signing policy](docs/code-signing-policy.md) | What is signed, by whom, and the privacy statement. |
 | [Project status](docs/status.md) | Maturity, latest validation, known gaps. |
 | [Specification index](docs/specs.md) | Map of all normative documents. |
 | [Changelog](CHANGELOG.md), [release notes](docs/releases/) | Changes per release. |
@@ -132,7 +144,8 @@ a public issue; follow [SECURITY.md](SECURITY.md).
 
 - Unless a file states other terms, this repository's source code, headers,
   build modules, tests, tools and documentation are licensed under the
-  [Mozilla Public License 2.0](LICENSE). MPL-2.0 applies per file and includes
+  [Mozilla Public License 2.0](LICENSE); [NOTICE.md](NOTICE.md) states what it
+  covers. MPL-2.0 applies per file and includes
   source-availability and notice obligations for distributions; the license
   text controls.
 - Third-party libraries, AYTHER Engine, AYTHER Tessera, Libretro cores, game

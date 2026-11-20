@@ -14,6 +14,22 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+### Added
+
+- Code signing of the Windows release through SignPath Foundation: the release
+  workflow signs `bin/ayther_runtime.exe` and recomputes the checksum once the
+  `SIGNPATH_ORGANIZATION_ID` repository variable exists. See
+  [the code signing policy](docs/code-signing-policy.md).
+- The README has a Download section, and every release page ends with a
+  "Code signing" note naming SignPath Foundation and whether that release is
+  signed.
+
+### Changed
+
+- `LICENSE` is the unmodified MPL-2.0 text, so license detectors recognise it.
+  The project notice on what it covers moved to `NOTICE.md`, which the package
+  installs next to `LICENSE` in `share/licenses/ayther-runtime`.
+
 ## [0.1.0-beta.20] - 2026-11-20
 
 ### Added

@@ -90,7 +90,11 @@ Assert-Condition ($workflowText -match 'assets\.Count -ne 6') `
     "Publication must expect three archives and three checksum files."
 
 $uses = [regex]::Matches($workflowText, '(?m)^\s*uses:\s+([^\s#]+)')
-Assert-Condition ($uses.Count -eq 8) "Unexpected number of release actions."
+Assert-Condition ($uses.Count -eq 10) "Unexpected number of release actions."
+Assert-Condition ($workflowText -match 'signpath/github-action-submit-signing-request@') `
+    "The Windows package must go through the code-signing step."
+Assert-Condition ($workflowText -match 'SHA256SUMS-windows\.txt[\s\S]*Sign the Windows package[\s\S]*Set-Content artifacts/SHA256SUMS-windows\.txt') `
+    "The checksum must be recomputed after signing."
 foreach ($match in $uses) {
     Assert-Condition ($match.Groups[1].Value -match
         '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$') `
