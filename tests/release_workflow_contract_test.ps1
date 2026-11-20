@@ -89,6 +89,10 @@ Assert-Condition ($workflowText -match '(?ms)^  publish:.*?needs:.*?- package-wi
 Assert-Condition ($workflowText -match 'assets\.Count -ne 6') `
     "Publication must expect three archives and three checksum files."
 
+Assert-Condition ($workflowText -match '/blob/\$env:GITHUB_REF_NAME/docs/releases/' -and
+    $workflowText -match '--notes-file \$published') `
+    "Release pages must get absolute links to the tagged documents."
+
 $uses = [regex]::Matches($workflowText, '(?m)^\s*uses:\s+([^\s#]+)')
 Assert-Condition ($uses.Count -eq 8) "Unexpected number of release actions."
 foreach ($match in $uses) {
