@@ -14,6 +14,11 @@ once stable compatibility guarantees are defined.
 
 ## [Unreleased]
 
+### Fixed
+
+- Release pages link to the tagged documents: the publish step turns the
+  relative links of `docs/releases/*.md` into absolute GitHub URLs.
+
 ## [0.1.0-beta.21] - 2026-11-20
 
 ### Added

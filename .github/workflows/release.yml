@@ -315,6 +315,13 @@ jobs:
           if (-not (Test-Path -LiteralPath $notes -PathType Leaf)) {
               throw "Release notes are missing: $notes"
           }
+          # Relative links in docs/releases/*.md work in the repository but
+          # not on the release page: point them at the tagged files.
+          $base = [uri]"https://github.com/$env:GITHUB_REPOSITORY/blob/$env:GITHUB_REF_NAME/docs/releases/"
+          $published = Join-Path $env:RUNNER_TEMP "release-notes.md"
+          (Get-Content -LiteralPath $notes -Raw) -replace '\]\((?!https?:|#|mailto:)([^)\s]+)\)', {
+              "](" + [uri]::new($base, $_.Groups[1].Value).AbsoluteUri + ")"
+          } | Set-Content -LiteralPath $published -Encoding utf8
           $assets = @(Get-ChildItem artifacts -File |
               ForEach-Object { $_.FullName })
           if ($assets.Count -ne 6) {
@@ -324,5 +331,5 @@ jobs:
               --verify-tag `
               --prerelease `
               --title "AYTHER Runtime $env:GITHUB_REF_NAME" `
-              --notes-file $notes
+              --notes-file $published
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
