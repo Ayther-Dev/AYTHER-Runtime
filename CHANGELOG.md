@@ -7,12 +7,14 @@ and the project intends to follow [Semantic Versioning](https://semver.org/spec/
 once stable compatibility guarantees are defined.
 
 > [!WARNING]
-> AYTHER Runtime is an internal prerelease (latest release `0.1.0-beta.19`) and
+> AYTHER Runtime is an internal prerelease (latest release `0.1.0-beta.20`) and
 > is not supported for production use. Only the Runtime–Play process protocol v1
 > is stable: its documented wire fields, reason identifiers and exit codes keep
 > their meaning within v1.
 
 ## [Unreleased]
+
+## [0.1.0-beta.20] - 2026-11-20
 
 ### Added
 
@@ -633,7 +635,8 @@ The beta.2 release and assets remain unchanged as historical reference.
 - Documented handling requirements for untrusted cores, ROMs, packs, patches,
   manifests, paths, and save states.
 
-[Unreleased]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.19...HEAD
+[Unreleased]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.20...HEAD
+[0.1.0-beta.20]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.19...v0.1.0-beta.20
 [0.1.0-beta.19]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.18...v0.1.0-beta.19
 [0.1.0-beta.18]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.17...v0.1.0-beta.18
 [0.1.0-beta.17]: https://github.com/Ayther-Dev/AYTHER-Runtime/compare/v0.1.0-beta.16...v0.1.0-beta.17
